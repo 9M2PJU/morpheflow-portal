@@ -1,0 +1,21 @@
+name = "automorph"
+main = "worker/index.ts"
+compatibility_date = "2024-01-01"
+
+[assets]
+binding = "ASSETS"
+directory = "./web/frontend"
+html_handling = "none"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[triggers]
+crons = [ "0 3 * * *" ]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "automorph-db"
+database_id = "automorph-db"
+
+[[kv_namespaces]]
+binding = "STATE_KV"

@@ -1,0 +1,31 @@
+{
+  "name": "automorph",
+  "version": "2.1.0",
+  "description": "AutoMorph edge management portal and build distribution on Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'Static assets ready in web/frontend'",
+    "dev": "wrangler dev",
+    "dev:kv": "wrangler dev -c wrangler.kv.toml",
+    "deploy": "wrangler deploy",
+    "deploy:kv": "node scripts/ensure-kv.cjs && wrangler deploy -c wrangler.kv.toml",
+    "types:check": "tsc --noEmit"
+  },
+  "keywords": [
+    "automorph",
+    "morphe",
+    "revanced",
+    "android",
+    "apk-patcher",
+    "cloudflare-workers",
+    "d1",
+    "serverless"
+  ],
+  "author": "holjab",
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.111.0"
+  }
+}

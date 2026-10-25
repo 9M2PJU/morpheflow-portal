@@ -1,0 +1,197 @@
+name: AutoMorph Cloud Patch Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_package:
+        description: 'Specific package to patch (optional)'
+        required: false
+        default: ''
+      runner_callback_url:
+        description: 'Cloudflare Worker URL to report metrics back to'
+        required: false
+        default: ''
+
+  # Also allows running on schedule directly if desired
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  patch-apps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Set up Java 21 JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq aapt protobuf-compiler
+
+      - name: Download Morphe Desktop JAR
+        run: |
+          mkdir -p tools
+          MORPHE_VERSION="1.19.0"
+          wget -q -O "tools/morphe-desktop-${MORPHE_VERSION}-all.jar" \
+            "https://github.com/MorpheApp/morphe-desktop/releases/download/v${MORPHE_VERSION}/morphe-desktop-${MORPHE_VERSION}-all.jar"
+          ln -sf "tools/morphe-desktop-${MORPHE_VERSION}-all.jar" tools/morphe.jar
+          java -jar tools/morphe.jar -v || true
+
+      - name: Sync configuration from Cloudflare Worker (if available)
+        env:
+          CF_WORKER_URL: ${{ inputs.runner_callback_url || secrets.CLOUDFLARE_WORKER_URL }}
+        run: |
+          if [ -n "$CF_WORKER_URL" ]; then
+            echo "[*] Fetching package configuration from Cloudflare Worker: $CF_WORKER_URL"
+            python3 -c "
+          import urllib.request, json, yaml, os
+          url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/config'
+          try:
+              req = urllib.request.Request(url, headers={'User-Agent': 'AutoMorph-CloudRunner'})
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  data = json.loads(resp.read().decode())
+                  os.makedirs('tools/automorph-data', exist_ok=True)
+                  with open('tools/automorph-data/config.yaml', 'w') as f:
+                      yaml.dump(data, f)
+                  print('[✓] Successfully synchronized config from Worker D1.')
+          except Exception as e:
+              print(f'[!] Could not fetch config from Worker: {e}. Falling back to defaults.')
+          " || true
+          fi
+
+      - name: Run AutoMorph Patching Pipeline
+        id: patch
+        env:
+          TARGET_PACKAGE: ${{ inputs.target_package }}
+          GOOPDL_ACCOUNT_EMAIL: ${{ secrets.GOOPDL_ACCOUNT_EMAIL }}
+          GOOPDL_AAS_TOKEN: ${{ secrets.GOOPDL_AAS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p apps/original apps/patched tools/automorph-data/state/logs tools/automorph-data/state/reports
+          START_TIME=$(date +%s)
+          
+          # Run main patcher
+          python scripts/main.py ${TARGET_PACKAGE:-} 2>&1 | tee tools/automorph-data/state/logs/last_run.log || true
+
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          echo "DURATION=$DURATION" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release for Patched APKs
+        id: release
+        if: always()
+        run: |
+          DATE_TAG="build-$(date +%Y%m%d-%H%M%S)"
+          echo "TAG=$DATE_TAG" >> $GITHUB_OUTPUT
+          
+          # Gather patched APK files
+          APK_FILES=$(find apps/patched -name "*.apk" 2>/dev/null || true)
+          if [ -n "$APK_FILES" ]; then
+            gh release create "$DATE_TAG" $APK_FILES \
+              --title "AutoMorph Build $DATE_TAG" \
+              --notes "Automated Cloud Build generated on $(date -u)" \
+              --latest
+            echo "RELEASE_URL=https://github.com/${{ github.repository }}/releases/tag/$DATE_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "[!] No new APKs generated to publish."
+            echo "RELEASE_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report Metrics & Sync to Cloudflare Worker
+        if: always()
+        env:
+          CF_WORKER_URL: ${{ inputs.runner_callback_url || secrets.CLOUDFLARE_WORKER_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          RELEASE_TAG: ${{ steps.release.outputs.TAG }}
+          DURATION: ${{ steps.patch.outputs.DURATION || 0 }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$CF_WORKER_URL" ]; then
+            echo "[*] No Cloudflare Worker URL specified. Metrics reporting skipped."
+            exit 0
+          fi
+
+          python3 -c "
+          import urllib.request, json, os, glob
+          from pathlib import Path
+
+          worker_url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/webhook/report'
+          secret = os.environ.get('WEBHOOK_SECRET', '')
+          tag = os.environ.get('RELEASE_TAG', '')
+          repo = os.environ.get('REPO', '')
+          duration = int(os.environ.get('DURATION', '0'))
+
+          # Collect patched apps
+          patched_apps = []
+          for apk in Path('apps/patched').glob('*/*/*.apk'):
+              pkg = apk.parent.parent.name
+              ver = apk.parent.name
+              sz = apk.stat().st_size
+              dl_url = f'https://github.com/{repo}/releases/download/{tag}/{apk.name}' if tag else ''
+              patched_apps.append({
+                  'package': pkg,
+                  'version': ver,
+                  'arch': 'arm64-v8a',
+                  'filename': apk.name,
+                  'size_bytes': sz,
+                  'download_url': dl_url,
+                  'release_url': f'https://github.com/{repo}/releases/tag/{tag}' if tag else None,
+              })
+
+          # Collect logs
+          log_file = Path('tools/automorph-data/state/logs/last_run.log')
+          logs = log_file.read_text(errors='replace').splitlines() if log_file.is_file() else []
+
+          # Collect report HTML
+          report_file = Path('tools/automorph-data/state/reports/build_report.html')
+          report_html = report_file.read_text(errors='replace') if report_file.is_file() else ''
+
+          payload = {
+              'run_id': f'run-gh-{tag}',
+              'status': 'success' if patched_apps else 'failed',
+              'returncode': 0 if patched_apps else 1,
+              'duration_seconds': duration,
+              'duration_formatted': f'{duration // 60}m {duration % 60}s',
+              'source': 'github_actions',
+              'patched_apps': patched_apps,
+              'logs': logs[-1000:],
+              'report_html': report_html,
+          }
+
+          req = urllib.request.Request(
+              worker_url,
+              data=json.dumps(payload).encode('utf-8'),
+              headers={
+                  'Content-Type': 'application/json',
+                  'X-Webhook-Secret': secret,
+                  'User-Agent': 'AutoMorph-CloudRunner',
+              },
+              method='POST'
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  print(f'[✓] Successfully reported metrics to Cloudflare Worker ({resp.status}).')
+          except Exception as e:
+              print(f'[!] Failed to report metrics to Cloudflare Worker: {e}')
+          " || true

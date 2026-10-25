@@ -9,7 +9,9 @@
 - **Automatic APK downloads:** Downloads base APKs automatically, prioritising Google Play and falling back to APKCombo, Uptodown, and APKPure.
 - **Email notifications and web portal:** Get email alerts with direct download links whenever a patch succeeds, or download builds directly from the web portal. *A dedicated Android app for notifications and downloads is planned.*
 - **Scheduled or manual builds:** Run automatically once a day at a time of your choice, or start a build manually through the web interface.
-- **Free hosting:** Designed to run within the free tier of Oracle Cloud Infrastructure.
+- **Free hosting:** Designed to run 100% free with multiple deployment options:
+  - **Serverless Cloudflare Workers Edge (100% Free Tier)**: Modeled after NodeWarden, running directly on Cloudflare Workers with D1 SQLite database, Workers Static Assets, and GitHub Actions cloud runner (zero VPS, zero credit card required).
+  - **Docker on Oracle Cloud Infrastructure (OCI)**: Always Free tier VPS (`VM.Standard.E2.1.Micro`).
   - Works with free **Pangolin tunnels** or **Tailscale Funnel** for a URL to access the web portal and downloads.
   - Supports **Cloudflare Tunnels** if you use a custom domain.
 
@@ -29,15 +31,22 @@
 
 For full step-by-step guides, visit our **[Documentation Hub](docs/README.md)**:
 
+* ⚡ **[Cloudflare Workers Free Tier Guide (Serverless)](docs/cloudflare-workers-setup.md)**: Deploy AutoMorph to Cloudflare Workers with D1, KV, and GitHub Actions (zero VPS, zero credit card required).
 * ☁️ **[Oracle Free Tier Setup Guide (Optional)](docs/oracle-setup.md)**: Optional guide to launch a free VPS on Oracle Cloud (skip if you already have your own server!).
 * 🚇 **[Remote Access & Tunnels Guide](docs/tunnels.md)**: Expose your portal securely with free HTTPS via Pangolin, Tailscale Funnel, or Cloudflare Tunnels.
 * 📖 **[User Guide & Web Interface](docs/user-guide.md)**: Managing packages, customizing patch options, daily schedules, and email notifications.
 
-## Prerequisites
+## Deployment Methods
 
-- Docker & Docker Compose
+### Option 1: Cloudflare Workers (Serverless, Zero VPS, Zero Credit Card)
 
-## Quick Start
+1. Fork this repository.
+2. In the [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** > **Create** > **Continue with GitHub**.
+3. Select your fork and deploy (build command: `npm run build`, deploy command: `npm run deploy` or `npm run deploy:kv`).
+4. Bind an `automorph-db` D1 database and set `GITHUB_TOKEN` & `GITHUB_REPO` in Worker secrets.
+5. See the **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md)** for full instructions!
+
+### Option 2: Docker Compose (Self-Hosted Server or VPS)
 
 1. Set up your preferred [remote tunnel](docs/tunnels.md) (Pangolin, Tailscale Funnel, or Cloudflare) to obtain your URL and tokens.
 2. Download `compose.yaml` (from [`default_compose.yaml`](default_compose.yaml)) and [`example.env`](example.env).
@@ -49,7 +58,7 @@ For full step-by-step guides, visit our **[Documentation Hub](docs/README.md)**:
    docker compose up -d
    ```
 
-4. Open your web portal via your configured tunnel or local URL (`http://localhost:8080`). For detailed configuration, see the [User Guide](docs/user-guide.md).
+5. Open your web portal via your configured tunnel or local URL (`http://localhost:8080`). For detailed configuration, see the [User Guide](docs/user-guide.md).
 
 ## A Note on AI
 

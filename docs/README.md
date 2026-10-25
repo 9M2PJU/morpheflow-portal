@@ -14,14 +14,20 @@ Choose a guide below to get started:
 * Connecting via Windows PowerShell (with SSH key permission fixes) and starting Docker.
 * *(If you already have your own server or VPS, you can skip this guide!).*
 
-### 🚇 [2. Remote Access & Tunnels Guide](tunnels.md)
+### ⚡ [2. Cloudflare Workers 100% Free Tier Setup (Serverless)](cloudflare-workers-setup.md)
+* *Zero VPS, Zero Credit Card Required*: Deploy AutoMorph directly on Cloudflare Workers edge, modeled after **NodeWarden**.
+* High-performance static web portal hosted on Cloudflare Workers Static Assets.
+* Serverless SQLite database (Cloudflare D1) & optional KV for package configs, metrics, and logs.
+* Automated cloud patch runner on GitHub Actions with automated metric sync and direct APK releases.
+
+### 🚇 [3. Remote Access & Tunnels Guide](tunnels.md)
 * Set up a tunnel **before** configuring AutoMorph so you have your access URL and tokens ready:
   * **🔴 Pangolin**: Quickest setup, free public URL (or custom domain), zero domain cost required.
   * **🔵 Tailscale Funnel**: Zero-cost public HTTPS endpoint or private mesh access.
   * **🟠 Cloudflare Tunnels**: Best choice if you own a custom domain.
 * Clear explanation of tunnel tokens, compose profiles, and how links are generated in email reports.
 
-### 📖 [3. User Guide & Web Interface](user-guide.md)
+### 📖 [4. User Guide & Web Interface](user-guide.md)
 * Comprehensive tour of the web portal:
   * Adding and configuring packages.
   * Customizing patch options, repositories, and **patch aliases**.
