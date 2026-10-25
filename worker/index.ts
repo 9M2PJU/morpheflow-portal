@@ -7,7 +7,7 @@
 import { Env } from './types';
 import { handleApiRequest } from './router';
 import { StorageService } from './storage';
-import { authenticateRequest, renderLoginScreen } from './auth';
+import { authenticateRequest, renderLoginScreen, applySecurityHeaders } from './auth';
 
 const PUBLIC_STATIC_PATHS = new Set([
   '/favicon.svg',
@@ -46,11 +46,13 @@ export default {
     const url = new URL(normalizedRequest.url);
     const pathname = url.pathname;
 
+    const storage = new StorageService(env.DB);
+
     // 1. Allow public branding assets (logos, favicons) without authentication
     if (isPublicStaticPath(pathname) && env.ASSETS) {
       try {
         const publicAsset = await env.ASSETS.fetch(normalizedRequest);
-        if (publicAsset.status !== 404) return publicAsset;
+        if (publicAsset.status !== 404) return applySecurityHeaders(publicAsset);
       } catch {}
     }
 
@@ -61,7 +63,7 @@ export default {
     }
 
     // 3. Authenticate user for Web Dashboard / Static Asset access
-    const auth = await authenticateRequest(normalizedRequest, env);
+    const auth = await authenticateRequest(normalizedRequest, env, storage);
     if (!auth.authenticated) {
       const errorMsg = url.searchParams.get('error') || '';
       return renderLoginScreen(errorMsg);
@@ -79,7 +81,7 @@ export default {
       try {
         const assetResponse = await env.ASSETS.fetch(normalizedRequest);
         if (assetResponse.status !== 404) {
-          return assetResponse;
+          return applySecurityHeaders(assetResponse);
         }
       } catch (err) {
         console.warn('Asset fetch error, falling back to router:', err);

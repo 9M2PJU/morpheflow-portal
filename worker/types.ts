@@ -66,6 +66,8 @@ export interface SystemSettings {
   max_logs?: number;
   max_original_packages?: number | null;
   max_patched_packages?: number | null;
+  update_check_interval_hours?: number;
+  status_poll_interval_seconds?: number;
 }
 
 export interface EmailSettings {

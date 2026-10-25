@@ -7,26 +7,25 @@ import { EmailSettings, Env, RunHistoryRecord, StatusResponse, SystemSettings } 
 import { StorageService, formatBytes } from './storage';
 import {
   authenticateRequest,
-  buildSessionCookieHeader,
+  buildSessionCookieHeaders,
   checkRateLimit,
   createSessionToken,
   recordFailedLogin,
   resetFailedLogin,
   timingSafeEqual,
+  applySecurityHeaders,
 } from './auth';
 
 export function json(data: any, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
+  const res = new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
       ...headers,
     },
   });
+  return applySecurityHeaders(res);
 }
 
 function resolveScheduleTarget(systemSettings: SystemSettings | null, env: Env) {
@@ -74,15 +73,30 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   const path = url.pathname;
   const method = request.method.toUpperCase();
 
+  const origin = request.headers.get('Origin');
+  const isSecure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+
   if (method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': origin === url.origin ? origin : url.origin,
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token, X-Webhook-Secret',
+        'Access-Control-Max-Age': '86400',
       },
     });
+  }
+
+  // Cross-Origin Request Forgery (CSRF) defense for state-modifying routes:
+  // Reject mutations originating from external third-party web origins unless using Bearer API token or webhook
+  if (origin && origin !== url.origin && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    if (path !== '/api/webhook/report') {
+      const authHeader = request.headers.get('Authorization') || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return json({ error: 'Forbidden: Cross-origin state mutation blocked by security policy.' }, 403);
+      }
+    }
   }
 
   const storage = new StorageService(env.DB);
@@ -121,14 +135,24 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       );
     }
 
-    if (timingSafeEqual(masterPassword, password)) {
+    if (await timingSafeEqual(masterPassword, password)) {
       await resetFailedLogin(storage, ip);
       const token = await createSessionToken(masterPassword);
-      const cookieHeader = buildSessionCookieHeader(token);
-      return json(
-        { status: 'success', authenticated: true },
-        200,
-        { 'Set-Cookie': cookieHeader }
+      const cookieHeaders = buildSessionCookieHeaders(token, isSecure);
+
+      const respHeaders = new Headers({
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      });
+      for (const ch of cookieHeaders) {
+        respHeaders.append('Set-Cookie', ch);
+      }
+
+      return applySecurityHeaders(
+        new Response(JSON.stringify({ status: 'success', authenticated: true }), {
+          status: 200,
+          headers: respHeaders,
+        })
       );
     } else {
       await recordFailedLogin(storage, ip);
@@ -147,27 +171,39 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   }
 
   if (path === '/api/auth/logout' && (method === 'POST' || method === 'GET')) {
-    const clearCookie = buildSessionCookieHeader(null);
-    if (method === 'GET') {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: '/',
-          'Set-Cookie': clearCookie,
-        },
-      });
+    // Revoke all existing sessions server-side
+    await storage.revokeAllSessions();
+    const clearCookies = buildSessionCookieHeaders(null, isSecure);
+
+    const respHeaders = new Headers({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    });
+    for (const ch of clearCookies) {
+      respHeaders.append('Set-Cookie', ch);
     }
-    return json({ status: 'logged_out', authenticated: false }, 200, { 'Set-Cookie': clearCookie });
+
+    if (method === 'GET') {
+      respHeaders.set('Location', '/');
+      return applySecurityHeaders(new Response(null, { status: 302, headers: respHeaders }));
+    }
+
+    respHeaders.set('Content-Type', 'application/json');
+    return applySecurityHeaders(
+      new Response(JSON.stringify({ status: 'logged_out', authenticated: false }), {
+        status: 200,
+        headers: respHeaders,
+      })
+    );
   }
 
   if (path === '/api/auth/check' && method === 'GET') {
-    const auth = await authenticateRequest(request, env);
+    const auth = await authenticateRequest(request, env, storage);
     return json({ authenticated: auth.authenticated, single_user: true });
   }
 
   // Webhook exemption: POST /api/webhook/report has its own X-Webhook-Secret auth
   if (path !== '/api/webhook/report') {
-    const auth = await authenticateRequest(request, env);
+    const auth = await authenticateRequest(request, env, storage);
     if (!auth.authenticated) {
       return json(
         {

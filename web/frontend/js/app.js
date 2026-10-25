@@ -42,6 +42,10 @@ const state = {
   streamStartTime: null,
   streamTimerInterval: null,
   updateInfo: null,
+  statusPollTimer: null,
+  updateCheckTimer: null,
+  statusPollIntervalSec: parseInt(localStorage.getItem('automorph-poll-sec') || '30', 10),
+  updateCheckIntervalHours: parseInt(localStorage.getItem('automorph-update-hours') || '4', 10),
 
   wizard: {
     step: 1,
@@ -101,6 +105,42 @@ function formatDuration(totalSeconds) {
   return `${s}s`;
 }
 
+// Dynamic Free-Tier Polling & Update Check Scheduling
+// ---------------------------------------------------------------------------
+function scheduleStatusPolling(intervalSec) {
+  if (state.statusPollTimer) {
+    clearInterval(state.statusPollTimer);
+    state.statusPollTimer = null;
+  }
+  const sec = Number.isInteger(intervalSec) && intervalSec > 0 ? intervalSec : 30;
+  state.statusPollIntervalSec = sec;
+  localStorage.setItem('automorph-poll-sec', String(sec));
+
+  state.statusPollTimer = setInterval(() => {
+    // If the browser tab is hidden in the background, pause status polling to preserve Free Tier quota
+    if (document.hidden) return;
+    loadStatus();
+  }, sec * 1000);
+}
+
+function scheduleUpdateChecking(intervalHours) {
+  if (state.updateCheckTimer) {
+    clearInterval(state.updateCheckTimer);
+    state.updateCheckTimer = null;
+  }
+  const hours = Number.isInteger(intervalHours) ? intervalHours : 4;
+  state.updateCheckIntervalHours = hours;
+  localStorage.setItem('automorph-update-hours', String(hours));
+
+  // If set to 0, update checking is manual only
+  if (hours > 0) {
+    const ms = hours * 3600 * 1000;
+    state.updateCheckTimer = setInterval(() => {
+      checkAppUpdates(false);
+    }, ms);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Initialization & Lifecycle
 // ---------------------------------------------------------------------------
@@ -110,12 +150,19 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   loadAllData();
 
-  // Background status poll every 10 seconds
-  setInterval(loadStatus, 10000);
-
-  // Background update check on startup and every 30 minutes
+  // 1. Initial immediate check on startup / login
   checkAppUpdates(false);
-  setInterval(() => checkAppUpdates(false), 30 * 60 * 1000);
+
+  // 2. Start configurable scheduling (Default: 30s status polling, 4h update checking)
+  scheduleStatusPolling(state.statusPollIntervalSec);
+  scheduleUpdateChecking(state.updateCheckIntervalHours);
+
+  // 3. Tab visibility awareness: refresh status immediately when user returns to tab
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      loadStatus();
+    }
+  });
 
   // Hash routing for deep links (e.g., #/files or #/files/pkg)
   handleHashRouting();
@@ -1917,6 +1964,19 @@ function renderSettings(settings) {
     }
   }
 
+  // Cost & Frequency Optimization Settings
+  const selUpdateInterval = document.getElementById('setting-update-check-interval');
+  if (selUpdateInterval && sys.update_check_interval_hours !== undefined) {
+    selUpdateInterval.value = String(sys.update_check_interval_hours);
+    scheduleUpdateChecking(Number(sys.update_check_interval_hours));
+  }
+
+  const selPollInterval = document.getElementById('setting-status-poll-interval');
+  if (selPollInterval && sys.status_poll_interval_seconds !== undefined) {
+    selPollInterval.value = String(sys.status_poll_interval_seconds);
+    scheduleStatusPolling(Number(sys.status_poll_interval_seconds));
+  }
+
   // 2. Email Dispatcher Card
   const emailBadge = document.getElementById('email-status-badge');
   if (emailBadge) {
@@ -1994,6 +2054,9 @@ async function saveSystemSettings() {
       maxPatchedPackages = parsed;
     }
 
+    const updateCheckHours = parseInt(document.getElementById('setting-update-check-interval')?.value || '4', 10);
+    const statusPollSec = parseInt(document.getElementById('setting-status-poll-interval')?.value || '30', 10);
+
     const payload = {
       architecture: document.getElementById('setting-arch')?.value,
       timezone: document.getElementById('setting-timezone')?.value,
@@ -2004,6 +2067,8 @@ async function saveSystemSettings() {
       max_logs: Number.isInteger(maxLogsVal) && maxLogsVal > 0 ? maxLogsVal : 5,
       max_original_packages: maxOriginalPackages,
       max_patched_packages: maxPatchedPackages,
+      update_check_interval_hours: updateCheckHours,
+      status_poll_interval_seconds: statusPollSec,
     };
 
     const res = await fetch('/api/settings/system', {
@@ -2016,6 +2081,10 @@ async function saveSystemSettings() {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to save system settings');
     }
+
+    // Immediately reschedule background tasks with updated intervals
+    scheduleUpdateChecking(updateCheckHours);
+    scheduleStatusPolling(statusPollSec);
 
     showToast('System & Build settings saved successfully!', 'success');
     await loadSettings();

@@ -14,26 +14,26 @@
 import { Env } from './types';
 import { StorageService } from './storage';
 
-const SESSION_COOKIE_NAME = 'automorph_session';
+export const PRIMARY_COOKIE_NAME = '__Host-automorph_session';
+export const FALLBACK_COOKIE_NAME = 'automorph_session';
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600; // 30 days
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_SECONDS = 15 * 60; // 15 minutes
 
 /**
- * Constant-time string comparison to prevent timing attacks.
+ * Constant-time comparison using SHA-256 pre-hashing to prevent timing attacks.
+ * Pre-hashing guarantees both buffers are exactly 32 bytes, eliminating byte-length timing disclosure.
  */
-export function timingSafeEqual(a: string, b: string): boolean {
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
-  const aBuf = enc.encode(a);
-  const bBuf = enc.encode(b);
-
-  if (aBuf.byteLength !== bBuf.byteLength) {
-    return false;
-  }
+  const aHashBuf = await crypto.subtle.digest('SHA-256', enc.encode(a));
+  const bHashBuf = await crypto.subtle.digest('SHA-256', enc.encode(b));
+  const aHash = new Uint8Array(aHashBuf);
+  const bHash = new Uint8Array(bHashBuf);
 
   let diff = 0;
-  for (let i = 0; i < aBuf.byteLength; i++) {
-    diff |= aBuf[i] ^ bBuf[i];
+  for (let i = 0; i < 32; i++) {
+    diff |= aHash[i] ^ bHash[i];
   }
   return diff === 0;
 }
@@ -93,8 +93,13 @@ export async function createSessionToken(secret: string): Promise<string> {
 
 /**
  * Verifies an HMAC-SHA256 signed session token.
+ * Checks signature, expiration, and ensures token was issued after any session revocation epoch.
  */
-export async function verifySessionToken(secret: string, token: string): Promise<boolean> {
+export async function verifySessionToken(
+  secret: string,
+  token: string,
+  minValidTimestamp: number = 0
+): Promise<boolean> {
   if (!token || typeof token !== 'string') return false;
   const parts = token.split('.');
   if (parts.length !== 2) return false;
@@ -107,7 +112,7 @@ export async function verifySessionToken(secret: string, token: string): Promise
     const expectedSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(headerAndPayload));
     const expectedSigStr = base64UrlEncode(new Uint8Array(expectedSigBuf));
 
-    if (!timingSafeEqual(expectedSigStr, sigStr)) {
+    if (!(await timingSafeEqual(expectedSigStr, sigStr))) {
       return false;
     }
 
@@ -119,6 +124,12 @@ export async function verifySessionToken(secret: string, token: string): Promise
       return false; // Expired
     }
 
+    // Server-side session revocation check:
+    // If a session was issued prior to a logout/revocation event, reject it immediately
+    if (payload.iat && payload.iat < minValidTimestamp) {
+      return false; // Revoked
+    }
+
     return true;
   } catch {
     return false;
@@ -127,29 +138,54 @@ export async function verifySessionToken(secret: string, token: string): Promise
 
 /**
  * Extracts session cookie value from a Request.
+ * Prioritizes RFC 6265bis __Host- prefix, with fallback to legacy/HTTP cookie.
  */
 export function getSessionCookie(request: Request): string | null {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return null;
 
   const cookies = cookieHeader.split(';');
+  let fallbackVal: string | null = null;
+
   for (const cookie of cookies) {
-    const [name, ...rest] = cookie.trim().split('=');
-    if (name === SESSION_COOKIE_NAME) {
+    const [rawName, ...rest] = cookie.trim().split('=');
+    const name = rawName.trim();
+    if (name === PRIMARY_COOKIE_NAME) {
       return rest.join('=');
     }
+    if (name === FALLBACK_COOKIE_NAME && !fallbackVal) {
+      fallbackVal = rest.join('=');
+    }
   }
-  return null;
+  return fallbackVal;
 }
 
 /**
- * Generates Set-Cookie header string for session creation or clearance.
+ * Generates an array of Set-Cookie header strings for session establishment or clearance.
+ * Sets __Host- cookie on HTTPS, and fallback cookie for compatibility.
  */
-export function buildSessionCookieHeader(token: string | null): string {
+export function buildSessionCookieHeaders(token: string | null, isSecure: boolean = true): string[] {
   if (!token) {
-    return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+    return [
+      `${PRIMARY_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`,
+      `${FALLBACK_COOKIE_NAME}=; Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Strict; Max-Age=0`,
+    ];
   }
-  return `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE_SECONDS}`;
+
+  const list: string[] = [];
+  if (isSecure) {
+    list.push(`${PRIMARY_COOKIE_NAME}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_MAX_AGE_SECONDS}`);
+  }
+  list.push(`${FALLBACK_COOKIE_NAME}=${token}; Path=/; HttpOnly; ${isSecure ? 'Secure; ' : ''}SameSite=Strict; Max-Age=${SESSION_MAX_AGE_SECONDS}`);
+  return list;
+}
+
+/**
+ * Single-header convenience wrapper for backward compatibility.
+ */
+export function buildSessionCookieHeader(token: string | null, isSecure: boolean = true): string {
+  const headers = buildSessionCookieHeaders(token, isSecure);
+  return headers[0];
 }
 
 /**
@@ -205,14 +241,16 @@ export async function resetFailedLogin(storage: StorageService, ip: string): Pro
 
 /**
  * Core authentication check for any incoming Request.
+ * Verifies Bearer tokens, X-Auth-Token, or tamper-proof HMAC session cookies against revocation epoch.
  */
 export async function authenticateRequest(
   request: Request,
-  env: Env
+  env: Env,
+  storage?: StorageService
 ): Promise<{ authenticated: boolean; method: 'cookie' | 'bearer' | 'none' }> {
   const masterPassword = (env.AUTH_PASSWORD || '').trim();
 
-  // If no password is set, log critical security warning
+  // If no password is set, deny access
   if (!masterPassword) {
     return { authenticated: false, method: 'none' };
   }
@@ -221,26 +259,49 @@ export async function authenticateRequest(
   const authHeader = request.headers.get('Authorization') || '';
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
-    if (timingSafeEqual(masterPassword, token)) {
+    if (await timingSafeEqual(masterPassword, token)) {
       return { authenticated: true, method: 'bearer' };
     }
   }
 
   const customToken = request.headers.get('X-Auth-Token') || '';
-  if (customToken && timingSafeEqual(masterPassword, customToken.trim())) {
+  if (customToken && (await timingSafeEqual(masterPassword, customToken.trim()))) {
     return { authenticated: true, method: 'bearer' };
   }
 
   // 2. Check Session Cookie
   const cookieToken = getSessionCookie(request);
   if (cookieToken) {
-    const valid = await verifySessionToken(masterPassword, cookieToken);
+    let minValidTimestamp = 0;
+    if (storage) {
+      minValidTimestamp = await storage.getSessionRevocationTimestamp();
+    }
+    const valid = await verifySessionToken(masterPassword, cookieToken, minValidTimestamp);
     if (valid) {
       return { authenticated: true, method: 'cookie' };
     }
   }
 
   return { authenticated: false, method: 'none' };
+}
+
+/**
+ * Attaches industry-standard defensive security headers to any outgoing Response.
+ */
+export function applySecurityHeaders(res: Response): Response {
+  const newHeaders = new Headers(res.headers);
+  newHeaders.set('X-Content-Type-Options', 'nosniff');
+  newHeaders.set('X-Frame-Options', 'DENY');
+  newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  newHeaders.set(
+    'Content-Security-Policy',
+    "default-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; connect-src 'self' https:; frame-ancestors 'none';"
+  );
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: newHeaders,
+  });
 }
 
 /**
@@ -487,11 +548,13 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
 </body>
 </html>`;
 
-  return new Response(html, {
-    status: lockedSeconds > 0 ? 429 : 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-    },
-  });
+  return applySecurityHeaders(
+    new Response(html, {
+      status: lockedSeconds > 0 ? 429 : 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    })
+  );
 }

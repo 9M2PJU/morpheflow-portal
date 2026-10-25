@@ -421,6 +421,44 @@
 
           </div>
 
+          <!-- Free Tier Cost & Frequency Optimization Grid -->
+          <div class="settings-grid-3" style="margin-bottom: 20px;">
+            
+            <!-- Update Check Frequency -->
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="setting-update-check-interval">
+                <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: text-bottom; color: var(--primary-cyan); margin-right: 4px;">update</span>
+                Update Check Frequency
+              </label>
+              <select id="setting-update-check-interval" class="form-control">
+                <option value="1">Every 1 hour</option>
+                <option value="2">Every 2 hours</option>
+                <option value="4" selected>Every 4 hours (Default / Cost-Safe)</option>
+                <option value="8">Every 8 hours</option>
+                <option value="12">Every 12 hours</option>
+                <option value="24">Every 24 hours (Daily)</option>
+                <option value="0">Manual only (On Demand)</option>
+              </select>
+              <div class="form-subtext">Background check frequency for app & patch updates. Runs once automatically upon login.</div>
+            </div>
+
+            <!-- Dashboard Status Poll Frequency -->
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="setting-status-poll-interval">
+                <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: text-bottom; color: var(--primary-cyan); margin-right: 4px;">speed</span>
+                Dashboard Refresh Rate
+              </label>
+              <select id="setting-status-poll-interval" class="form-control">
+                <option value="10">Every 10 seconds (Frequent)</option>
+                <option value="30" selected>Every 30 seconds (Default / Recommended)</option>
+                <option value="60">Every 60 seconds (Relaxed)</option>
+                <option value="120">Every 2 minutes (Minimal / Eco)</option>
+              </select>
+              <div class="form-subtext">Refresh rate for active builds and status. Throttled automatically when tab is hidden.</div>
+            </div>
+
+          </div>
+
           <!-- Toggles Grid -->
           <div class="toggles-grid" style="margin-bottom: 20px;">
             

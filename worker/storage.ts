@@ -110,6 +110,8 @@ export class StorageService {
         max_logs: 5,
         max_original_packages: null,
         max_patched_packages: null,
+        update_check_interval_hours: 4,
+        status_poll_interval_seconds: 30,
       };
       await this.setConfig('system', defaultSys);
     }
@@ -427,5 +429,20 @@ export class StorageService {
 
   async releaseLock(): Promise<void> {
     await this.db.prepare("DELETE FROM state WHERE key = 'active_lock'").run();
+  }
+
+  // --- Session Lifecycle & Revocation (Security Audit) ---
+  async getSessionRevocationTimestamp(): Promise<number> {
+    const row = await this.db.prepare("SELECT value FROM state WHERE key = 'auth_revoked_before'").first<{ value: string }>();
+    return row ? parseInt(row.value, 10) || 0 : 0;
+  }
+
+  async revokeAllSessions(): Promise<number> {
+    const now = Math.floor(Date.now() / 1000);
+    await this.db
+      .prepare("INSERT INTO state (key, value, updated_at) VALUES ('auth_revoked_before', ?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?")
+      .bind(String(now), now, String(now), now)
+      .run();
+    return now;
   }
 }
