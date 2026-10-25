@@ -5,6 +5,15 @@
 
 import { EmailSettings, Env, RunHistoryRecord, StatusResponse, SystemSettings } from './types';
 import { StorageService, formatBytes } from './storage';
+import {
+  authenticateRequest,
+  buildSessionCookieHeader,
+  checkRateLimit,
+  createSessionToken,
+  recordFailedLogin,
+  resetFailedLogin,
+  timingSafeEqual,
+} from './auth';
 
 export function json(data: any, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -78,6 +87,98 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   const storage = new StorageService(env.DB);
   await storage.initializeDatabase();
+
+  // 0. Public Auth Endpoints
+  if (path === '/api/auth/login' && method === 'POST') {
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+    const rateCheck = await checkRateLimit(storage, ip);
+    if (!rateCheck.allowed) {
+      return json(
+        { error: `Too many failed login attempts. Locked out for ${rateCheck.retryAfterSeconds}s.` },
+        429
+      );
+    }
+
+    let password = '';
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const b = await request.json<any>().catch(() => ({}));
+      password = String(b.password || '').trim();
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      const text = await request.text();
+      const params = new URLSearchParams(text);
+      password = String(params.get('password') || '').trim();
+    }
+
+    const masterPassword = (env.AUTH_PASSWORD || '').trim();
+    if (!masterPassword) {
+      return json(
+        {
+          error:
+            'AUTH_PASSWORD secret is not set in Worker environment. Set it with: npx wrangler secret put AUTH_PASSWORD',
+        },
+        500
+      );
+    }
+
+    if (timingSafeEqual(masterPassword, password)) {
+      await resetFailedLogin(storage, ip);
+      const token = await createSessionToken(masterPassword);
+      const cookieHeader = buildSessionCookieHeader(token);
+      return json(
+        { status: 'success', authenticated: true },
+        200,
+        { 'Set-Cookie': cookieHeader }
+      );
+    } else {
+      await recordFailedLogin(storage, ip);
+      const updatedCheck = await checkRateLimit(storage, ip);
+      const remaining = updatedCheck.remainingAttempts;
+      return json(
+        {
+          error:
+            remaining > 0
+              ? `Incorrect password. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
+              : 'Too many failed attempts. Locked out for 15 minutes.',
+        },
+        401
+      );
+    }
+  }
+
+  if (path === '/api/auth/logout' && (method === 'POST' || method === 'GET')) {
+    const clearCookie = buildSessionCookieHeader(null);
+    if (method === 'GET') {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/',
+          'Set-Cookie': clearCookie,
+        },
+      });
+    }
+    return json({ status: 'logged_out', authenticated: false }, 200, { 'Set-Cookie': clearCookie });
+  }
+
+  if (path === '/api/auth/check' && method === 'GET') {
+    const auth = await authenticateRequest(request, env);
+    return json({ authenticated: auth.authenticated, single_user: true });
+  }
+
+  // Webhook exemption: POST /api/webhook/report has its own X-Webhook-Secret auth
+  if (path !== '/api/webhook/report') {
+    const auth = await authenticateRequest(request, env);
+    if (!auth.authenticated) {
+      return json(
+        {
+          error: 'Unauthorized. Authentication required.',
+          auth_required: true,
+          hint: 'Authenticate via session cookie or Authorization: Bearer <AUTH_PASSWORD>',
+        },
+        401
+      );
+    }
+  }
 
   // 1. GET /api/version
   if (path === '/api/version' && method === 'GET') {

@@ -9,6 +9,8 @@ export interface Env {
   ASSETS: Fetcher;
 
   // Secrets & Environment Variables
+  AUTH_PASSWORD?: string;
+  AUTH_SECRET?: string;
   GITHUB_TOKEN?: string;
   GITHUB_REPO?: string;
   WEBHOOK_SECRET?: string;

@@ -72,6 +72,7 @@ AutoMorph's web interface displays 6 primary metric categories. Here is how each
      * **Variable name**: `DB`
      * **D1 database**: Select `automorph-db`.
 6. **Configure Secrets & Variables** under **Settings** > **Variables and Secrets**:
+   * `AUTH_PASSWORD`: **(CRITICAL)** Master password to lock your web portal from the public.
    * `GITHUB_REPO`: `your-username/AutoMorph` (your forked repository).
    * `GITHUB_TOKEN`: A GitHub Personal Access Token (classic with `repo` scope, or fine-grained with Actions + Contents read/write permissions) to allow the Worker to trigger cloud builds.
    * `WEBHOOK_SECRET`: A secure random password of your choice (e.g. 32 characters) to authenticate build reports from the runner.
@@ -124,6 +125,22 @@ In your GitHub repository settings (**Settings** > **Secrets and variables** > *
 * **`WEBHOOK_SECRET`**: Must match the `WEBHOOK_SECRET` set in your Cloudflare Worker.
 * **`GOOPDL_ACCOUNT_EMAIL`** *(Optional)*: Disposable Google account email for Play Store downloads.
 * **`GOOPDL_AAS_TOKEN`** *(Optional)*: Google Play AAS token for Play Store downloads.
+
+---
+
+## 🔒 Single-User Airtight Authentication & Security
+
+AutoMorph on Cloudflare Workers includes built-in single-user security that completely isolates your portal from the open internet:
+
+* 🛡️ **Zero-Bypass Gateway**: Unauthenticated requests to `/`, `index.html`, `/files`, or `/api/*` are blocked and redirected to the **AutoMorph Gateway Lock Screen**.
+* ⏱️ **Constant-Time Verification**: Uses Web Crypto `timingSafeEqual` comparison on password checks to prevent timing attack side-channels.
+* 🔐 **HMAC-SHA256 Signed Sessions**: Successful logins issue an `HttpOnly`, `Secure`, `SameSite=Strict` tamper-proof session cookie valid for 30 days.
+* 🛑 **Brute-Force Lockout**: Automatically tracks failed login attempts by client IP (`cf-connecting-ip`). If 5 failed attempts occur within 15 minutes, access is locked for 15 minutes with HTTP 429.
+* 🔑 **Programmatic API Access**: CLI tools or automation can authenticate directly via headers:
+  ```bash
+  curl -H "Authorization: Bearer YOUR_AUTH_PASSWORD" https://automorph.<subdomain>.workers.dev/api/status
+  ```
+* 🔒 **One-Click Sign Out**: Click the lock icon in the top navigation bar at any time to invalidate your session and lock the dashboard.
 
 ---
 

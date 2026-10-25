@@ -7,6 +7,23 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
+// Security & Session Interceptor
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined' && window.fetch) {
+  const originalFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await originalFetch.apply(this, args);
+    if (res.status === 401) {
+      const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+      if (url.includes('/api/') && !url.includes('/api/auth/')) {
+        window.location.reload();
+      }
+    }
+    return res;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Global Application State
 // ---------------------------------------------------------------------------
 const state = {
@@ -129,6 +146,16 @@ function setupEventListeners() {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('automorph-theme', next);
     updateThemeIcon(next);
+  });
+
+  // Lock / Sign Out Button
+  document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    if (confirm('Lock console and sign out?')) {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch {}
+      window.location.reload();
+    }
   });
 
   // Refresh Button

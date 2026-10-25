@@ -15,7 +15,7 @@ crons = [ "0 3 * * *" ]
 [[d1_databases]]
 binding = "DB"
 database_name = "automorph-db"
-database_id = "automorph-db"
+database_id = "0e753fd6-85dc-49fd-9f80-44d6a7ac7551"
 
 [[kv_namespaces]]
 binding = "STATE_KV"

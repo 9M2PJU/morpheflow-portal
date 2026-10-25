@@ -219,14 +219,29 @@ function syncSecrets() {
 
   if (webhookSecret) setSecret('WEBHOOK_SECRET', webhookSecret);
 
-  // 2. GitHub Token and Repo (if provided)
+  // 2. Master Password for Single-User Airtight Auth
+  let authPassword = env.AUTH_PASSWORD || process.env.AUTH_PASSWORD;
+  if (!authPassword) {
+    authPassword = crypto.randomBytes(12).toString('hex');
+    log('✨', `Generated secure random master AUTH_PASSWORD: ${authPassword}`);
+    try {
+      if (fs.existsSync(ENV_FILE)) {
+        fs.appendFileSync(ENV_FILE, `\nAUTH_PASSWORD=${authPassword}\n`);
+      } else {
+        fs.writeFileSync(ENV_FILE, `AUTH_PASSWORD=${authPassword}\n`);
+      }
+    } catch {}
+  }
+  setSecret('AUTH_PASSWORD', authPassword);
+
+  // 3. GitHub Token and Repo (if provided)
   const ghToken = env.GITHUB_TOKEN || process.env.GITHUB_TOKEN;
   const ghRepo = env.GITHUB_REPOSITORY || env.GITHUB_REPO || process.env.GITHUB_REPOSITORY || process.env.GITHUB_REPO;
 
   if (ghToken) setSecret('GITHUB_TOKEN', ghToken);
   if (ghRepo) setSecret('GITHUB_REPO', ghRepo);
 
-  return { webhookSecret, ghRepo, ghToken };
+  return { webhookSecret, authPassword, ghRepo, ghToken };
 }
 
 function deployWorker() {
@@ -259,6 +274,13 @@ function printSummary(secrets) {
   console.log(`   • Database:    Cloudflare D1 (${DB_NAME})`);
   console.log(`   • Static UI:   Workers Static Assets (web/frontend)`);
   console.log(`   • Schedule:    Daily Cron Trigger (0 3 * * *)`);
+
+  console.log('\n🔒 Single-User Airtight Security:');
+  console.log('   • Protection:  ACTIVE (Brute-force rate limited, timing-safe HMAC sessions)');
+  if (secrets.authPassword) {
+    console.log(`   • Password:    \x1b[32m\x1b[1m${secrets.authPassword}\x1b[0m`);
+    console.log('   (Enter this master password when accessing your AutoMorph web portal)');
+  }
 
   console.log('\n🔐 Next Step: GitHub Actions Secrets (for Free Cloud Builds)');
   console.log('   In your GitHub repository (Settings > Secrets and variables > Actions):');

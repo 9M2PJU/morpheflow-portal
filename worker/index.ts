@@ -1,11 +1,26 @@
 /**
  * AutoMorph Cloudflare Worker Main Entrypoint
  * Modeled after NodeWarden (https://github.com/shuaiplus/nodewarden)
+ * Single-User Airtight Authentication Enabled.
  */
 
 import { Env } from './types';
 import { handleApiRequest } from './router';
 import { StorageService } from './storage';
+import { authenticateRequest, renderLoginScreen } from './auth';
+
+const PUBLIC_STATIC_PATHS = new Set([
+  '/favicon.svg',
+  '/favicon.png',
+  '/favicon.ico',
+  '/logo.png',
+  '/trim-logo.png',
+  '/css/morphe.css',
+]);
+
+function isPublicStaticPath(pathname: string): boolean {
+  return PUBLIC_STATIC_PATHS.has(pathname);
+}
 
 function isApiOrSpecialPath(pathname: string): boolean {
   return (
@@ -31,19 +46,35 @@ export default {
     const url = new URL(normalizedRequest.url);
     const pathname = url.pathname;
 
-    // Handle files route redirection into dashboard #/files
+    // 1. Allow public branding assets (logos, favicons) without authentication
+    if (isPublicStaticPath(pathname) && env.ASSETS) {
+      try {
+        const publicAsset = await env.ASSETS.fetch(normalizedRequest);
+        if (publicAsset.status !== 404) return publicAsset;
+      } catch {}
+    }
+
+    // 2. Delegate all API requests and webhook callbacks to the router
+    // (router strictly enforces authentication on all non-public endpoints)
+    if (isApiOrSpecialPath(pathname)) {
+      return handleApiRequest(normalizedRequest, env, ctx);
+    }
+
+    // 3. Authenticate user for Web Dashboard / Static Asset access
+    const auth = await authenticateRequest(normalizedRequest, env);
+    if (!auth.authenticated) {
+      const errorMsg = url.searchParams.get('error') || '';
+      return renderLoginScreen(errorMsg);
+    }
+
+    // 4. Handle files route redirection into authenticated dashboard view
     if (pathname === '/files' || pathname.startsWith('/files/')) {
       const subpath = pathname.replace(/^\/files\/?/, '');
       const redirectUrl = subpath ? `${url.origin}/#/files/${subpath}` : `${url.origin}/#/files`;
       return Response.redirect(redirectUrl, 302);
     }
 
-    // Handle API & reports
-    if (isApiOrSpecialPath(pathname)) {
-      return handleApiRequest(normalizedRequest, env, ctx);
-    }
-
-    // Serve static assets via Cloudflare Workers Static Assets binding
+    // 5. Serve authenticated static dashboard assets via Cloudflare Workers Static Assets
     if (env.ASSETS) {
       try {
         const assetResponse = await env.ASSETS.fetch(normalizedRequest);
@@ -55,7 +86,7 @@ export default {
       }
     }
 
-    // Fallback: If not matched and not API, serve API handler
+    // Fallback: If not matched, delegate to API handler
     return handleApiRequest(normalizedRequest, env, ctx);
   },
 
