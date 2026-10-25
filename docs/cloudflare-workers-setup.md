@@ -79,9 +79,9 @@ AutoMorph's web interface displays 6 primary metric categories. Here is how each
 
 ---
 
-### Method B: Deploy using Wrangler CLI
+### Method B: 1-Click Automated Deployment via CLI (Terminal)
 
-If you prefer deploying from your local terminal:
+You don't need to manually create databases, copy UUIDs, or set up configurations. The built-in deployer automates the entire process end-to-end:
 
 1. **Clone your repository**:
    ```bash
@@ -89,43 +89,29 @@ If you prefer deploying from your local terminal:
    cd AutoMorph
    ```
 
-2. **Install Node dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Authenticate Wrangler with Cloudflare**:
-   ```bash
-   npx wrangler login
-   ```
-
-4. **Create your free D1 Database**:
-   ```bash
-   npx wrangler d1 create automorph-db
-   ```
-   *Copy the generated `database_id` into `wrangler.toml` if prompted.*
-
-5. **Apply database migrations**:
-   ```bash
-   npx wrangler d1 migrations apply automorph-db --remote
-   ```
-
-6. **Set your Worker secrets**:
-   ```bash
-   npx wrangler secret put GITHUB_TOKEN
-   npx wrangler secret put GITHUB_REPO
-   npx wrangler secret put WEBHOOK_SECRET
-   ```
-
-7. **Deploy to Cloudflare Workers**:
-   * Standard D1 mode:
+2. **Run the 1-Click Deployer**:
+   * **macOS / Linux**:
      ```bash
-     npm run deploy
+     ./deploy.sh
      ```
-   * Zero-card KV mode (matches NodeWarden):
+   * **Windows PowerShell**:
+     ```powershell
+     .\deploy.ps1
+     ```
+   * *Or via npm*:
      ```bash
-     npm run deploy:kv
+     npm run deploy        # Standard D1 SQLite mode
+     npm run deploy:kv     # Zero-card KV mode
      ```
+
+#### What the 1-Click Deployer does automatically:
+* 🔑 Checks and logs into Cloudflare if needed.
+* 🗄️ Automatically checks for or creates the D1 database (`automorph-db`).
+* 📌 Automatically extracts the database UUID and pins `database_id` into `wrangler.toml` and `wrangler.kv.toml`.
+* 📦 Automatically provisions and pins the KV namespace if running in KV mode.
+* ⚡ Automatically applies D1 migrations remotely.
+* 🔒 Automatically generates a secure `WEBHOOK_SECRET` and syncs secrets (`GITHUB_TOKEN`, `GITHUB_REPO`) from `.env`.
+* 🚀 Deploys your Worker and displays your live URL and copy-pasteable GitHub Actions secrets!
 
 ---
 

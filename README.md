@@ -40,11 +40,22 @@ For full step-by-step guides, visit our **[Documentation Hub](docs/README.md)**:
 
 ### Option 1: Cloudflare Workers (Serverless, Zero VPS, Zero Credit Card)
 
-1. Fork this repository.
-2. In the [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** > **Create** > **Continue with GitHub**.
-3. Select your fork and deploy (build command: `npm run build`, deploy command: `npm run deploy` or `npm run deploy:kv`).
-4. Bind an `automorph-db` D1 database and set `GITHUB_TOKEN` & `GITHUB_REPO` in Worker secrets.
-5. See the **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md)** for full instructions!
+Deploy with **1-Click** from your terminal or directly via GitHub in Cloudflare Dashboard:
+
+* **1-Click Terminal Deploy**:
+  ```bash
+  ./deploy.sh          # On macOS / Linux
+  .\deploy.ps1         # On Windows PowerShell
+  ```
+  *(Or run `npm run deploy` / `npm run deploy:kv`)*
+
+* **Cloudflare Dashboard 1-Click Git Integration**:
+  1. Fork this repository.
+  2. In [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** > **Create** > **Continue with GitHub**.
+  3. Select your fork (Build command: `npm run build`, Deploy command: `npm run deploy`).
+  4. Bind an `automorph-db` D1 database and set `GITHUB_TOKEN` & `GITHUB_REPO` in Worker secrets.
+
+See the full **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md)** for detailed instructions.
 
 ### Option 2: Docker Compose (Self-Hosted Server or VPS)
 

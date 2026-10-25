@@ -7,8 +7,9 @@
     "build": "echo 'Static assets ready in web/frontend'",
     "dev": "wrangler dev",
     "dev:kv": "wrangler dev -c wrangler.kv.toml",
-    "deploy": "wrangler deploy",
-    "deploy:kv": "node scripts/ensure-kv.cjs && wrangler deploy -c wrangler.kv.toml",
+    "deploy": "node scripts/deploy-cf.cjs",
+    "deploy:kv": "node scripts/deploy-cf.cjs --kv",
+    "deploy:raw": "wrangler deploy",
     "types:check": "tsc --noEmit"
   },
   "keywords": [
