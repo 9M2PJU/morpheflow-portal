@@ -7,7 +7,8 @@
 
 - **Automated repo tracking:** Monitors patch repositories for updates.
 - **Automatic APK downloads:** Downloads base APKs automatically, prioritising Google Play and falling back to APKCombo, Uptodown, and APKPure.
-- **Email notifications and web portal:** Get email alerts with direct download links whenever a patch succeeds, or download builds directly from the web portal. *A dedicated Android app for notifications and downloads is planned.*
+- **Email notifications & web portal:** Get email alerts with direct download links whenever a patch succeeds, or download builds directly from the web portal.
+- **Obtainium Integration:** One-click bulk import into [Obtainium](https://github.com/ImranR98/Obtainium) with dedicated per-app release feeds for automatic APK update tracking on Android.
 - **Scheduled or manual builds:** Run automatically once a day at a time of your choice, or start a build manually through the web interface.
 - **Free hosting:** Designed to run 100% free with multiple deployment options:
   - **Serverless Cloudflare Workers Edge (100% Free Tier)**: Modeled after NodeWarden, running directly on Cloudflare Workers with D1 SQLite database, Workers Static Assets, and GitHub Actions cloud runner (zero VPS, zero credit card required).
@@ -36,6 +37,18 @@ For full step-by-step guides, visit our **[Documentation Hub](docs/README.md)**:
 * 🚇 **[Remote Access & Tunnels Guide](docs/tunnels.md)**: Expose your portal securely with free HTTPS via Pangolin, Tailscale Funnel, or Cloudflare Tunnels.
 * 📖 **[User Guide & Web Interface](docs/user-guide.md)**: Managing packages, customizing patch options, daily schedules, and email notifications.
 
+## Prerequisites
+
+Depending on your chosen deployment path:
+
+* **For Cloudflare Workers & Cloud Builds (Serverless)**:
+  * **Node.js** (v18+) & **npm / npx**: To run deployment scripts and CLI tools.
+  * **Cloudflare Wrangler CLI**: Run `npx wrangler login` to authenticate with your Cloudflare account.
+  * **GitHub CLI (`gh`)**: Run `gh auth login` to automate private repo forking, secrets configuration, and Actions runners.
+  * **Obtainium** (Android app): For automatic APK update detection and 1-click install on Android.
+* **For Docker / Self-Hosted VPS**:
+  * **Docker & Docker Compose**: To run the containerized Morphe desktop engine on your server.
+
 ## Deployment Methods
 
 ### Option 1: Cloudflare Workers (Serverless, Zero VPS, Zero Credit Card)
@@ -44,6 +57,11 @@ Deploy with **1-Click** from your terminal or directly via GitHub in Cloudflare 
 
 * **1-Click Terminal Deploy**:
   ```bash
+  # 1. Authenticate CLIs
+  npx wrangler login
+  gh auth login
+
+  # 2. Deploy Cloudflare Worker & D1 database
   ./deploy.sh          # On macOS / Linux
   .\deploy.ps1         # On Windows PowerShell
   ```
@@ -70,6 +88,13 @@ See the full **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md
    ```
 
 5. Open your web portal via your configured tunnel or local URL (`http://localhost:8080`). For detailed configuration, see the [User Guide](docs/user-guide.md).
+
+### Android Auto-Updates with Obtainium
+
+AutoMorph publishes dedicated per-app releases (`app-<package_name>`) for each tracked app:
+1. Open your AutoMorph Dashboard and click **Obtainium Sync** in the top navigation bar.
+2. Tap **Add All to Obtainium** to bulk-import all your patched apps in one click (or copy individual app URLs).
+3. If using a private GitHub repository, enter a GitHub Personal Access Token (PAT) with `read-only` contents permission once in **Obtainium Settings > GitHub**.
 
 ## A Note on AI
 

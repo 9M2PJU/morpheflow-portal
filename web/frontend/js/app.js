@@ -257,6 +257,9 @@ function setupEventListeners() {
   document.getElementById('btn-files-root')?.addEventListener('click', () => {
     loadFiles('');
   });
+  document.getElementById('btn-obtainium-sync')?.addEventListener('click', () => {
+    showObtainiumSyncModal();
+  });
   document.getElementById('files-filter-input')?.addEventListener('input', () => {
     filterFilesTable();
   });
@@ -5630,11 +5633,23 @@ async function loadFiles(subpath = '') {
         if (f.is_apk) {
           iconHtml = '<span class="material-symbols-rounded" style="color: var(--color-success); font-size: 20px; vertical-align: middle;">android</span>';
           badgeHtml = '<span class="badge badge-success" style="font-size: 0.75rem; margin-left: 6px;">APK</span>';
+          let obtainiumBtn = '';
+          if (f.obtainium_url) {
+            obtainiumBtn = `
+              <a href="${f.obtainium_url}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; border-color: rgba(32, 207, 206, 0.4); color: var(--primary-cyan);" title="Track/Install this app via Obtainium">
+                <span class="material-symbols-rounded" style="font-size: 15px;">install_mobile</span>
+                <span class="file-action-text">Obtainium</span>
+              </a>
+            `;
+          }
           actionButtonsHtml = `
-            <a href="${f.url}" download="${escapeHtml(f.name)}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 4px;" title="Download patched APK">
-              <span class="material-symbols-rounded" style="font-size: 15px;">download</span>
-              <span class="file-action-text">Download APK</span>
-            </a>
+            <div style="display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center;">
+              ${obtainiumBtn}
+              <a href="${f.url}" download="${escapeHtml(f.name)}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 4px;" title="Download patched APK">
+                <span class="material-symbols-rounded" style="font-size: 15px;">download</span>
+                <span class="file-action-text">Download</span>
+              </a>
+            </div>
           `;
         } else if (f.is_result_json) {
           iconHtml = '<span class="material-symbols-rounded" style="color: var(--primary-cyan); font-size: 20px; vertical-align: middle;">analytics</span>';
@@ -5735,6 +5750,69 @@ function filterFilesTable() {
       row.style.display = 'none';
     }
   });
+}
+
+async function showObtainiumSyncModal() {
+  try {
+    const res = await fetch('/api/obtainium/export');
+    if (!res.ok) throw new Error('Failed to load Obtainium configuration');
+    const apps = await res.json();
+    
+    const jsonStr = JSON.stringify(apps, null, 2);
+    const encodedApps = encodeURIComponent(JSON.stringify(apps));
+    const bulkUrl = `obtainium://apps/${encodedApps}`;
+    
+    let appItemsHtml = apps.map(a => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; margin-bottom: 8px;">
+        <div>
+          <div style="font-weight: 600; color: var(--text-main); font-size: 0.9375rem;">${escapeHtml(a.name)}</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">${escapeHtml(a.id)}</div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <a href="${a.url}" target="_blank" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;" title="View Release Tag on GitHub">Tag</a>
+          <a href="obtainium://app/${encodeURIComponent(JSON.stringify(a))}" class="btn btn-primary btn-sm" style="font-size: 0.75rem;" title="Import into Obtainium">Add App</a>
+        </div>
+      </div>
+    `).join('');
+
+    const modalHtml = `
+      <div id="obtainium-sync-modal" class="modal-backdrop" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+        <div class="card" style="max-width: 580px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; padding: 24px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: var(--shadow-lg);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-rounded" style="color: var(--primary-cyan); font-size: 24px;">install_mobile</span>
+              <h3 style="font-size: 1.125rem; font-family: var(--font-display); margin: 0;">Obtainium Synchronization</h3>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('obtainium-sync-modal').remove()">Close</button>
+          </div>
+          <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5;">
+            Obtainium tracks each patched app directly via dedicated release tags. When a new version is compiled in the cloud, Obtainium automatically detects and downloads the update.
+          </p>
+          <div style="margin-bottom: 14px;">
+            <a href="${bulkUrl}" class="btn btn-primary" style="width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-rounded">install_mobile</span>
+              <span>Import All Apps into Obtainium</span>
+            </a>
+          </div>
+          <div style="flex: 1; overflow-y: auto; margin-bottom: 14px; max-height: 250px; padding-right: 4px;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase;">Individual App Feeds</div>
+            ${appItemsHtml || '<div style="color: var(--text-dim); padding: 16px; text-align: center;">No patched apps found yet.</div>'}
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="navigator.clipboard.writeText('${jsonStr.replace(/'/g, "\\'").replace(/\n/g, '\\n')}'); showToast('Obtainium JSON copied to clipboard!', 'success');">
+              <span class="material-symbols-rounded" style="font-size: 16px;">content_copy</span>
+              <span>Copy Config JSON</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('obtainium-sync-modal')?.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  } catch (err) {
+    showToast('Error loading Obtainium data: ' + err.message, 'error');
+  }
 }
 
 async function viewResultJson(fileUrl, fileName, contextPath) {

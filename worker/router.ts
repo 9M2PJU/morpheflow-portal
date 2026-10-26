@@ -211,7 +211,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     (await timingSafeEqual(webhookSecret, requestWebhook))
   );
 
-  const isConfigWithWebhook = path === '/api/config' && method === 'GET' && isAuthorizedWebhook;
+  const isConfigWithWebhook =
+    (path === '/api/config' || path === '/api/runner/sync') &&
+    method === 'GET' &&
+    isAuthorizedWebhook;
   const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
 
   if (isReportWithWebhook) {
@@ -299,6 +302,58 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       patch_repos: repos,
       packages,
     });
+  }
+
+  // 3a. Runner State Sync: GET /api/runner/sync
+  if (path === '/api/runner/sync' && method === 'GET') {
+    const packages = await storage.listPackages();
+    const repos = await storage.getPatchRepos();
+    const system = (await storage.getConfig('system')) || {};
+    const email = (await storage.getConfig('email')) || {};
+    const tunnels = (await storage.getConfig('tunnels')) || {};
+    const patchedApps = await storage.listPatchedApps();
+    const repoVersions = (await storage.getConfig('repo_versions')) || {};
+
+    return json({
+      config: {
+        ...system,
+        email,
+        tunnels,
+        patch_repos: repos,
+        packages,
+      },
+      patched_apps: patchedApps,
+      repo_versions: repoVersions,
+    });
+  }
+
+  // 3b. Obtainium Bulk Export: GET /api/obtainium/export
+  if (path === '/api/obtainium/export' && method === 'GET') {
+    const apps = await storage.listPatchedApps();
+    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const author = repo.split('/')[0] || 'AutoMorph';
+
+    const appMap = new Map<string, any>();
+    for (const a of apps) {
+      if (!appMap.has(a.package)) {
+        appMap.set(a.package, a);
+      }
+    }
+
+    const exportList = Array.from(appMap.values()).map((a) => {
+      const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
+      return {
+        id: a.package,
+        url: perAppTagUrl,
+        author: author,
+        name: a.package.split('.').pop() || a.package,
+        additionalSettings: JSON.stringify({
+          apkFilterRegEx: '\\.apk$',
+        }),
+      };
+    });
+
+    return json(exportList);
   }
 
   // 4. GET /api/settings
@@ -575,17 +630,38 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   if (path === '/api/files' && method === 'GET') {
     const subpath = url.searchParams.get('path') || '';
     const apps = await storage.listPatchedApps();
+    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
 
-    const files = apps.map((a) => ({
-      name: a.filename,
-      path: `${a.package}/${a.version}/${a.filename}`,
-      size: a.formatted_size,
-      raw_size: a.size_bytes,
-      url: a.download_url,
-      mtime: a.patched_at,
-      is_apk: true,
-      is_result_json: false,
-    }));
+    const files = apps.map((a) => {
+      const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
+      const obtainiumPayload = {
+        id: a.package,
+        url: perAppTagUrl,
+        author: repo.split('/')[0] || 'AutoMorph',
+        name: a.package.split('.').pop() || a.package,
+        additionalSettings: JSON.stringify({
+          apkFilterRegEx: '\\.apk$',
+        }),
+      };
+      const obtainiumUrl = `obtainium://app/${encodeURIComponent(JSON.stringify(obtainiumPayload))}`;
+      const obtainiumWebRedirect = `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent(obtainiumUrl)}`;
+
+      return {
+        name: a.filename,
+        path: `${a.package}/${a.version}/${a.filename}`,
+        size: a.formatted_size,
+        raw_size: a.size_bytes,
+        url: a.download_url,
+        mtime: a.patched_at,
+        is_apk: true,
+        is_result_json: false,
+        package: a.package,
+        version: a.version,
+        tag_url: perAppTagUrl,
+        obtainium_url: obtainiumUrl,
+        obtainium_web_url: obtainiumWebRedirect,
+      };
+    });
 
     const totalBytes = apps.reduce((acc, a) => acc + a.size_bytes, 0);
 
@@ -654,6 +730,11 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     // Save HTML report if present
     if (payload.report_html) {
       await storage.setConfig('latest_report_html', payload.report_html);
+    }
+
+    // Save cached repo versions if present
+    if (payload.repo_versions && typeof payload.repo_versions === 'object') {
+      await storage.setConfig('repo_versions', payload.repo_versions);
     }
 
     // Release lock

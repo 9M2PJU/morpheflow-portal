@@ -56,30 +56,53 @@ jobs:
           ls -lh tools/morphe.jar
           java -jar tools/morphe.jar -v || true
 
-      - name: Sync configuration from Cloudflare Worker (if available)
+      - name: Sync configuration and state from Cloudflare Worker (if available)
         env:
           CF_WORKER_URL: ${{ inputs.runner_callback_url || secrets.CLOUDFLARE_WORKER_URL }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
           if [ -n "$CF_WORKER_URL" ]; then
-            echo "[*] Fetching package configuration from Cloudflare Worker: $CF_WORKER_URL"
+            echo "[*] Fetching configuration and build state from Cloudflare Worker: $CF_WORKER_URL"
             python3 -c "
           import urllib.request, json, yaml, os
-          url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/config'
+          from pathlib import Path
+
+          url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/runner/sync'
           secret = os.environ.get('WEBHOOK_SECRET', '')
           try:
               headers = {'User-Agent': 'AutoMorph-CloudRunner'}
               if secret:
                   headers['X-Webhook-Secret'] = secret
               req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req, timeout=10) as resp:
-                  data = json.loads(resp.read().decode())
-                  os.makedirs('tools/automorph-data', exist_ok=True)
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  payload = json.loads(resp.read().decode())
+                  config = payload.get('config', {})
+                  patched_apps = payload.get('patched_apps', [])
+                  repo_versions = payload.get('repo_versions', {})
+
+                  os.makedirs('tools/automorph-data/state', exist_ok=True)
                   with open('tools/automorph-data/config.yaml', 'w') as f:
-                      yaml.dump(data, f)
-                  print('[✓] Successfully synchronized config from Worker D1.')
+                      yaml.dump(config, f)
+
+                  if repo_versions:
+                      with open('tools/automorph-data/state/repo_versions.json', 'w') as f:
+                          json.dump(repo_versions, f, indent=2)
+
+                  # Populate stubs for already-patched apps so main.py skips up-to-date versions
+                  stub_count = 0
+                  for app in patched_apps:
+                      pkg = app.get('package')
+                      ver = app.get('version')
+                      fname = app.get('filename')
+                      if pkg and ver and fname:
+                          stub_path = Path('apps/patched') / pkg / ver / fname
+                          stub_path.parent.mkdir(parents=True, exist_ok=True)
+                          if not stub_path.exists():
+                              stub_path.touch()
+                              stub_count += 1
+                  print(f'[✓] Successfully synced config and {stub_count} existing app stubs from Worker D1.')
           except Exception as e:
-              print(f'[!] Could not fetch config from Worker: {e}. Falling back to defaults.')
+              print(f'[!] Could not fetch runner state from Worker: {e}. Falling back to defaults.')
           " || true
           fi
 
@@ -101,23 +124,83 @@ jobs:
           DURATION=$((END_TIME - START_TIME))
           echo "DURATION=$DURATION" >> $GITHUB_OUTPUT
 
+      - name: Clean up unchanged app stubs
+        run: |
+          # Remove 0-byte stubs so only newly compiled APKs remain in apps/patched
+          find apps/patched -name "*.apk" -size 0 -delete
+          find apps/patched -type d -empty -delete
+
       - name: Create GitHub Release for Patched APKs
         id: release
         if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DATE_TAG="build-$(date +%Y%m%d-%H%M%S)"
-          echo "TAG=$DATE_TAG" >> $GITHUB_OUTPUT
+          # Find newly compiled APKs (> 1MB)
+          APK_FILES=$(find apps/patched -name "*.apk" -size +1M 2>/dev/null || true)
           
-          # Gather patched APK files
-          APK_FILES=$(find apps/patched -name "*.apk" 2>/dev/null || true)
           if [ -n "$APK_FILES" ]; then
+            DATE_TAG="build-$(date +%Y%m%d-%H%M%S)"
+            echo "TAG=$DATE_TAG" >> $GITHUB_OUTPUT
+            REPO="${{ github.repository }}"
+            
+            NOTES_FILE="release_notes_${DATE_TAG}.md"
+            echo "## 🚀 AutoMorph Cloud Build \`${DATE_TAG}\`" > "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "### 📦 Newly Built APKs in this Release:" >> "$NOTES_FILE"
+            
+            for apk in $APK_FILES; do
+              fname=$(basename "$apk")
+              ver_dir=$(basename $(dirname "$apk"))
+              pkg_dir=$(basename $(dirname $(dirname "$apk")))
+              
+              app_name="$pkg_dir"
+              if [ "$pkg_dir" = "com.reddit.frontpage" ]; then app_name="Reddit"; fi
+              if [ "$pkg_dir" = "com.google.android.youtube" ]; then app_name="YouTube"; fi
+              if [ "$pkg_dir" = "com.google.android.apps.youtube.music" ]; then app_name="YouTube Music"; fi
+              if [ "$pkg_dir" = "com.twitter.android" ]; then app_name="Twitter"; fi
+              
+              PER_APP_TAG="app-${pkg_dir}"
+              echo "" >> "$NOTES_FILE"
+              echo "- **${app_name}** (\`${pkg_dir}\`) - \`v${ver_dir}\`" >> "$NOTES_FILE"
+              echo "  - **File:** \`${fname}\`" >> "$NOTES_FILE"
+              echo "  - **Direct Download:** [${fname}](https://github.com/${REPO}/releases/download/${DATE_TAG}/${fname})" >> "$NOTES_FILE"
+              echo "  - **Obtainium Source URL:** \`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`" >> "$NOTES_FILE"
+              
+              # 1. Update rolling Per-App Release for Obtainium
+              echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
+              gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
+              gh release create "${PER_APP_TAG}" "$apk" \
+                --title "${app_name} (${pkg_dir}) v${ver_dir}" \
+                --notes "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`.\n\n### Obtainium Tracking URL:\n\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`\n\nAdd this URL to Obtainium to receive automatic updates whenever ${app_name} is updated." \
+                --latest=false || gh release upload "${PER_APP_TAG}" "$apk" --clobber
+                
+              # 2. Also create permanent versioned tag (e.g. com.reddit.frontpage-v2026.24.0)
+              VER_TAG="${pkg_dir}-v${ver_dir}"
+              gh release create "${VER_TAG}" "$apk" \
+                --title "${app_name} v${ver_dir}" \
+                --notes "Versioned release of ${app_name} v${ver_dir}." \
+                --latest=false 2>/dev/null || true
+            done
+            
+            echo "" >> "$NOTES_FILE"
+            echo "---" >> "$NOTES_FILE"
+            echo "### 📲 Obtainium Setup Guide:" >> "$NOTES_FILE"
+            echo "To track and automatically update each app individually in Obtainium:" >> "$NOTES_FILE"
+            echo "1. Open Obtainium and tap **Add App**." >> "$NOTES_FILE"
+            echo "2. Paste the **Obtainium Source URL** for the app (e.g. \`https://github.com/${REPO}/releases/tag/app-com.reddit.frontpage\`)." >> "$NOTES_FILE"
+            echo "3. Obtainium will track that app's dedicated release tag and notify you whenever a new version is compiled!" >> "$NOTES_FILE"
+            
+            # 3. Create unified batch release
             gh release create "$DATE_TAG" $APK_FILES \
               --title "AutoMorph Build $DATE_TAG" \
-              --notes "Automated Cloud Build generated on $(date -u)" \
+              --notes-file "$NOTES_FILE" \
               --latest
-            echo "RELEASE_URL=https://github.com/${{ github.repository }}/releases/tag/$DATE_TAG" >> $GITHUB_OUTPUT
+              
+            echo "RELEASE_URL=https://github.com/${REPO}/releases/tag/$DATE_TAG" >> $GITHUB_OUTPUT
           else
-            echo "[!] No new APKs generated to publish."
+            echo "[!] No new APKs needed building. All tracked apps are up to date."
+            echo "TAG=" >> $GITHUB_OUTPUT
             echo "RELEASE_URL=" >> $GITHUB_OUTPUT
           fi
         env:
@@ -172,16 +255,20 @@ jobs:
           report_file = Path('tools/automorph-data/state/reports/build_report.html')
           report_html = report_file.read_text(errors='replace') if report_file.is_file() else ''
 
+          repo_versions_file = Path('tools/automorph-data/state/repo_versions.json')
+          repo_versions = json.loads(repo_versions_file.read_text()) if repo_versions_file.is_file() else {}
+
           payload = {
-              'run_id': f'run-gh-{tag}',
-              'status': 'success' if patched_apps else 'failed',
-              'returncode': 0 if patched_apps else 1,
+              'run_id': f'run-gh-{tag or "check"}',
+              'status': 'success',
+              'returncode': 0,
               'duration_seconds': duration,
               'duration_formatted': f'{duration // 60}m {duration % 60}s',
               'source': 'github_actions',
               'patched_apps': patched_apps,
               'logs': logs[-1000:],
               'report_html': report_html,
+              'repo_versions': repo_versions,
           }
 
           req = urllib.request.Request(

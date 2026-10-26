@@ -576,7 +576,11 @@
           <h2 style="font-size: 1.25rem; font-family: var(--font-display);">Patched APK Directory</h2>
           <p style="font-size: 0.875rem; color: var(--text-muted);">Browse generated APKs, version releases, and patch audit results in apps/patched/.</p>
         </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="btn-obtainium-sync" class="btn btn-secondary btn-sm" title="Export all tracked apps to Obtainium" type="button" style="border-color: rgba(32, 207, 206, 0.4); color: var(--primary-cyan);">
+            <span class="material-symbols-rounded">install_mobile</span>
+            <span>Obtainium Sync</span>
+          </button>
           <button id="btn-files-refresh" class="btn btn-secondary btn-sm" title="Refresh directory listing" type="button">
             <span class="material-symbols-rounded">refresh</span>
             <span>Refresh</span>
