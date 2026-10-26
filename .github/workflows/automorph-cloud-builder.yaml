@@ -203,8 +203,6 @@ jobs:
             echo "TAG=" >> $GITHUB_OUTPUT
             echo "RELEASE_URL=" >> $GITHUB_OUTPUT
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Report Metrics & Sync to Cloudflare Worker
         if: always()

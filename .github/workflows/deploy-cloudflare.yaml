@@ -14,9 +14,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  check-token:
     runs-on: ubuntu-latest
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    outputs:
+      has_token: ${{ steps.check.outputs.has_token }}
+    steps:
+      - id: check
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CF_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: check-token
+    if: needs.check-token.outputs.has_token == 'true'
+    runs-on: ubuntu-latest
     name: Deploy to Cloudflare Workers
     steps:
       - name: Check out repository
