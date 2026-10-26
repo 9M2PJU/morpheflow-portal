@@ -29,7 +29,8 @@ def main(project_root: Path, conf: dict) -> None:
         init_completed = True
         force = False
 
-        target_pkg = os.getenv("TARGET_PACKAGE") or (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None)
+        raw_target = os.getenv("TARGET_PACKAGE") or (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None)
+        target_pkg = raw_target.strip() if raw_target and raw_target.strip() else None
         if target_pkg:
             force = True
 
@@ -143,7 +144,9 @@ def parse_yaml(conf: dict) -> tuple:
             continue
 
         aliase_map = {}
-        package_name = package.get('package_name')
+        package_name = package.get('package') or package.get('package_name')
+        if not package_name:
+            continue
         repos = package.get('repos') or []
 
         patch_aliases = package.get('patch_aliases') or []

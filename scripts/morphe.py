@@ -360,6 +360,11 @@ class Morphe:
                 app_options_dir.mkdir(parents=True, exist_ok=True)
                 repo_options = app_options_dir / f"{owner}_options.json" 
 
+                if repo_options.is_file() and repo_options.stat().st_size > 0:
+                    logger.info(f" └── [✓] Options file '{repo_options.name}' already exists for '{package_name}'.")
+                    repo_options_locations.append(repo_options)
+                    continue
+
                 result = subprocess.run(
                     [
                         "java",
@@ -367,7 +372,7 @@ class Morphe:
                         str(self.morphe_location),
                         "options-create",
                         "-p",
-                        cached_repo,
+                        str(cached_repo),
                         "-o",
                         str(repo_options),
                         "-f",
