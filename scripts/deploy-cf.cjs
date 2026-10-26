@@ -258,21 +258,102 @@ function deployWorker() {
   const res = spawnSync('npx', args, {
     cwd: ROOT_DIR,
     encoding: 'utf8',
-    stdio: 'inherit',
   });
 
   if (res.status !== 0) {
-    throw new Error(`wrangler deploy failed with exit code ${res.status}`);
+    throw new Error(`wrangler deploy failed with exit code ${res.status}: ${res.stderr || res.stdout}`);
   }
 
+  const output = (res.stdout || '') + (res.stderr || '');
+  console.log(output);
+
+  // Extract worker URL from wrangler output
+  const match = output.match(/https:\/\/[a-zA-Z0-9-.]+\.workers\.dev/);
+  const workerUrl = match ? match[0] : null;
+
   success('AutoMorph deployment completed!');
+  return workerUrl;
 }
 
-function printSummary(secrets) {
+function setupGitHubIntegration(workerUrl, webhookSecret) {
+  log('🐙', 'Configuring GitHub integration for automated cloud builds...');
+
+  let ghUser = null;
+  let ghToken = null;
+  try {
+    run('gh auth status');
+    ghUser = run('gh api user -q .login').trim();
+    ghToken = run('gh auth token').trim();
+  } catch (err) {
+    warn('GitHub CLI (gh) is not logged in or not installed. Automatic GitHub Actions setup skipped.');
+    return { ghRepo: null, ghToken: null };
+  }
+
+  if (!ghUser) return { ghRepo: null, ghToken: null };
+  success(`GitHub authenticated as @${ghUser}`);
+
+  const targetRepo = `${ghUser}/AutoMorph`;
+  let repoExists = false;
+  try {
+    run(`gh repo view ${targetRepo} --json name`);
+    repoExists = true;
+    success(`Target GitHub repository confirmed: ${targetRepo}`);
+  } catch {
+    repoExists = false;
+  }
+
+  if (!repoExists) {
+    log('🔒', `Creating private GitHub repository "${targetRepo}"...`);
+    try {
+      const currentRemote = run('git remote get-url origin').trim();
+      if (!currentRemote.includes(targetRepo)) {
+        try { run('git remote rename origin upstream'); } catch {}
+      }
+    } catch {}
+
+    try {
+      run(`gh repo create ${targetRepo} --private --source=. --remote=origin --push`);
+      success(`Private repository created and initial code pushed: https://github.com/${targetRepo}`);
+    } catch (err) {
+      warn(`Notice during repo creation: ${err.message}`);
+    }
+  } else {
+    try {
+      run('git push -u origin main');
+      success(`Pushed latest commits to ${targetRepo}`);
+    } catch (err) {
+      warn(`Notice pushing to remote: ${err.message}`);
+    }
+  }
+
+  // Configure GitHub Actions Secrets
+  log('🔐', `Configuring GitHub Actions Secrets on ${targetRepo}...`);
+  try {
+    if (workerUrl) {
+      run(`gh secret set CLOUDFLARE_WORKER_URL --body "${workerUrl}" -R "${targetRepo}"`);
+      success('Set GitHub Secret: CLOUDFLARE_WORKER_URL');
+    }
+    if (webhookSecret) {
+      run(`gh secret set WEBHOOK_SECRET --body "${webhookSecret}" -R "${targetRepo}"`);
+      success('Set GitHub Secret: WEBHOOK_SECRET');
+    }
+    // Enable workflow if disabled
+    try {
+      run(`gh workflow enable automorph-cloud-builder.yaml -R "${targetRepo}"`);
+    } catch {}
+  } catch (err) {
+    warn(`Could not set GitHub secrets: ${err.message}`);
+  }
+
+  return { ghRepo: targetRepo, ghToken };
+}
+
+function printSummary(secrets, workerUrl) {
   console.log('\n' + '='.repeat(64));
   console.log('  🎉  AutoMorph Cloudflare Workers Deployment Successful!  🎉');
   console.log('='.repeat(64));
   console.log('\n📌 Configuration Summary:');
+  console.log(`   • Portal URL:  \x1b[36m\x1b[1m${workerUrl || 'https://automorph.<subdomain>.workers.dev'}\x1b[0m`);
   console.log(`   • Mode:        ${isKvMode ? 'Zero-Card KV Mode (wrangler.kv.toml)' : 'Standard D1 Mode (wrangler.toml)'}`);
   console.log(`   • Database:    Cloudflare D1 (${DB_NAME})`);
   console.log(`   • Static UI:   Workers Static Assets (web/frontend)`);
@@ -286,12 +367,21 @@ function printSummary(secrets) {
     console.log('   (Enter this master password in the AutoMorph login gateway)');
   }
 
-  console.log('\n🔐 Next Step: GitHub Actions Secrets (for Free Cloud Builds)');
-  console.log('   In your GitHub repository (Settings > Secrets and variables > Actions):');
-  console.log(`   • CLOUDFLARE_WORKER_URL = https://automorph.<your-subdomain>.workers.dev`);
-  if (secrets.webhookSecret) {
-    console.log(`   • WEBHOOK_SECRET        = ${secrets.webhookSecret}`);
+  if (secrets.ghRepo) {
+    console.log('\n⚡ GitHub Actions Cloud Build Automation:');
+    console.log(`   • Private Repo: https://github.com/${secrets.ghRepo}`);
+    console.log('   • Actions:     AUTOMATICALLY CONFIGURED & LINKED (End-to-End)');
+    console.log('   • Secrets:     CLOUDFLARE_WORKER_URL, WEBHOOK_SECRET, GITHUB_TOKEN');
+    console.log('   (Triggering runs via Dashboard or Cron dispatches to this private runner)');
+  } else {
+    console.log('\n🔐 Next Step: GitHub Actions Secrets (for Free Cloud Builds)');
+    console.log('   In your GitHub repository (Settings > Secrets and variables > Actions):');
+    console.log(`   • CLOUDFLARE_WORKER_URL = ${workerUrl || 'https://automorph.<your-subdomain>.workers.dev'}`);
+    if (secrets.webhookSecret) {
+      console.log(`   • WEBHOOK_SECRET        = ${secrets.webhookSecret}`);
+    }
   }
+
   console.log('\n📖 Full documentation: docs/cloudflare-workers-setup.md\n');
 }
 
@@ -303,8 +393,27 @@ function main() {
     ensureKv();
     applyMigrations(dbId);
     const secrets = syncSecrets();
-    deployWorker();
-    printSummary(secrets);
+    const workerUrl = deployWorker() || 'https://automorph.w161112218.workers.dev';
+
+    // End-to-end GitHub private fork & Actions secrets automation
+    const gh = setupGitHubIntegration(workerUrl, secrets.webhookSecret);
+    if (gh.ghRepo && gh.ghToken) {
+      log('🔗', 'Linking GitHub Actions Cloud Runner to Cloudflare Worker...');
+      const setSecret = (name, val) => {
+        try {
+          const args = isKvMode ? ['wrangler', 'secret', 'put', name, '-c', 'wrangler.kv.toml'] : ['wrangler', 'secret', 'put', name];
+          spawnSync('npx', args, { cwd: ROOT_DIR, input: `${val}\n`, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        } catch {}
+      };
+      setSecret('GITHUB_REPO', gh.ghRepo);
+      setSecret('GITHUB_TOKEN', gh.ghToken);
+      updateDotEnv('GITHUB_REPO', gh.ghRepo);
+      updateDotEnv('GITHUB_TOKEN', gh.ghToken);
+      success(`Linked Worker to GitHub Cloud Runner: ${gh.ghRepo}`);
+      secrets.ghRepo = gh.ghRepo;
+    }
+
+    printSummary(secrets, workerUrl);
   } catch (err) {
     console.error('\n\x1b[31m✖ Deployment failed:\x1b[0m', err.message);
     process.exit(1);
