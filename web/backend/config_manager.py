@@ -1172,6 +1172,8 @@ def get_all_settings() -> dict[str, Any]:
             "max_logs": max_logs,
             "max_original_packages": max_original_packages,
             "max_patched_packages": max_patched_packages,
+            "update_check_interval_hours": int(data.get("update_check_interval_hours", 4)),
+            "status_poll_interval_seconds": int(data.get("status_poll_interval_seconds", 30)),
         },
         "tunnels": {
             "tailscale": {
@@ -1233,6 +1235,17 @@ def update_system_settings(settings: dict[str, Any]) -> dict[str, Any]:
             data["max_patched_packages"] = val if (val is not None and val > 0) else None
         except (ValueError, TypeError):
             data["max_patched_packages"] = None
+
+    if "update_check_interval_hours" in settings and settings["update_check_interval_hours"] is not None:
+        try:
+            data["update_check_interval_hours"] = int(settings["update_check_interval_hours"])
+        except (ValueError, TypeError):
+            pass
+    if "status_poll_interval_seconds" in settings and settings["status_poll_interval_seconds"] is not None:
+        try:
+            data["status_poll_interval_seconds"] = int(settings["status_poll_interval_seconds"])
+        except (ValueError, TypeError):
+            pass
 
     save_config_raw(yaml, data)
     return get_all_settings()["system"]

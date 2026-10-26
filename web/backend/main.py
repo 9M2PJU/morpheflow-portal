@@ -99,6 +99,8 @@ class SystemSettingsRequest(BaseModel):
     max_logs: int | None = None
     max_original_packages: int | None = None
     max_patched_packages: int | None = None
+    update_check_interval_hours: int | None = None
+    status_poll_interval_seconds: int | None = None
 
 
 class TunnelsSettingsRequest(BaseModel):

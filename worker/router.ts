@@ -201,8 +201,24 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({ authenticated: auth.authenticated, single_user: true });
   }
 
-  // Webhook exemption: POST /api/webhook/report has its own X-Webhook-Secret auth
-  if (path !== '/api/webhook/report') {
+  // Runner & Webhook authentication:
+  // Allow POST /api/webhook/report and GET /api/config when supplied with valid X-Webhook-Secret
+  const webhookSecret = (env.WEBHOOK_SECRET || '').trim();
+  const requestWebhook = (request.headers.get('X-Webhook-Secret') || '').trim();
+  const isAuthorizedWebhook = Boolean(
+    webhookSecret &&
+    requestWebhook &&
+    (await timingSafeEqual(webhookSecret, requestWebhook))
+  );
+
+  const isConfigWithWebhook = path === '/api/config' && method === 'GET' && isAuthorizedWebhook;
+  const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
+
+  if (isReportWithWebhook) {
+    if (!isAuthorizedWebhook) {
+      return json({ error: 'Unauthorized webhook' }, 401);
+    }
+  } else if (!isConfigWithWebhook) {
     const auth = await authenticateRequest(request, env, storage);
     if (!auth.authenticated) {
       return json(

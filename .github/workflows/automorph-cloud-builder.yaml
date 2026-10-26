@@ -59,14 +59,19 @@ jobs:
       - name: Sync configuration from Cloudflare Worker (if available)
         env:
           CF_WORKER_URL: ${{ inputs.runner_callback_url || secrets.CLOUDFLARE_WORKER_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
           if [ -n "$CF_WORKER_URL" ]; then
             echo "[*] Fetching package configuration from Cloudflare Worker: $CF_WORKER_URL"
             python3 -c "
           import urllib.request, json, yaml, os
           url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/config'
+          secret = os.environ.get('WEBHOOK_SECRET', '')
           try:
-              req = urllib.request.Request(url, headers={'User-Agent': 'AutoMorph-CloudRunner'})
+              headers = {'User-Agent': 'AutoMorph-CloudRunner'}
+              if secret:
+                  headers['X-Webhook-Secret'] = secret
+              req = urllib.request.Request(url, headers=headers)
               with urllib.request.urlopen(req, timeout=10) as resp:
                   data = json.loads(resp.read().decode())
                   os.makedirs('tools/automorph-data', exist_ok=True)
