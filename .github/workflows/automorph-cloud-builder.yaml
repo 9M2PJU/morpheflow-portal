@@ -51,9 +51,9 @@ jobs:
         run: |
           mkdir -p tools
           MORPHE_VERSION="1.19.0"
-          wget -q -O "tools/morphe-desktop-${MORPHE_VERSION}-all.jar" \
+          wget -q -O "tools/morphe.jar" \
             "https://github.com/MorpheApp/morphe-desktop/releases/download/v${MORPHE_VERSION}/morphe-desktop-${MORPHE_VERSION}-all.jar"
-          ln -sf "tools/morphe-desktop-${MORPHE_VERSION}-all.jar" tools/morphe.jar
+          ls -lh tools/morphe.jar
           java -jar tools/morphe.jar -v || true
 
       - name: Sync configuration from Cloudflare Worker (if available)
