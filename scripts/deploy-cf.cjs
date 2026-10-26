@@ -64,6 +64,19 @@ function parseDotEnv() {
   return env;
 }
 
+function updateDotEnv(key, val) {
+  try {
+    let content = fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '';
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(content)) {
+      content = content.replace(regex, `${key}=${val}`);
+    } else {
+      content = (content ? content.trimEnd() + '\n' : '') + `${key}=${val}\n`;
+    }
+    fs.writeFileSync(ENV_FILE, content, 'utf8');
+  } catch {}
+}
+
 function checkAuth() {
   log('🔑', 'Checking Cloudflare authentication...');
   try {
@@ -193,11 +206,7 @@ function syncSecrets() {
   if (!webhookSecret) {
     webhookSecret = crypto.randomBytes(16).toString('hex');
     log('✨', `Generated secure random WEBHOOK_SECRET: ${webhookSecret}`);
-    try {
-      if (fs.existsSync(ENV_FILE)) {
-        fs.appendFileSync(ENV_FILE, `\nWEBHOOK_SECRET=${webhookSecret}\n`);
-      }
-    } catch {}
+    updateDotEnv('WEBHOOK_SECRET', webhookSecret);
   }
 
   const setSecret = (name, val) => {
@@ -224,13 +233,7 @@ function syncSecrets() {
   if (!authPassword) {
     authPassword = crypto.randomBytes(12).toString('hex');
     log('✨', `Generated secure random master AUTH_PASSWORD: ${authPassword}`);
-    try {
-      if (fs.existsSync(ENV_FILE)) {
-        fs.appendFileSync(ENV_FILE, `\nAUTH_PASSWORD=${authPassword}\n`);
-      } else {
-        fs.writeFileSync(ENV_FILE, `AUTH_PASSWORD=${authPassword}\n`);
-      }
-    } catch {}
+    updateDotEnv('AUTH_PASSWORD', authPassword);
   }
   setSecret('AUTH_PASSWORD', authPassword);
 
@@ -277,9 +280,10 @@ function printSummary(secrets) {
 
   console.log('\n🔒 Single-User Airtight Security:');
   console.log('   • Protection:  ACTIVE (Brute-force rate limited, timing-safe HMAC sessions)');
+  console.log('   • Username:    Not required (Single-user master access; or "admin" if prompted)');
   if (secrets.authPassword) {
     console.log(`   • Password:    \x1b[32m\x1b[1m${secrets.authPassword}\x1b[0m`);
-    console.log('   (Enter this master password when accessing your AutoMorph web portal)');
+    console.log('   (Enter this master password in the AutoMorph login gateway)');
   }
 
   console.log('\n🔐 Next Step: GitHub Actions Secrets (for Free Cloud Builds)');
