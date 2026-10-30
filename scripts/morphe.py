@@ -767,6 +767,11 @@ class Morphe:
             input_package = self.original_dir / package_name / version_name / f"{package_name}.apk"
 
         if not input_package.is_file():
+            target_dir = self.original_dir / package_name / version_name
+            if target_dir.is_dir():
+                input_package = next(target_dir.glob("*.xapk"), None) or next(target_dir.glob("*.apk"), None)
+
+        if not input_package or not input_package.is_file():
             logger.error(f"No apk or xapk found for {package_name}, version: {version_name}")
             return False, dest, f"No APK or XAPK found for {package_name} v{version_name}"
 

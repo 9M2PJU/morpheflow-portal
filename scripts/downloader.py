@@ -244,7 +244,7 @@ class Downloader:
         if source == "apkpure":
             is_xapk = "/XAPK/" in url
             dest_file = (
-                outer_dir / f"{package_name}-{version_name}.{'xapk' if is_xapk else 'apk'}"
+                outer_dir / f"{package_name}.{'xapk' if is_xapk else 'apk'}"
             )
             headers = {
                 "User-Agent": (
