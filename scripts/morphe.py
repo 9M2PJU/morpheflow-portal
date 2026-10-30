@@ -38,6 +38,10 @@ class Morphe:
         repo_name = self.repo_details[repo]['repo_name']
         cached_repo_dir = self.project_root / "tools" / "morphe-data" / "patches" / f"{owner}-{repo_name}"
 
+        if not cached_repo_dir.is_dir() or not any(cached_repo_dir.iterdir()):
+            logger.info(f"\n[*] Cached repo missing for '{owner}/{repo_name}'. Downloading patch bundle...")
+            self.build_repo_cache({repo: self.check_repo(repo)})
+
         if not cached_repo_dir.is_dir():
             logger.error(f"\n[!] Skipping options for '{owner}/{repo_name}': cache directory does not exist.")
             return None
@@ -147,11 +151,19 @@ class Morphe:
                     elif repo not in new_repo_versions:
                         logger.warning(f" └── [✗] {owner} repo missing from parsed versions. Skipping.")
                     else:
+                        owner = self.repo_details[repo]['owner']
+                        repo_name = self.repo_details[repo]['repo_name']
+                        cached_repo_dir = self.project_root / "tools" / "morphe-data" / "patches" / f"{owner}-{repo_name}"
+                        has_cached_mpp = cached_repo_dir.is_dir() and any(cached_repo_dir.iterdir())
+
                         cached_version = tuple(int(n) for n in cached_data[repo])
                         new_version = tuple(int(n) for n in new_repo_versions[repo])
 
-                        if new_version > cached_version:
-                            logger.info(f" └── [!] New repo version for {owner} repo. Will add to updated repos list.")
+                        if new_version > cached_version or not has_cached_mpp:
+                            if not has_cached_mpp:
+                                logger.info(f" └── [!] Cached bundle missing on disk for {owner}. Will add to updated repos list.")
+                            else:
+                                logger.info(f" └── [!] New repo version for {owner} repo. Will add to updated repos list.")
                             repo_search[repo] = self.check_repo(repo)
                         else:
                             logger.info(f" └── [✓] Latest version of {owner} already used.") 
