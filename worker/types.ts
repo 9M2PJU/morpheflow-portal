@@ -26,6 +26,7 @@ export interface PackageRecord {
   repos: string[];
   patch_aliases: Array<{ alias: string; patches: Record<string, string> }>;
   options?: Record<string, any>;
+  last_result?: any;
   created_at: string;
   updated_at: string;
 }

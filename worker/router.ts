@@ -3,7 +3,7 @@
  * Implements the full REST and SSE API contract for AutoMorph Web Portal.
  */
 
-import { EmailSettings, Env, RunHistoryRecord, StatusResponse, SystemSettings } from './types';
+import { EmailSettings, Env, PackageRecord, PatchedAppRecord, RunHistoryRecord, StatusResponse, SystemSettings } from './types';
 import { StorageService, formatBytes } from './storage';
 import {
   authenticateRequest,
@@ -66,6 +66,99 @@ function resolveScheduleTarget(systemSettings: SystemSettings | null, env: Env) 
     countdown_formatted: hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes}m`,
     display_time: displayTime,
   };
+}
+
+function attachLastResultsToPackages(
+  packages: PackageRecord[],
+  patchedApps: PatchedAppRecord[],
+  lastRun: RunHistoryRecord | null
+): PackageRecord[] {
+  return packages.map((p) => {
+    const appBuilds = patchedApps.filter((a) => a.package === p.package);
+    appBuilds.sort((a, b) => new Date(b.patched_at).getTime() - new Date(a.patched_at).getTime());
+    const lastApp = appBuilds[0];
+
+    let last_result = null;
+    if (lastApp) {
+      let appliedPatches: any[] = lastApp.applied_patches || [];
+      let failedPatches: any[] = [];
+      let appliedCount = appliedPatches.length;
+      let failedCount = 0;
+      let winningStrategy: string | null = null;
+      let totalAttempts = 1;
+      const patchOwners: Record<string, string> = {};
+
+      if (lastApp.result_json) {
+        try {
+          const rJson = typeof lastApp.result_json === 'string' ? JSON.parse(lastApp.result_json) : lastApp.result_json;
+          if (Array.isArray(rJson.applied_patches)) appliedPatches = rJson.applied_patches;
+          if (Array.isArray(rJson.failed_patches)) failedPatches = rJson.failed_patches;
+          appliedCount = rJson.applied_count ?? appliedPatches.length;
+          failedCount = rJson.failed_count ?? failedPatches.length;
+          winningStrategy = rJson.winning_strategy || rJson.strategy || null;
+          totalAttempts = rJson.total_attempts || rJson.attempts?.length || 1;
+        } catch (_) {}
+      }
+
+      // If appliedPatches is empty, extract enabled patches and owners from p.options
+      if (appliedPatches.length === 0 && p.options) {
+        for (const repoKey of Object.keys(p.options)) {
+          const repoPatches = p.options[repoKey]?.patches || {};
+          for (const patchKey of Object.keys(repoPatches)) {
+            if (repoPatches[patchKey]?.enabled) {
+              appliedPatches.push({
+                name: patchKey,
+                owner: repoKey,
+              });
+              patchOwners[patchKey] = repoKey;
+            }
+          }
+        }
+        appliedCount = appliedPatches.length;
+      }
+
+      const pDate = new Date(lastApp.patched_at);
+      const timestampFormatted = !isNaN(pDate.getTime())
+        ? pDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+          pDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : 'Recently';
+
+      last_result = {
+        version: lastApp.version,
+        status: 'success',
+        timestamp: Math.floor(pDate.getTime() / 1000) || 0,
+        timestamp_formatted: timestampFormatted,
+        applied_count: appliedCount,
+        failed_count: failedCount,
+        applied_patches: appliedPatches,
+        failed_patches: failedPatches,
+        patch_owners: patchOwners,
+        total_attempts: totalAttempts,
+        winning_strategy: winningStrategy,
+      };
+    } else if (lastRun && lastRun.package === p.package && lastRun.status === 'failed') {
+      const fDate = new Date(lastRun.finished_at * 1000);
+      last_result = {
+        version: 'target',
+        status: 'failed',
+        is_pipeline_failure: true,
+        failure_stage: 'Build Failed',
+        failure_reason: 'Pipeline execution failed in cloud builder',
+        timestamp: Math.floor(lastRun.finished_at),
+        timestamp_formatted: fDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+          fDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        applied_count: 0,
+        failed_count: 1,
+        applied_patches: [],
+        failed_patches: [],
+      };
+    }
+
+    return {
+      ...p,
+      last_result,
+    };
+  });
 }
 
 export async function handleApiRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -290,7 +383,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // 3. GET /api/config
   if (path === '/api/config' && method === 'GET') {
-    const packages = await storage.listPackages();
+    const rawPackages = await storage.listPackages();
+    const patchedApps = await storage.listPatchedApps();
+    const lastRun = await storage.getLastRunInfo();
+    const packages = attachLastResultsToPackages(rawPackages, patchedApps, lastRun);
     const repos = await storage.getPatchRepos();
     const system = (await storage.getConfig('system')) || {};
     const email = (await storage.getConfig('email')) || {};
@@ -307,12 +403,14 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // 3a. Runner State Sync: GET /api/runner/sync
   if (path === '/api/runner/sync' && method === 'GET') {
-    const packages = await storage.listPackages();
+    const rawPackages = await storage.listPackages();
+    const patchedApps = await storage.listPatchedApps();
+    const lastRun = await storage.getLastRunInfo();
+    const packages = attachLastResultsToPackages(rawPackages, patchedApps, lastRun);
     const repos = await storage.getPatchRepos();
     const system = (await storage.getConfig('system')) || {};
     const email = (await storage.getConfig('email')) || {};
     const tunnels = (await storage.getConfig('tunnels')) || {};
-    const patchedApps = await storage.listPatchedApps();
     const repoVersions = (await storage.getConfig('repo_versions')) || {};
 
     return json({

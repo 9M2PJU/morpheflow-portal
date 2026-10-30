@@ -283,6 +283,16 @@ jobs:
               ver = apk.parent.name
               sz = apk.stat().st_size
               dl_url = f'https://github.com/{repo}/releases/download/{tag}/{apk.name}' if tag else ''
+              res_file = apk.parent / 'result.json'
+              res_json = None
+              applied_patches = []
+              if res_file.is_file():
+                  try:
+                      res_data = json.loads(res_file.read_text(encoding='utf-8'))
+                      res_json = json.dumps(res_data)
+                      applied_patches = res_data.get('applied_patches') or []
+                  except Exception:
+                      pass
               patched_apps.append({
                   'package': pkg,
                   'version': ver,
@@ -291,6 +301,8 @@ jobs:
                   'size_bytes': sz,
                   'download_url': dl_url,
                   'release_url': f'https://github.com/{repo}/releases/tag/{tag}' if tag else None,
+                  'applied_patches': applied_patches,
+                  'result_json': res_json,
               })
 
           # Collect logs
