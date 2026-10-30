@@ -97,8 +97,9 @@ jobs:
                               if opt_data:
                                   opt_path = Path('tools/automorph-data/options') / pkg_id / f"{owner}_options.json"
                                   opt_path.parent.mkdir(parents=True, exist_ok=True)
+                                  content = [opt_data] if isinstance(opt_data, dict) else opt_data
                                   with open(opt_path, 'w', encoding='utf-8') as opt_f:
-                                      json.dump(opt_data, opt_f, indent=2)
+                                      json.dump(content, opt_f, indent=2)
 
                   # Populate stubs for already-patched apps so main.py skips up-to-date versions
                   stub_count = 0

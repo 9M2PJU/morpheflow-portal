@@ -494,8 +494,18 @@ class Morphe:
 
     def merge_target_repos(self, package_name: str, repos: set[str], version_name: str) -> Path:
         if len(repos) == 1:
-            logger.debug(f" └── Only one repo ('{next(iter(repos))}') for '{version_name}', package: '{package_name}'")
-            options_to_use = self.options_dir / package_name / f"{self.repo_details[next(iter(repos))]['owner']}_options.json"
+            repo_name = next(iter(repos))
+            logger.debug(f" └── Only one repo ('{repo_name}') for '{version_name}', package: '{package_name}'")
+            options_to_use = self.options_dir / package_name / f"{self.repo_details[repo_name]['owner']}_options.json"
+            if options_to_use.is_file():
+                try:
+                    with open(options_to_use, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if isinstance(data, dict):
+                        with open(options_to_use, "w", encoding="utf-8") as f:
+                            json.dump([data], f, indent=2)
+                except Exception as e:
+                    logger.warning(f" └── Failed normalizing options file {options_to_use}: {e}")
             return options_to_use
 
         app_options_dir = self.options_dir / package_name
@@ -511,6 +521,9 @@ class Morphe:
 
             with open(options_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            if isinstance(data, dict):
+                data = [data]
 
             for block in data:
                 sha = block.get("meta", {}).get("sha256")
@@ -533,7 +546,9 @@ class Morphe:
         with open(options_to_use, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        entries = [data] if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        if isinstance(data, dict):
+            data = [data]
+        entries = data if isinstance(data, list) else []
 
         for aliase, details in enabled_patches_per_app_versions.items():
             if len(details) > 1:
@@ -564,7 +579,7 @@ class Morphe:
                                 patches[patch_name]['enabled'] = True
 
         with open(options_to_use, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(entries, f, indent=2)
 
     def get_sha(self, repo: str, package_name: str) -> set[str]:
         shas = set()
