@@ -432,7 +432,11 @@ if __name__ == "__main__":
     config_file = project_root / "tools" / "automorph-data" / "config.yaml"
 
     if not config_file.is_file():
-        raise FileNotFoundError(f"config.yaml not found at: {config_file}")
+        fallback_config = project_root / "defaults" / "config.yaml"
+        if fallback_config.is_file():
+            config_file = fallback_config
+        else:
+            raise FileNotFoundError(f"config.yaml not found at: {config_file}")
     
     with config_file.open("r", encoding="utf-8") as f:
       conf = yaml.safe_load(f) or {}

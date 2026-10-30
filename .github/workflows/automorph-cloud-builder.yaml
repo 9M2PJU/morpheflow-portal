@@ -63,7 +63,7 @@ jobs:
         run: |
           if [ -n "$CF_WORKER_URL" ]; then
             echo "[*] Fetching configuration and build state from Cloudflare Worker: $CF_WORKER_URL"
-            python3 -c "
+            python3 - << 'EOF' || true
           import urllib.request, json, yaml, os
           from pathlib import Path
 
@@ -115,7 +115,7 @@ jobs:
                   print(f'[✓] Successfully synced config and {stub_count} existing app stubs from Worker D1.')
           except Exception as e:
               print(f'[!] Could not fetch runner state from Worker: {e}. Falling back to defaults.')
-          " || true
+          EOF
           fi
 
       - name: Run AutoMorph Patching Pipeline
@@ -231,7 +231,7 @@ jobs:
             exit 0
           fi
 
-          python3 -c "
+          python3 - << 'EOF' || true
           import urllib.request, json, os, glob
           from pathlib import Path
 
@@ -269,8 +269,9 @@ jobs:
           repo_versions_file = Path('tools/automorph-data/state/repo_versions.json')
           repo_versions = json.loads(repo_versions_file.read_text()) if repo_versions_file.is_file() else {}
 
+          run_tag = tag if tag else "check"
           payload = {
-              'run_id': f'run-gh-{tag or "check"}',
+              'run_id': f'run-gh-{run_tag}',
               'status': 'success',
               'returncode': 0,
               'duration_seconds': duration,
@@ -297,4 +298,4 @@ jobs:
                   print(f'[✓] Successfully reported metrics to Cloudflare Worker ({resp.status}).')
           except Exception as e:
               print(f'[!] Failed to report metrics to Cloudflare Worker: {e}')
-          " || true
+          EOF

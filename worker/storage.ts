@@ -383,8 +383,14 @@ export class StorageService {
   async getRunLogs(runId?: string): Promise<{ logs: string[]; run_id: string | null }> {
     let targetRunId = runId;
     if (!targetRunId) {
-      const lastRun = await this.getLastRunInfo();
-      targetRunId = lastRun?.run_id;
+      const activeLock = await this.getActiveLock();
+      const now = Date.now() / 1000;
+      if (activeLock && activeLock.run_id && (!activeLock.expires_at || activeLock.expires_at > now)) {
+        targetRunId = activeLock.run_id;
+      } else {
+        const lastRun = await this.getLastRunInfo();
+        targetRunId = lastRun?.run_id;
+      }
     }
     if (!targetRunId) {
       return { logs: ['No build executions recorded yet.'], run_id: null };
@@ -399,6 +405,20 @@ export class StorageService {
     for (const r of results || []) {
       lines.push(...r.log_text.split('\n'));
     }
+
+    if (lines.length === 0) {
+      const activeLock = await this.getActiveLock();
+      if (activeLock && activeLock.run_id === targetRunId) {
+        return {
+          logs: [
+            `[*] AutoMorph build pipeline in progress for ${activeLock.package || 'all packages'}...`,
+            '[*] Waiting for runner logs.',
+          ],
+          run_id: targetRunId,
+        };
+      }
+    }
+
     return { logs: lines, run_id: targetRunId };
   }
 
