@@ -343,13 +343,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const exportList = Array.from(appMap.values()).map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
+      const escapedPkg = a.package.replace(/\./g, '\\.');
       return {
         id: a.package,
         url: perAppTagUrl,
         author: author,
         name: a.package.split('.').pop() || a.package,
         additionalSettings: JSON.stringify({
-          apkFilterRegEx: '\\.apk$',
+          fallbackToOlderReleases: true,
+          filterReleaseTitlesByRegEx: escapedPkg,
+          apkFilterRegEx: `${escapedPkg}.*\\.apk$`,
         }),
       };
     });
@@ -635,13 +638,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const files = apps.map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
+      const escapedPkg = a.package.replace(/\./g, '\\.');
       const obtainiumPayload = {
         id: a.package,
         url: perAppTagUrl,
         author: repo.split('/')[0] || 'AutoMorph',
         name: a.package.split('.').pop() || a.package,
         additionalSettings: JSON.stringify({
-          apkFilterRegEx: '\\.apk$',
+          fallbackToOlderReleases: true,
+          filterReleaseTitlesByRegEx: escapedPkg,
+          apkFilterRegEx: `${escapedPkg}.*\\.apk$`,
         }),
       };
       const obtainiumUrl = `obtainium://app/${encodeURIComponent(JSON.stringify(obtainiumPayload))}`;

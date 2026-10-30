@@ -194,10 +194,20 @@ jobs:
               # 1. Update rolling Per-App Release for Obtainium
               echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
               gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
+              PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
+              cat << EOF > "$PER_APP_NOTES"
+Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`.
+
+### Obtainium Tracking URL:
+\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`
+
+Add this URL to Obtainium to receive automatic updates whenever ${app_name} is updated.
+EOF
               gh release create "${PER_APP_TAG}" "$apk" \
                 --title "${app_name} (${pkg_dir}) v${ver_dir}" \
-                --notes "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`.\n\n### Obtainium Tracking URL:\n\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`\n\nAdd this URL to Obtainium to receive automatic updates whenever ${app_name} is updated." \
+                --notes-file "$PER_APP_NOTES" \
                 --latest=false || gh release upload "${PER_APP_TAG}" "$apk" --clobber
+              rm -f "$PER_APP_NOTES"
                 
               # 2. Also create permanent versioned tag (e.g. com.reddit.frontpage-v2026.24.0)
               VER_TAG="${pkg_dir}-v${ver_dir}"
