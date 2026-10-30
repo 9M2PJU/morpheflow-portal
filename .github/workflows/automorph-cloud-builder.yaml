@@ -194,38 +194,21 @@ jobs:
               # 1. Update rolling Per-App Release for Obtainium
               echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
               gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
-              OBTAINIUM_URL=$(python3 -c "
-import json, urllib.parse
-payload = {
-    'id': '${pkg_dir}',
-    'url': 'https://github.com/${REPO}',
-    'author': '${REPO}'.split('/')[0],
-    'name': '${app_name}',
-    'additionalSettings': json.dumps({
-        'fallbackToOlderReleases': True,
-        'filterReleaseTitlesByRegEx': '${app_name}',
-        'apkFilterRegEx': '${app_name}'.lower()
-    })
-}
-raw = 'obtainium://app/' + urllib.parse.quote(json.dumps(payload))
-print('https://apps.obtainium.imranr.dev/redirect?r=' + urllib.parse.quote(raw))
-")
+              OBTAINIUM_URL=$(python3 -c "import json, urllib.parse; p={'id':'${pkg_dir}','url':'https://github.com/${REPO}','author':'${REPO}'.split('/')[0],'name':'${app_name}','additionalSettings':json.dumps({'fallbackToOlderReleases':True,'filterReleaseTitlesByRegEx':'${app_name}','apkFilterRegEx':'${app_name}'.lower()})}; raw='obtainium://app/'+urllib.parse.quote(json.dumps(p)); print('https://apps.obtainium.imranr.dev/redirect?r='+urllib.parse.quote(raw))")
               PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
-              cat << EOF > "$PER_APP_NOTES"
-Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`.
-
-### 📲 One-Click Install / Track in Obtainium:
-👉 [**Open in Obtainium**](${OBTAINIUM_URL})
-
-*(Tapping this on your phone opens Obtainium directly with all filters and release fallback pre-configured!)*
-
----
-
-### Manual Tracking URL:
-\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`
-
-> **Note for Private Repo:** Ensure your GitHub Personal Access Token (PAT) is saved in Obtainium: **Settings** ➔ **App Sources** ➔ **GitHub**.
-EOF
+              echo "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`." > "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
+              echo "### 📲 One-Click Install / Track in Obtainium:" >> "$PER_APP_NOTES"
+              echo "👉 [**Open in Obtainium**](${OBTAINIUM_URL})" >> "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
+              echo "*(Tapping this on your phone opens Obtainium directly with all filters and release fallback pre-configured!)*" >> "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
+              echo "---" >> "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
+              echo "### Manual Tracking URL:" >> "$PER_APP_NOTES"
+              echo "\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`" >> "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
+              echo "> **Note for Private Repo:** Ensure your GitHub Personal Access Token (PAT) is saved in Obtainium: **Settings** ➔ **App Sources** ➔ **GitHub**." >> "$PER_APP_NOTES"
               gh release create "${PER_APP_TAG}" "$apk" \
                 --title "${app_name} (${pkg_dir}) v${ver_dir}" \
                 --notes-file "$PER_APP_NOTES" \
