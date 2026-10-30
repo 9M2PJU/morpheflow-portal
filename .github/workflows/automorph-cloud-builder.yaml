@@ -170,6 +170,8 @@ jobs:
             NOTES_FILE="release_notes_${DATE_TAG}.md"
             echo "## 🚀 AutoMorph Cloud Build \`${DATE_TAG}\`" > "$NOTES_FILE"
             echo "" >> "$NOTES_FILE"
+            echo "🌐 **AutoMorph Web Portal:** [https://automorph.w161112218.workers.dev](https://automorph.w161112218.workers.dev) | 🐙 **GitHub Repository:** [wiwek13/AutoMorph](https://github.com/${REPO})" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
             echo "### 📦 Newly Built APKs in this Release:" >> "$NOTES_FILE"
             
             for apk in $APK_FILES; do
@@ -185,21 +187,25 @@ jobs:
               if [ "$pkg_dir" = "com.truecaller" ]; then app_name="Truecaller"; fi
               
               PER_APP_TAG="app-${pkg_dir}"
+              OBTAINIUM_URL=$(python3 -c "import json, urllib.parse; p={'id':'${pkg_dir}','url':'https://github.com/${REPO}','author':'${REPO}'.split('/')[0],'name':'${app_name}','additionalSettings':json.dumps({'fallbackToOlderReleases':True,'filterReleaseTitlesByRegEx':'${app_name}','apkFilterRegEx':'${app_name}'.lower()})}; raw='obtainium://app/'+urllib.parse.quote(json.dumps(p)); print('https://apps.obtainium.imranr.dev/redirect?r='+urllib.parse.quote(raw))")
+
               echo "" >> "$NOTES_FILE"
               echo "- **${app_name}** (\`${pkg_dir}\`) - \`v${ver_dir}\`" >> "$NOTES_FILE"
               echo "  - **File:** \`${fname}\`" >> "$NOTES_FILE"
               echo "  - **Direct Download:** [${fname}](https://github.com/${REPO}/releases/download/${DATE_TAG}/${fname})" >> "$NOTES_FILE"
               echo "  - **Obtainium Source URL:** \`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`" >> "$NOTES_FILE"
+              echo "  - 👉 [**📲 Add to Obtainium**](${OBTAINIUM_URL})" >> "$NOTES_FILE"
               
               # 1. Update rolling Per-App Release for Obtainium
               echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
               gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
-              OBTAINIUM_URL=$(python3 -c "import json, urllib.parse; p={'id':'${pkg_dir}','url':'https://github.com/${REPO}','author':'${REPO}'.split('/')[0],'name':'${app_name}','additionalSettings':json.dumps({'fallbackToOlderReleases':True,'filterReleaseTitlesByRegEx':'${app_name}','apkFilterRegEx':'${app_name}'.lower()})}; raw='obtainium://app/'+urllib.parse.quote(json.dumps(p)); print('https://apps.obtainium.imranr.dev/redirect?r='+urllib.parse.quote(raw))")
               PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
               echo "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`." > "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
+              echo "🌐 **AutoMorph Web Portal:** [https://automorph.w161112218.workers.dev](https://automorph.w161112218.workers.dev)" >> "$PER_APP_NOTES"
+              echo "" >> "$PER_APP_NOTES"
               echo "### 📲 One-Click Install / Track in Obtainium:" >> "$PER_APP_NOTES"
-              echo "👉 [**Open in Obtainium**](${OBTAINIUM_URL})" >> "$PER_APP_NOTES"
+              echo "👉 [**📲 Add to Obtainium**](${OBTAINIUM_URL})" >> "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
               echo "*(Tapping this on your phone opens Obtainium directly with all filters and release fallback pre-configured!)*" >> "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
@@ -227,8 +233,8 @@ jobs:
             echo "---" >> "$NOTES_FILE"
             echo "### 📲 Obtainium Setup Guide:" >> "$NOTES_FILE"
             echo "To track and automatically update each app individually in Obtainium:" >> "$NOTES_FILE"
-            echo "1. Open Obtainium and tap **Add App**." >> "$NOTES_FILE"
-            echo "2. Paste the **Obtainium Source URL** for the app (e.g. \`https://github.com/${REPO}/releases/tag/app-com.reddit.frontpage\`)." >> "$NOTES_FILE"
+            echo "1. Tap the **📲 Add to Obtainium** link next to the app above for instant 1-click configuration." >> "$NOTES_FILE"
+            echo "2. Alternatively, open Obtainium, tap **Add App**, and paste the **Obtainium Source URL** for the app (e.g. \`https://github.com/${REPO}/releases/tag/app-com.reddit.frontpage\`)." >> "$NOTES_FILE"
             echo "3. Obtainium will track that app's dedicated release tag and notify you whenever a new version is compiled!" >> "$NOTES_FILE"
             
             # 3. Create unified batch release
