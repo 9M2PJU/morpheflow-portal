@@ -194,14 +194,37 @@ jobs:
               # 1. Update rolling Per-App Release for Obtainium
               echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
               gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
+              OBTAINIUM_URL=$(python3 -c "
+import json, urllib.parse
+payload = {
+    'id': '${pkg_dir}',
+    'url': 'https://github.com/${REPO}/releases/tag/${PER_APP_TAG}',
+    'author': '${REPO}'.split('/')[0],
+    'name': '${app_name}',
+    'additionalSettings': json.dumps({
+        'fallbackToOlderReleases': True,
+        'filterReleaseTitlesByRegEx': '${pkg_dir}'.replace('.', r'\\.'),
+        'apkFilterRegEx': '${pkg_dir}'.replace('.', r'\\.') + r'.*\\.apk$'
+    })
+}
+raw = 'obtainium://app/' + urllib.parse.quote(json.dumps(payload))
+print('https://apps.obtainium.imranr.dev/redirect?r=' + urllib.parse.quote(raw))
+")
               PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
               cat << EOF > "$PER_APP_NOTES"
 Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`.
 
-### Obtainium Tracking URL:
+### 📲 One-Click Install / Track in Obtainium:
+👉 [**Open in Obtainium**](${OBTAINIUM_URL})
+
+*(Tapping this on your phone opens Obtainium directly with all filters and release fallback pre-configured!)*
+
+---
+
+### Manual Tracking URL:
 \`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`
 
-Add this URL to Obtainium to receive automatic updates whenever ${app_name} is updated.
+> **Note for Private Repo:** Ensure your GitHub Personal Access Token (PAT) is saved in Obtainium: **Settings** ➔ **App Sources** ➔ **GitHub**.
 EOF
               gh release create "${PER_APP_TAG}" "$apk" \
                 --title "${app_name} (${pkg_dir}) v${ver_dir}" \
