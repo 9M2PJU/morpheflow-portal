@@ -256,7 +256,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const nextRun = resolveScheduleTarget(system, env);
 
-    const isRunning = Boolean(activeLock);
+    const now = Date.now() / 1000;
+    const isRunning = Boolean(activeLock && (!activeLock.expires_at || activeLock.expires_at > now));
     const activeRun = isRunning
       ? {
           run_id: activeLock.run_id,
