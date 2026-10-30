@@ -198,13 +198,13 @@ jobs:
 import json, urllib.parse
 payload = {
     'id': '${pkg_dir}',
-    'url': 'https://github.com/${REPO}/releases/tag/${PER_APP_TAG}',
+    'url': 'https://github.com/${REPO}',
     'author': '${REPO}'.split('/')[0],
     'name': '${app_name}',
     'additionalSettings': json.dumps({
         'fallbackToOlderReleases': True,
-        'filterReleaseTitlesByRegEx': '${pkg_dir}'.replace('.', r'\\.'),
-        'apkFilterRegEx': '${pkg_dir}'.replace('.', r'\\.') + r'.*\\.apk$'
+        'filterReleaseTitlesByRegEx': '${app_name}',
+        'apkFilterRegEx': '${app_name}'.lower()
     })
 }
 raw = 'obtainium://app/' + urllib.parse.quote(json.dumps(payload))

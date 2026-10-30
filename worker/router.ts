@@ -343,16 +343,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const exportList = Array.from(appMap.values()).map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
-      const escapedPkg = a.package.replace(/\./g, '\\.');
+      const appName = a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package);
       return {
         id: a.package,
-        url: perAppTagUrl,
+        url: `https://github.com/${repo}`,
         author: author,
-        name: a.package.split('.').pop() || a.package,
+        name: appName,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
-          filterReleaseTitlesByRegEx: escapedPkg,
-          apkFilterRegEx: `${escapedPkg}.*\\.apk$`,
+          filterReleaseTitlesByRegEx: appName,
+          apkFilterRegEx: appName.toLowerCase(),
         }),
       };
     });
@@ -638,16 +638,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const files = apps.map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
-      const escapedPkg = a.package.replace(/\./g, '\\.');
+      const appName = a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package);
       const obtainiumPayload = {
         id: a.package,
-        url: perAppTagUrl,
+        url: `https://github.com/${repo}`,
         author: repo.split('/')[0] || 'AutoMorph',
-        name: a.package.split('.').pop() || a.package,
+        name: appName,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
-          filterReleaseTitlesByRegEx: escapedPkg,
-          apkFilterRegEx: `${escapedPkg}.*\\.apk$`,
+          filterReleaseTitlesByRegEx: appName,
+          apkFilterRegEx: appName.toLowerCase(),
         }),
       };
       const obtainiumUrl = `obtainium://app/${encodeURIComponent(JSON.stringify(obtainiumPayload))}`;
