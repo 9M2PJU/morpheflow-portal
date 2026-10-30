@@ -88,6 +88,18 @@ jobs:
                       with open('tools/automorph-data/state/repo_versions.json', 'w') as f:
                           json.dump(repo_versions, f, indent=2)
 
+                  # Restore customized patch options from database
+                  for pkg_obj in config.get('packages', []):
+                      pkg_id = pkg_obj.get('package') or pkg_obj.get('package_name')
+                      pkg_opts = pkg_obj.get('options', {})
+                      if pkg_id and isinstance(pkg_opts, dict):
+                          for owner, opt_data in pkg_opts.items():
+                              if opt_data:
+                                  opt_path = Path('tools/automorph-data/options') / pkg_id / f"{owner}_options.json"
+                                  opt_path.parent.mkdir(parents=True, exist_ok=True)
+                                  with open(opt_path, 'w', encoding='utf-8') as opt_f:
+                                      json.dump(opt_data, opt_f, indent=2)
+
                   # Populate stubs for already-patched apps so main.py skips up-to-date versions
                   stub_count = 0
                   for app in patched_apps:
@@ -159,6 +171,7 @@ jobs:
               if [ "$pkg_dir" = "com.google.android.youtube" ]; then app_name="YouTube"; fi
               if [ "$pkg_dir" = "com.google.android.apps.youtube.music" ]; then app_name="YouTube Music"; fi
               if [ "$pkg_dir" = "com.twitter.android" ]; then app_name="Twitter"; fi
+              if [ "$pkg_dir" = "com.truecaller" ]; then app_name="Truecaller"; fi
               
               PER_APP_TAG="app-${pkg_dir}"
               echo "" >> "$NOTES_FILE"

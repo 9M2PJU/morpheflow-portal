@@ -12,6 +12,19 @@ max_original_packages: null
 max_patched_packages: null
 
 packages:
+  - package: com.reddit.frontpage
+    package_name: Reddit
+    repos:
+      - https://github.com/MorpheApp/morphe-patches
+      - https://github.com/Alastor-Kaneki/Morphe-Patches
+      - https://github.com/jkennethcarino/adobo
+      - https://github.com/Mubelotix/my-morphe-patches
+      - https://github.com/Santodan/santodan-patches
+
+  - package: com.truecaller
+    package_name: Truecaller
+    repos:
+      - https://github.com/heval99/Heval-Morphe-Patches
 
 
 
