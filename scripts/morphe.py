@@ -492,6 +492,18 @@ class Morphe:
         with open(self.options_checksum_json, "w", encoding="utf-8") as f:
             json.dump(existing_checksums, f, indent=2, sort_keys=True)
 
+    @staticmethod
+    def sanitize_bundle(bundle: dict) -> dict:
+        if not isinstance(bundle, dict):
+            return bundle
+        meta = bundle.get("meta")
+        if isinstance(meta, dict):
+            if "repo" in meta and "source" not in meta:
+                meta["source"] = meta.pop("repo")
+            allowed_meta_keys = {"createdAt", "updatedAt", "source", "sha256"}
+            bundle["meta"] = {k: v for k, v in meta.items() if k in allowed_meta_keys}
+        return bundle
+
     def merge_target_repos(self, package_name: str, repos: set[str], version_name: str) -> Path:
         if len(repos) == 1:
             repo_name = next(iter(repos))
@@ -502,8 +514,11 @@ class Morphe:
                     with open(options_to_use, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     if isinstance(data, dict):
+                        data = [data]
+                    if isinstance(data, list):
+                        data = [self.sanitize_bundle(b) for b in data]
                         with open(options_to_use, "w", encoding="utf-8") as f:
-                            json.dump([data], f, indent=2)
+                            json.dump(data, f, indent=2)
                 except Exception as e:
                     logger.warning(f" └── Failed normalizing options file {options_to_use}: {e}")
             return options_to_use
@@ -526,6 +541,7 @@ class Morphe:
                 data = [data]
 
             for block in data:
+                block = self.sanitize_bundle(block)
                 sha = block.get("meta", {}).get("sha256")
                 if sha in seen_shas:
                     logger.info(f"    [!] Skipping duplicate bundle (sha256={sha}) from {owner}")
@@ -548,7 +564,7 @@ class Morphe:
 
         if isinstance(data, dict):
             data = [data]
-        entries = data if isinstance(data, list) else []
+        entries = [self.sanitize_bundle(b) for b in data] if isinstance(data, list) else []
 
         for aliase, details in enabled_patches_per_app_versions.items():
             if len(details) > 1:

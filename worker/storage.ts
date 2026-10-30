@@ -353,7 +353,7 @@ export class StorageService {
   async recordRunHistory(run: RunHistoryRecord): Promise<void> {
     await this.db
       .prepare(`
-        INSERT INTO run_history (
+        INSERT OR REPLACE INTO run_history (
           run_id, status, returncode, duration_seconds, duration_formatted, source, package, finished_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)

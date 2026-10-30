@@ -98,8 +98,18 @@ jobs:
                                   opt_path = Path('tools/automorph-data/options') / pkg_id / f"{owner}_options.json"
                                   opt_path.parent.mkdir(parents=True, exist_ok=True)
                                   content = [opt_data] if isinstance(opt_data, dict) else opt_data
+                                  cleaned = []
+                                  for b in content:
+                                      if isinstance(b, dict):
+                                          meta = b.get('meta', {})
+                                          if isinstance(meta, dict):
+                                              if 'repo' in meta and 'source' not in meta:
+                                                  meta['source'] = meta.pop('repo')
+                                              allowed = {'createdAt', 'updatedAt', 'source', 'sha256'}
+                                              b['meta'] = {k: v for k, v in meta.items() if k in allowed}
+                                          cleaned.append(b)
                                   with open(opt_path, 'w', encoding='utf-8') as opt_f:
-                                      json.dump(content, opt_f, indent=2)
+                                      json.dump(cleaned, opt_f, indent=2)
 
                   # Populate stubs for already-patched apps so main.py skips up-to-date versions
                   stub_count = 0
@@ -225,6 +235,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           RELEASE_TAG: ${{ steps.release.outputs.TAG }}
           DURATION: ${{ steps.patch.outputs.DURATION || 0 }}
+          PACKAGE_FILTER: ${{ inputs.package }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$CF_WORKER_URL" ]; then
@@ -233,13 +244,14 @@ jobs:
           fi
 
           python3 - << 'EOF' || true
-          import urllib.request, json, os, glob
+          import urllib.request, json, os, glob, time
           from pathlib import Path
 
           worker_url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/webhook/report'
           secret = os.environ.get('WEBHOOK_SECRET', '')
           tag = os.environ.get('RELEASE_TAG', '')
           repo = os.environ.get('REPO', '')
+          pkg_filter = os.environ.get('PACKAGE_FILTER', '').strip()
           duration = int(os.environ.get('DURATION', '0'))
 
           # Collect patched apps
@@ -270,14 +282,15 @@ jobs:
           repo_versions_file = Path('tools/automorph-data/state/repo_versions.json')
           repo_versions = json.loads(repo_versions_file.read_text()) if repo_versions_file.is_file() else {}
 
-          run_tag = tag if tag else "check"
+          run_tag = tag if tag else f"check-{int(time.time())}"
           payload = {
               'run_id': f'run-gh-{run_tag}',
-              'status': 'success',
-              'returncode': 0,
+              'status': 'success' if (patched_apps or not pkg_filter) else 'failed',
+              'returncode': 0 if (patched_apps or not pkg_filter) else 1,
               'duration_seconds': duration,
               'duration_formatted': f'{duration // 60}m {duration % 60}s',
               'source': 'github_actions',
+              'package': pkg_filter if pkg_filter else None,
               'patched_apps': patched_apps,
               'logs': logs[-1000:],
               'report_html': report_html,
