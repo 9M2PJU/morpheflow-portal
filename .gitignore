@@ -2,6 +2,7 @@ tools/*
 !tools/automorph-data/
 tools/automorph-data/*
 !tools/automorph-data/app_sources.yaml
+!tools/automorph-data/automorph.keystore
 tools/automorph-data/config.yaml*
 tools/automorph-data/options/
 tools/automorph-data/state/
@@ -10,6 +11,7 @@ morphe-data/
 .venv/
 .env
 *.keystore
+!tools/automorph-data/automorph.keystore
 *.bak
 tmp/
 .vscode/

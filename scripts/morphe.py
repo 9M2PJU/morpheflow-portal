@@ -30,8 +30,76 @@ class Morphe:
         self.repo_versions_json = self.state_dir / "repo_versions.json"
         self.options_checksum_json = self.state_dir / "options_checksum.json"
 
+        self.keystore_alias = os.getenv("AUTOMORPH_KEYSTORE_ALIAS", "automorph")
+        self.keystore_password = os.getenv("AUTOMORPH_KEYSTORE_PASSWORD", "automorph")
+        self.keystore_entry_password = os.getenv("AUTOMORPH_KEYSTORE_ENTRY_PASSWORD", "automorph")
+        self.keystore_path = self._resolve_keystore()
+
         self.repo_search: dict[str, set[str]] = {}
         self.enabled_patches_per_app: dict[str, dict[str, dict[str, str]]]
+
+    def _resolve_keystore(self) -> Path:
+        """
+        Resolves or generates a persistent keystore so that patched APK signatures
+        remain 100% deterministic and permanent across builds and updates.
+        """
+        import base64
+
+        # 1. Explicit path from env
+        env_path = os.getenv("AUTOMORPH_KEYSTORE_PATH")
+        if env_path:
+            p = Path(env_path)
+            if p.is_file():
+                logger.info(f"[*] Using keystore from AUTOMORPH_KEYSTORE_PATH: {p}")
+                return p
+
+        # 2. Base64 encoded secret from env (useful for CI secrets)
+        b64_keystore = os.getenv("AUTOMORPH_KEYSTORE_BASE64")
+        target_path = self.project_root / "tools" / "automorph-data" / "automorph.keystore"
+        if b64_keystore and not target_path.is_file():
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(target_path, "wb") as f:
+                    f.write(base64.b64decode(b64_keystore))
+                logger.info(f"[✓] Restored persistent keystore from AUTOMORPH_KEYSTORE_BASE64: {target_path}")
+                return target_path
+            except Exception as e:
+                logger.error(f"[!] Failed to decode AUTOMORPH_KEYSTORE_BASE64: {e}")
+
+        # 3. Dedicated persistent repository keystore
+        if target_path.is_file():
+            logger.info(f"[*] Using persistent AutoMorph keystore: {target_path}")
+            return target_path
+
+        # 4. Custom keystores placed in morphe-data
+        for custom_name in ("morphe.keystore", "Morphe.keystore"):
+            custom_p = self.project_root / "tools" / "morphe-data" / custom_name
+            if custom_p.is_file():
+                logger.info(f"[*] Using custom user keystore: {custom_p}")
+                return custom_p
+
+        # 5. If none exists, auto-generate automorph.keystore
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[*] Generating new permanent AutoMorph keystore at {target_path}...")
+        try:
+            gen_cmd = [
+                "keytool",
+                "-genkeypair",
+                "-alias", self.keystore_alias,
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "10000",
+                "-keystore", str(target_path),
+                "-storepass", self.keystore_password,
+                "-keypass", self.keystore_entry_password,
+                "-dname", "CN=AutoMorph, OU=AutoMorph, O=AutoMorph, L=Internet, ST=Global, C=XX"
+            ]
+            subprocess.run(gen_cmd, check=True, capture_output=True, text=True)
+            logger.info(f"[✓] Successfully generated persistent keystore: {target_path}")
+        except Exception as e:
+            logger.warning(f"[!] Could not run keytool to pre-generate keystore ({e}). Morphe CLI will create it on patch execution.")
+
+        return target_path
 
     def get_cached_repo(self, repo: str) -> Path | None:
         owner = self.repo_details[repo]['owner']
@@ -818,7 +886,14 @@ class Morphe:
             logger.error(f"No apk or xapk found for {package_name}, version: {version_name}")
             return False, dest, f"No APK or XAPK found for {package_name} v{version_name}"
 
-        cmd += ["--result-file", str(result_dest), "--options-file", str(options_to_use)]
+        cmd += [
+            "--keystore", str(self.keystore_path),
+            "--keystore-entry-alias", self.keystore_alias,
+            "--keystore-password", self.keystore_password,
+            "--keystore-entry-password", self.keystore_entry_password,
+            "--result-file", str(result_dest),
+            "--options-file", str(options_to_use)
+        ]
 
         if strat == 1:
             cmd += ["--force"]

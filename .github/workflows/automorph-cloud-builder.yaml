@@ -136,6 +136,8 @@ jobs:
           GOOPDL_ACCOUNT_EMAIL: ${{ secrets.GOOPDL_ACCOUNT_EMAIL }}
           GOOPDL_AAS_TOKEN: ${{ secrets.GOOPDL_AAS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTOMORPH_KEYSTORE_BASE64: ${{ secrets.AUTOMORPH_KEYSTORE_BASE64 }}
+          AUTOMORPH_KEYSTORE_PASSWORD: ${{ secrets.AUTOMORPH_KEYSTORE_PASSWORD }}
         run: |
           mkdir -p apps/original apps/patched tools/automorph-data/state/logs tools/automorph-data/state/reports
           START_TIME=$(date +%s)
