@@ -2662,11 +2662,35 @@ function renderProvisionPatches(pkg, defaultRepo) {
     return;
   }
 
+  let hasRenderedUniversalBundleSeparator = false;
+  let hasAppSpecificBundlePrior = false;
+
   container.innerHTML = bundleGroups.map((group, idx) => {
     const patches = group.patches || [];
     const isExpanded = idx === 0;
 
+    const isPurelyUniversalBundle = patches.length > 0 && patches.every(p => p.isUniversal);
+    if (!isPurelyUniversalBundle && patches.length > 0) {
+      hasAppSpecificBundlePrior = true;
+    }
+
+    let bundleSeparatorHtml = '';
+    if (isPurelyUniversalBundle && hasAppSpecificBundlePrior && !hasRenderedUniversalBundleSeparator) {
+      hasRenderedUniversalBundleSeparator = true;
+      bundleSeparatorHtml = `
+        <div class="patch-section-divider" style="margin: 1.25rem 0 0.75rem 0;" role="separator" aria-label="Universal Patch Sources">
+          <div class="patch-section-divider-line"></div>
+          <span class="patch-section-divider-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            Universal Patch Sources · Compatible with All Apps
+          </span>
+          <div class="patch-section-divider-line"></div>
+        </div>
+      `;
+    }
+
     return `
+      ${bundleSeparatorHtml}
       <div class="prov-bundle-section" id="prov-bundle-${idx}" style="margin-bottom: 0.75rem; border: 1px solid var(--border-hairline); border-radius: var(--radius-md); overflow: hidden;">
         <div class="prov-bundle-header" onclick="toggleBundleAccordion(${idx})" style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-raised); border-bottom: 1px solid var(--border-hairline); cursor: pointer; user-select: none;">
           <div class="prov-bundle-title" style="display: flex; align-items: center; gap: 0.5rem;">
@@ -2682,19 +2706,55 @@ function renderProvisionPatches(pkg, defaultRepo) {
         </div>
 
         <div class="prov-patch-list" id="prov-patch-list-${idx}" style="${isExpanded ? 'display: flex;' : 'display: none;'} flex-direction: column; padding: 0.5rem; gap: 0.25rem; background: var(--surface-lowest); max-height: 240px; overflow-y: auto;">
-          ${patches.map(p => `
-            <label class="prov-patch-item" style="display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm); cursor: pointer;">
-              <input type="checkbox" name="prov-patch" data-bundle="${idx}" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''} style="margin-top: 0.2rem; accent-color: var(--accent-base);">
-              <div class="prov-patch-content" style="flex: 1; min-width: 0;">
-                <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                  <span>${escapeHtml(p.name)}</span>
-                  ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
-                  ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+          ${(() => {
+            const appPatches = patches.filter(p => !p.isUniversal);
+            const univPatches = patches.filter(p => p.isUniversal);
+
+            const renderProvItem = (p) => `
+              <label class="prov-patch-item" style="display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm); cursor: pointer;">
+                <input type="checkbox" name="prov-patch" data-bundle="${idx}" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''} style="margin-top: 0.2rem; accent-color: var(--accent-base);">
+                <div class="prov-patch-content" style="flex: 1; min-width: 0;">
+                  <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>${escapeHtml(p.name)}</span>
+                    ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
+                    ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+                  </div>
+                  ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3;">${escapeHtml(p.description)}</div>` : ''}
                 </div>
-                ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3;">${escapeHtml(p.description)}</div>` : ''}
-              </div>
-            </label>
-          `).join('')}
+              </label>
+            `;
+
+            const appHtml = appPatches.map(renderProvItem).join('');
+            const univHtml = univPatches.map(renderProvItem).join('');
+
+            if (appPatches.length > 0 && univPatches.length > 0) {
+              return `
+                ${appHtml}
+                <div class="patch-section-divider" role="separator" aria-label="Universal Patches">
+                  <div class="patch-section-divider-line"></div>
+                  <span class="patch-section-divider-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    Universal Patches (${univPatches.length}) · Compatible with All Apps
+                  </span>
+                  <div class="patch-section-divider-line"></div>
+                </div>
+                ${univHtml}
+              `;
+            } else if (univPatches.length > 0 && appPatches.length === 0) {
+              return `
+                <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Universal Patches">
+                  <div class="patch-section-divider-line"></div>
+                  <span class="patch-section-divider-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    Universal Bundle · ${univPatches.length} Patches
+                  </span>
+                  <div class="patch-section-divider-line"></div>
+                </div>
+                ${univHtml}
+              `;
+            }
+            return appHtml;
+          })()}
         </div>
       </div>
     `;
@@ -3084,7 +3144,10 @@ function renderActiveAppliedPatches() {
     return;
   }
 
-  container.innerHTML = displayPatches.map(p => `
+  const appPatches = displayPatches.filter(p => !p.isUniversal);
+  const univPatches = displayPatches.filter(p => p.isUniversal);
+
+  const renderActiveRow = (p) => `
     <div class="applied-patch-row">
       <label class="switch-control" style="flex-shrink: 0; margin-right: 0.25rem;">
         <input type="checkbox" checked onchange="toggleManagePatch('${escapeHtml(p.key)}', false)">
@@ -3099,7 +3162,39 @@ function renderActiveAppliedPatches() {
       </div>
       <span class="badge" style="font-size: 0.6875rem; flex-shrink: 0;" title="${escapeHtml(p.repo)}">${escapeHtml(cleanRepoSlug(p.repo || p.owner))}</span>
     </div>
-  `).join('');
+  `;
+
+  const appHtml = appPatches.map(renderActiveRow).join('');
+  const univHtml = univPatches.map(renderActiveRow).join('');
+
+  if (appPatches.length > 0 && univPatches.length > 0) {
+    container.innerHTML = `
+      ${appHtml}
+      <div class="patch-section-divider" role="separator" aria-label="Active Universal Patches">
+        <div class="patch-section-divider-line"></div>
+        <span class="patch-section-divider-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Active Universal Patches (${univPatches.length}) · Compatible with All Apps
+        </span>
+        <div class="patch-section-divider-line"></div>
+      </div>
+      ${univHtml}
+    `;
+  } else if (univPatches.length > 0 && appPatches.length === 0) {
+    container.innerHTML = `
+      <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Active Universal Patches">
+        <div class="patch-section-divider-line"></div>
+        <span class="patch-section-divider-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Active Universal Patches (${univPatches.length})
+        </span>
+        <div class="patch-section-divider-line"></div>
+      </div>
+      ${univHtml}
+    `;
+  } else {
+    container.innerHTML = appHtml;
+  }
 }
 
 function renderManageAvailableBundles() {
@@ -3120,6 +3215,9 @@ function renderManageAvailableBundles() {
   container.querySelectorAll('details.prov-bundle-accordion[open]').forEach(d => {
     if (d.dataset.bundleRepo) openRepos.add(d.dataset.bundleRepo);
   });
+
+  let hasRenderedUniversalBundleSeparator = false;
+  let hasAppSpecificBundlePrior = false;
 
   const html = currentAppliedBundles.map(bundle => {
     let patches = bundle.patches || [];
@@ -3143,7 +3241,30 @@ function renderManageAvailableBundles() {
       }
     }
 
-    const patchesHtml = patches.length > 0 ? patches.map(p => {
+    const appPatches = patches.filter(p => !p.isUniversal);
+    const univPatches = patches.filter(p => p.isUniversal);
+
+    const isPurelyUniversalBundle = (bundle.patches || []).length > 0 && (bundle.patches || []).every(p => p.isUniversal);
+    if (!isPurelyUniversalBundle && (bundle.patches || []).length > 0) {
+      hasAppSpecificBundlePrior = true;
+    }
+
+    let bundleSeparatorHtml = '';
+    if (isPurelyUniversalBundle && hasAppSpecificBundlePrior && !hasRenderedUniversalBundleSeparator) {
+      hasRenderedUniversalBundleSeparator = true;
+      bundleSeparatorHtml = `
+        <div class="patch-section-divider" style="margin: 1.25rem 0 0.75rem 0;" role="separator" aria-label="Universal Patch Sources">
+          <div class="patch-section-divider-line"></div>
+          <span class="patch-section-divider-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            Universal Patch Sources · Compatible with All Apps
+          </span>
+          <div class="patch-section-divider-line"></div>
+        </div>
+      `;
+    }
+
+    const renderManageItem = (p) => {
       const key = `${p.name}@@${bundle.bundleRepo}`;
       const isChecked = Boolean(currentManagePatchesState.get(key)?.enabled);
 
@@ -3159,15 +3280,53 @@ function renderManageAvailableBundles() {
           </div>
         </label>
       `;
-    }).join('') : `
-      <div style="font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">
-        No patches listed in local cache for this source. Patches will be resolved during compilation.
-      </div>
-    `;
+    };
+
+    let patchesHtml = '';
+    if (patches.length === 0) {
+      patchesHtml = `
+        <div style="font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">
+          No patches listed in local cache for this source. Patches will be resolved during compilation.
+        </div>
+      `;
+    } else {
+      const appHtml = appPatches.map(renderManageItem).join('');
+      const univHtml = univPatches.map(renderManageItem).join('');
+
+      if (appPatches.length > 0 && univPatches.length > 0) {
+        patchesHtml = `
+          ${appHtml}
+          <div class="patch-section-divider" role="separator" aria-label="Universal Patches">
+            <div class="patch-section-divider-line"></div>
+            <span class="patch-section-divider-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              Universal Patches (${univPatches.length}) · Compatible with All Apps
+            </span>
+            <div class="patch-section-divider-line"></div>
+          </div>
+          ${univHtml}
+        `;
+      } else if (univPatches.length > 0 && appPatches.length === 0) {
+        patchesHtml = `
+          <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Universal Patches">
+            <div class="patch-section-divider-line"></div>
+            <span class="patch-section-divider-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              Universal Bundle · ${univPatches.length} Patches
+            </span>
+            <div class="patch-section-divider-line"></div>
+          </div>
+          ${univHtml}
+        `;
+      } else {
+        patchesHtml = appHtml;
+      }
+    }
 
     const isOpen = openRepos.has(bundle.bundleRepo) || Boolean(currentManageSearchFilter);
 
     return `
+      ${bundleSeparatorHtml}
       <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''}>
         <summary class="prov-bundle-header">
           <div class="prov-bundle-title-col">
@@ -3616,7 +3775,7 @@ function renderDrawerBody(app) {
         <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save URL</button>
       </div>
       <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <img src="/apk-icon.png" width="32" height="32" alt="APK" style="width: 32px; height: 32px; object-fit: contain; margin-bottom: 0.25rem;" onerror="this.style.display='none'">
         <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
         <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
         <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">

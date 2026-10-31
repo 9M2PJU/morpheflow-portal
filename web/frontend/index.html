@@ -712,7 +712,7 @@
 
         <div id="prompt-apk-dropzone" style="border: 2px dashed var(--border-medium); border-radius: var(--radius-md); padding: 1.75rem 1rem; text-align: center; background: var(--surface-sunken); cursor: pointer; transition: border-color 0.2s;" onclick="document.getElementById('prompt-apk-file-input').click()">
           <input type="file" id="prompt-apk-file-input" accept=".apk" style="display: none;">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="color: var(--accent); margin-bottom: 0.5rem;" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <img src="/apk-icon.png" width="48" height="48" alt="APK" style="width: 48px; height: 48px; object-fit: contain; margin-bottom: 0.5rem; display: inline-block;" onerror="this.style.display='none'">
           <div style="font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem;">Click to browse or drop .apk here</div>
           <div style="font-size: 0.75rem; color: var(--text-muted);">Direct upload to persistent AutoMorph cloud storage</div>
           <div id="prompt-apk-file-status" style="margin-top: 0.625rem; font-size: 0.8125rem; font-weight: 500;"></div>

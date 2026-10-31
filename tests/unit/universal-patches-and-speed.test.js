@@ -262,3 +262,24 @@ test('Morphe Desktop CLI v1.20.0+: Validates bytecode-mode and isolated scratch 
   const output = execSync(`${javaBin} -jar ${jarPath} -V`, { encoding: 'utf8' });
   assert.ok(output.includes('1.20.0'), `Morphe Desktop JAR must be v1.20.0+, got: ${output.trim()}`);
 });
+
+test('Universal vs App-Matched Patches: Visual separator components in CSS and HTML', () => {
+  const css = fs.readFileSync('web/frontend/css/morphe.css', 'utf8');
+  assert.ok(css.includes('.patch-section-divider'), 'morphe.css must contain .patch-section-divider');
+  assert.ok(css.includes('.patch-section-divider-line'), 'morphe.css must contain .patch-section-divider-line');
+  assert.ok(css.includes('.patch-section-divider-label'), 'morphe.css must contain .patch-section-divider-label');
+
+  const appJs = fs.readFileSync('web/frontend/js/app.js', 'utf8');
+  // Check renderProvisionPatches has partition and divider
+  assert.ok(appJs.includes('Universal Patches (${univPatches.length}) · Compatible with All Apps'), 'Provision modal must render universal divider');
+  assert.ok(appJs.includes('Universal Patch Sources · Compatible with All Apps'), 'Provision modal and Patch Manager must separate universal bundles');
+
+  // Check renderActiveAppliedPatches has divider
+  assert.ok(appJs.includes('Active Universal Patches (${univPatches.length}) · Compatible with All Apps'), 'Active list must separate universal active patches');
+
+  // Check dropzone uses apk-icon.png
+  assert.ok(appJs.includes('src="/apk-icon.png"'), 'app.js drawer dropzone must use /apk-icon.png');
+  const indexHtml = fs.readFileSync('web/frontend/index.html', 'utf8');
+  assert.ok(indexHtml.includes('src="/apk-icon.png"'), 'index.html missing apk dropzone must use /apk-icon.png');
+  assert.ok(fs.existsSync('web/frontend/apk-icon.png'), 'web/frontend/apk-icon.png asset must exist');
+});
