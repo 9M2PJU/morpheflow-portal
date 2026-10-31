@@ -718,7 +718,7 @@ if __name__ == "__main__":
     project_root = Path(__file__).resolve().parent.parent
     test_success = {}
 
-    patched_apks = list(project_root.glob("apps/patched/*/*/*_patched.apk"))
+    patched_apks = list(project_root.glob("apps/patched/*/*/*.apk"))
     for apk in patched_apks[:3]:
         pkg = apk.parent.parent.name
         test_success[pkg] = {

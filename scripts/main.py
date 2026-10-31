@@ -216,10 +216,9 @@ def check_patched_version(package_req: list, patched: Path, arch: str, sources: 
         
             logger.info(" ├── Version directory exists. Checking for apk...")
 
-            filename = f"{package_name}_{version}_patched.apk"
-            file_path = patched_version_path / filename
-            if file_path.is_file():
-                
+            existing_apks = [f for f in patched_version_path.glob("*.apk") if f.is_file()]
+            if existing_apks:
+                filename = existing_apks[0].name
                 if first_it:
                     logger.info(f" └── [✓] {filename} latest version {version} already patched. Skipping package...")
                     target_versions_set.clear()
@@ -229,7 +228,7 @@ def check_patched_version(package_req: list, patched: Path, arch: str, sources: 
                 first_it = False
                 continue
 
-            logger.info(f" └── {filename} does not exist. Added to needs patching list.")
+            logger.info(f" └── No APK found for version {version}. Added to needs patching list.")
             target_versions_set.add(version_tup)
 
         if target_versions_set:
@@ -260,12 +259,10 @@ def patch_piepline(package_name, details, downloader, morphe, enabled_patches, p
             run = 1
             target_tuple = targets[patch_attempt]
             target_version = target_tuple[0]
-            patched_package = patched_dir / package_name / target_version / f"{package_name}_{target_version}_patched.apk"
         else:
             run = 2
             target_tuple = targets[(patch_attempt - len(targets))]
             target_version = target_tuple[0]
-            patched_package = patched_dir / package_name / target_version / f"{package_name}_{target_version}_patched.apk"
 
             if len(failed_downloads) == len(targets):
                 break
@@ -273,8 +270,12 @@ def patch_piepline(package_name, details, downloader, morphe, enabled_patches, p
                 patch_attempt += 1
                 continue
 
-        if patched_package.is_file() and not force:
-            logger.info(f" └── [✓] {package_name} v{target_version} is already patched.")
+        ver_dir = patched_dir / package_name / target_version
+        existing_apks = [f for f in ver_dir.glob("*.apk") if f.is_file()] if ver_dir.is_dir() else []
+        patched_package = existing_apks[0] if existing_apks else None
+
+        if patched_package and patched_package.is_file() and not force:
+            logger.info(f" └── [✓] {package_name} v{target_version} is already patched: {patched_package.name}")
             return True, patched_package, attempt_details, None, None, None 
 
         patch_list, dl_reason = downloader.download_package_main(package_name, target_version)

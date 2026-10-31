@@ -192,8 +192,10 @@ class Morphe:
             try:
                 response = requests.get(api_url, headers=headers, timeout=10)
                 if response.status_code == 200:
-                    repo_version[repo] = re.findall(r"\d+", response.json().get("tag_name"))
-                    # repo_version[repo] = tuple(int(n) for n in re.findall(r"\d+", response.json().get("tag_name")))
+                    tag = response.json().get("tag_name")
+                    if tag:
+                        self.repo_details[repo]['tag_name'] = tag
+                    repo_version[repo] = re.findall(r"\d+", tag) if tag else []
 
                 elif response.status_code == 404:
                     logger.warning(" └── [!] 404 error")
@@ -281,6 +283,8 @@ class Morphe:
                 continue    
 
             tag_name = response.get('tag_name', "")
+            if tag_name:
+                self.repo_details[repo]['tag_name'] = tag_name
             dest = self.project_root / "tools" / "morphe-data" / "patches" / f"{owner}-{repo_name}" / f"{tag_name}__{file_name}"
             dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -409,6 +413,60 @@ class Morphe:
                 return None
 
         return mpp_path if mpp_path else None
+
+    @staticmethod
+    def extract_mpp_version(mpp_path: Path | None) -> str | None:
+        """
+        Extracts the patch bundle version from the .mpp file (ZIP archive MANIFEST.MF)
+        or falls back to regex matching on the filename.
+        """
+        if not mpp_path or not mpp_path.is_file():
+            return None
+        try:
+            import zipfile
+            with zipfile.ZipFile(mpp_path, 'r') as zf:
+                if 'META-INF/MANIFEST.MF' in zf.namelist():
+                    content = zf.read('META-INF/MANIFEST.MF').decode('utf-8', errors='ignore')
+                    for line in content.splitlines():
+                        if line.startswith('Version:'):
+                            v = line.split(':', 1)[1].strip()
+                            if v:
+                                return v
+        except Exception:
+            pass
+
+        # Fallback to filename patterns (e.g. v2.0.0__patches-2.0.0.mpp or patches-1.48.0.mpp)
+        m = re.search(r'(?:v)?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)\.mpp', mpp_path.name)
+        if m:
+            return m.group(1)
+        m2 = re.search(r'v?(\d+\.\d+(?:\.\d+)?)', mpp_path.name)
+        if m2:
+            return m2.group(1)
+        return None
+
+    def get_patch_version_identifier(self, repos: set[str]) -> str | None:
+        """
+        Resolves a concise, clean patch version identifier (e.g. 'v2.0.0' or 'v1.48.0')
+        for the given patch repositories.
+        """
+        versions = []
+        for repo in sorted(repos):
+            owner = self.repo_details.get(repo, {}).get('owner')
+            repo_name = self.repo_details.get(repo, {}).get('repo_name')
+            mpp_path = self.get_cached_repo_path(owner, repo_name, repo) if (owner and repo_name) else None
+            ver = self.extract_mpp_version(mpp_path)
+            if not ver:
+                tag = self.repo_details.get(repo, {}).get('tag_name')
+                if tag:
+                    ver = tag.lstrip('v')
+            if ver:
+                v_str = f"v{ver.lstrip('v')}"
+                if v_str not in versions:
+                    versions.append(v_str)
+
+        if not versions:
+            return None
+        return versions[0]
 
 #################################
 #           OPTIONS             #
@@ -869,7 +927,13 @@ class Morphe:
         if striplibs:
             cmd += ["--striplibs", self.arch]
 
-        output_dest = self.patched_dir / package_name / version_name / f"{package_name}_{version_name}_patched.apk"
+        patch_id = self.get_patch_version_identifier(repos)
+        if patch_id:
+            apk_filename = f"{package_name}_{version_name}_{patch_id}_patched.apk"
+        else:
+            apk_filename = f"{package_name}_{version_name}_patched.apk"
+
+        output_dest = self.patched_dir / package_name / version_name / apk_filename
         output_dest.parent.mkdir(parents=True, exist_ok=True)
         result_dest = output_dest.parent / "result.json"
         input_package = self.original_dir / package_name / version_name / f"{package_name}.xapk"
@@ -907,7 +971,7 @@ class Morphe:
 
             if output_dest.is_file():
                 logger.info(f" └── [✓] Successfully patched {package_name} v{version_name}")
-                self.write_patched_json(package_name, version_name, repos, strat, attempt, options_to_use, output_dest, result_dest)
+                self.write_patched_json(package_name, version_name, repos, strat, attempt, options_to_use, output_dest, result_dest, patch_id)
                 return True, output_dest, None
             else:
                 logger.error(" └── [!] Java exited with code 0, but output APK was not found.")
@@ -933,7 +997,7 @@ class Morphe:
 #      Write Patched Json       #
 #################################
 
-    def write_patched_json(self, package_name: str, version_name: str, repos: set[str], strat: int, attempt: int, options_to_use: Path, output: Path, result_dset: Path) -> None:
+    def write_patched_json(self, package_name: str, version_name: str, repos: set[str], strat: int, attempt: int, options_to_use: Path, output: Path, result_dset: Path, patch_version: str | None = None) -> None:
         attempt += 1
         patched_json = self.state_dir / "patched.json"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -998,7 +1062,23 @@ class Morphe:
 
         package_size = self.get_size(output)
         
-        patched_data.setdefault(package_name, {})[version_name] = {'applied_patches': applied_patches, 'patch_aliases': patch_aliases, 'location': str(output), **package_size, 'sha256': package_sha, 'repos': list(repos), 'strat': strat, 'attempt': attempt, 'arch': self.arch, 'time': timestamp}
+        entry = {
+            'applied_patches': applied_patches,
+            'patch_aliases': patch_aliases,
+            'location': str(output),
+            'filename': output.name,
+            **package_size,
+            'sha256': package_sha,
+            'repos': list(repos),
+            'strat': strat,
+            'attempt': attempt,
+            'arch': self.arch,
+            'time': timestamp
+        }
+        if patch_version:
+            entry['patch_version'] = patch_version
+
+        patched_data.setdefault(package_name, {})[version_name] = entry
 
         with open(patched_json, "w", encoding="utf-8") as f:
             json.dump(patched_data, f, indent=2)

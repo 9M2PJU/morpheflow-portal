@@ -229,9 +229,8 @@ def get_storage_stats() -> dict[str, Any]:
                         loc_str = str(info.get("location") or "")
                         loc = Path(loc_str) if loc_str else None
                         if not loc or not loc.is_file():
-                            candidate = patched_dir / pkg / ver / f"{pkg}_{ver}_patched.apk"
-                            if candidate.is_file():
-                                loc = candidate
+                            ver_dir = patched_dir / pkg / ver
+                            loc = next((f for f in ver_dir.glob("*.apk") if f.is_file()), None) if ver_dir.is_dir() else None
                         if loc and loc.is_file():
                             sz = loc.stat().st_size
                             total_bytes += sz

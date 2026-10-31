@@ -309,9 +309,9 @@ def get_last_patch_result(package: str, patched_registry: dict[str, Any] | None 
             loc = Path(loc_str) if loc_str else None
             if not loc or not loc.is_file():
                 # Fallback to standard app location if path moved
-                candidate = PATCHED_DIR / package / ver_name / f"{package}_{ver_name}_patched.apk"
-                if candidate.is_file():
-                    loc = candidate
+                ver_dir = PATCHED_DIR / package / ver_name
+                if ver_dir.is_dir():
+                    loc = next((f for f in ver_dir.glob("*.apk") if f.is_file()), None)
             if loc and loc.is_file():
                 t_str = ver_info.get("time", "")
                 t_val = 0.0
@@ -443,11 +443,11 @@ def get_last_patch_result(package: str, patched_registry: dict[str, Any] | None 
             for ver_entry in pkg_dir.iterdir():
                 if ver_entry.is_dir():
                     res_file = ver_entry / "result.json"
-                    apk_file = ver_entry / f"{package}_{ver_entry.name}_patched.apk"
+                    apk_file = next((f for f in ver_entry.glob("*.apk") if f.is_file()), None)
                     mtime = 0.0
                     if res_file.is_file():
                         mtime = res_file.stat().st_mtime
-                    elif apk_file.is_file():
+                    elif apk_file:
                         mtime = apk_file.stat().st_mtime
 
                     if mtime > 0.0:
@@ -656,16 +656,18 @@ def get_last_patch_result(package: str, patched_registry: dict[str, Any] | None 
     # Direct download link for the succeeded version
     download_url = None
     apk_name = None
-    apk_file = PATCHED_DIR / package / card_version / f"{package}_{card_version}_patched.apk"
-    if apk_file.is_file():
-        download_url = f"/files/{package}/{card_version}/{package}_{card_version}_patched.apk"
-        apk_name = f"{package}_{card_version}_patched.apk"
+    card_dir = PATCHED_DIR / package / card_version
+    apk_file = next((f for f in card_dir.glob("*.apk") if f.is_file()), None) if card_dir.is_dir() else None
+    if apk_file:
+        download_url = f"/files/{package}/{card_version}/{apk_file.name}"
+        apk_name = apk_file.name
     elif candidate_results:
         for _, cver, _ in candidate_results:
-            capk = PATCHED_DIR / package / cver / f"{package}_{cver}_patched.apk"
-            if capk.is_file():
-                download_url = f"/files/{package}/{cver}/{package}_{cver}_patched.apk"
-                apk_name = f"{package}_{cver}_patched.apk"
+            c_dir = PATCHED_DIR / package / cver
+            capk = next((f for f in c_dir.glob("*.apk") if f.is_file()), None) if c_dir.is_dir() else None
+            if capk:
+                download_url = f"/files/{package}/{cver}/{capk.name}"
+                apk_name = capk.name
                 break
 
     effective_time = max(report_timestamp, latest_apk_mtime)
