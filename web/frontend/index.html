@@ -77,8 +77,8 @@
   <!-- Google Fonts: Geist & Geist Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="css/morphe.css?v=4.1.0">
-  <link rel="stylesheet" href="css/morphe.css?v=4.1.0">
+  <link rel="preload" as="style" href="css/morphe.css?v=4.2.0">
+  <link rel="stylesheet" href="css/morphe.css?v=4.2.0">
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
 </head>
@@ -396,6 +396,28 @@
               Backup Keystore File
             </a>
           </div>
+
+          <div class="crypto-seal-card" style="margin-top: 1rem;">
+            <div class="crypto-header">
+              <span class="crypto-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Configuration Backup & Restore
+              </span>
+              <span class="keystore-pill">JSON</span>
+            </div>
+            <p class="crypto-notice" style="margin-bottom: 0.75rem;">
+              Export or restore all configured applications, patch selections, custom base APK URLs, and repository preferences in one portable backup file.
+            </p>
+            <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+              <button type="button" class="btn-primary" onclick="exportConfigBackup()" style="font-size: 0.75rem; justify-content: center; white-space: nowrap;">
+                Export Backup (.json)
+              </button>
+              <button type="button" class="btn-secondary" onclick="document.getElementById('input-restore-backup').click()" style="font-size: 0.75rem; justify-content: center;">
+                Import Backup File
+              </button>
+              <input type="file" id="input-restore-backup" accept=".json" style="display: none;" onchange="importConfigBackup(this.files[0])">
+            </div>
+          </div>
         </aside>
       </div>
     </main>
@@ -472,6 +494,11 @@
               <span style="color: var(--border-hairline);">|</span>
               <button type="button" class="btn-link" onclick="toggleAllProvPatches(false)" style="font-size: 0.75rem; color: var(--text-muted); background: none; border: none; cursor: pointer;">Clear All</button>
             </div>
+          </div>
+
+          <div class="store-search-wrap" style="margin-bottom: 0.75rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="prov-patch-search" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)…" oninput="filterProvPatches(this.value)">
           </div>
 
           <div class="prov-patches-wrapper" id="prov-patches-container">
@@ -579,6 +606,6 @@
   <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200;"></div>
 
   <!-- Client Application Logic -->
-  <script src="js/app.js?v=4.1.0"></script>
+  <script src="js/app.js?v=4.2.0"></script>
 </body>
 </html>

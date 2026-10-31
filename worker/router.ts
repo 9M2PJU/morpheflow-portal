@@ -401,6 +401,83 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     });
   }
 
+  // 3b. GET /api/config/backup
+  if (path === '/api/config/backup' && method === 'GET') {
+    const packages = await storage.listPackages();
+    const repos = await storage.getPatchRepos();
+    const system = (await storage.getConfig('system')) || {};
+    const email = (await storage.getConfig('email')) || {};
+    const tunnels = (await storage.getConfig('tunnels')) || {};
+
+    return json({
+      version: '2.1.0',
+      exported_at: new Date().toISOString(),
+      packages,
+      patch_repos: repos,
+      system,
+      email,
+      tunnels,
+    });
+  }
+
+  // 3c. POST /api/config/restore
+  if (path === '/api/config/restore' && method === 'POST') {
+    const body = await request.json<any>();
+    if (!body || (!Array.isArray(body.packages) && !Array.isArray(body.patch_repos))) {
+      return json({ error: 'Invalid backup payload: expected packages or patch_repos array' }, 400);
+    }
+
+    let restoredPackages = 0;
+    if (Array.isArray(body.packages)) {
+      for (const pkg of body.packages) {
+        const pkgName = pkg.package || pkg.package_name;
+        if (pkg && pkgName) {
+          await storage.savePackage({
+            package: pkgName,
+            package_name: pkg.name || pkg.package_name || pkgName,
+            enabled: pkg.enabled !== false,
+            repos: pkg.repos || [],
+            options: pkg.options || {},
+          });
+          restoredPackages++;
+        }
+      }
+    }
+
+    let restoredRepos = 0;
+    if (Array.isArray(body.patch_repos)) {
+      for (const r of body.patch_repos) {
+        if (typeof r === 'string' && r.trim()) {
+          await storage.addPatchRepo(r.trim());
+          restoredRepos++;
+        }
+      }
+    }
+
+    return json({
+      status: 'success',
+      restored_packages: restoredPackages,
+      restored_repos: restoredRepos,
+    });
+  }
+
+  // 3d. Notifications: GET /api/config/notifications
+  if (path === '/api/config/notifications' && method === 'GET') {
+    const notifs = (await storage.getConfig('notifications')) || {};
+    return json(notifs);
+  }
+
+  // 3e. Notifications: POST /api/config/notifications
+  if (path === '/api/config/notifications' && method === 'POST') {
+    const body = await request.json<any>();
+    await storage.setConfig('notifications', {
+      telegram_bot_token: (body.telegram_bot_token || '').trim(),
+      telegram_chat_id: (body.telegram_chat_id || '').trim(),
+      discord_webhook_url: (body.discord_webhook_url || '').trim(),
+    });
+    return json({ status: 'success' });
+  }
+
   // 3a. Runner State Sync: GET /api/runner/sync
   if (path === '/api/runner/sync' && method === 'GET') {
     const rawPackages = await storage.listPackages();
@@ -917,6 +994,56 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     // Release lock
     await storage.releaseLock();
+
+    // Dispatch Notifications (Telegram / Discord)
+    try {
+      const notifConfig = (await storage.getConfig<any>('notifications')) || {};
+      const patchedCount = Array.isArray(payload.patched_apps) ? payload.patched_apps.length : 0;
+      const statusEmoji = status === 'success' ? '✅' : '❌';
+
+      // 1. Telegram
+      if (notifConfig.telegram_bot_token && notifConfig.telegram_chat_id) {
+        const text = `${statusEmoji} *AutoMorph Build ${status.toUpperCase()}*\n\n` +
+          `• *Duration:* ${payload.duration_formatted || `${duration}s`}\n` +
+          `• *Target:* ${payload.package || 'All Targets'}\n` +
+          `• *Binaries Compiled:* ${patchedCount}\n` +
+          (payload.patched_apps && payload.patched_apps.length > 0
+            ? payload.patched_apps.map((a: any) => `  - [${a.package} (${a.version})](${a.release_url || a.download_url})`).join('\n')
+            : '');
+
+        ctx.waitUntil(
+          fetch(`https://api.telegram.org/bot${notifConfig.telegram_bot_token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: notifConfig.telegram_chat_id,
+              text,
+              parse_mode: 'Markdown',
+              disable_web_page_preview: false,
+            }),
+          }).catch(e => console.warn('Telegram notification failed:', e))
+        );
+      }
+
+      // 2. Discord Webhook
+      if (notifConfig.discord_webhook_url) {
+        const content = `${statusEmoji} **AutoMorph Build ${status.toUpperCase()}** (${payload.duration_formatted || `${duration}s`})\n` +
+          `Target: \`${payload.package || 'All Targets'}\` | Binaries: ${patchedCount}\n` +
+          (payload.patched_apps && payload.patched_apps.length > 0
+            ? payload.patched_apps.map((a: any) => `> **${a.package}** (${a.version}) - [Download / Release](${a.release_url || a.download_url})`).join('\n')
+            : '');
+
+        ctx.waitUntil(
+          fetch(notifConfig.discord_webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          }).catch(e => console.warn('Discord webhook failed:', e))
+        );
+      }
+    } catch (e) {
+      console.warn('Notification dispatcher error:', e);
+    }
 
     return json({ status: 'success', recorded: true });
   }

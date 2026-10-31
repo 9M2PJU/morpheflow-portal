@@ -36,6 +36,7 @@
   --accent-subtle:           oklch(58% 0.190 255 / 0.12);
   --accent-border:           oklch(58% 0.190 255 / 0.32);
   --accent-ink:              oklch(97% 0.005 252);
+  --metric-recommended:      oklch(76% 0.140 220);
 
 
   /* Additional Status & Tint Tokens */
@@ -90,21 +91,35 @@
   --refraction-rim:          inset 0 1px 0 oklch(100% 0 0 / 0.85);
   --refraction-rim-subtle:   inset 0 1px 0 oklch(100% 0 0 / 0.50);
 
-  --text-primary:            oklch(22% 0.020 260);
-  --text-secondary:          oklch(42% 0.018 258);
-  --text-muted:              oklch(56% 0.015 256);
-  --text-disabled:           oklch(70% 0.012 254);
+  --text-primary:            oklch(18% 0.020 260);
+  --text-secondary:          oklch(36% 0.018 258);
+  --text-muted:              oklch(46% 0.015 256);
+  --text-disabled:           oklch(65% 0.012 254);
 
-  --accent-base:             oklch(50% 0.190 255);
-  --accent-hover:            oklch(45% 0.200 255);
-  --accent-active:           oklch(40% 0.210 255);
-  --accent-subtle:           oklch(50% 0.190 255 / 0.08);
-  --accent-border:           oklch(50% 0.190 255 / 0.25);
+  --accent-base:             oklch(48% 0.200 255);
+  --accent-hover:            oklch(43% 0.210 255);
+  --accent-active:           oklch(38% 0.220 255);
+  --accent-subtle:           oklch(48% 0.200 255 / 0.10);
+  --accent-border:           oklch(48% 0.200 255 / 0.28);
   --accent-ink:              oklch(98% 0.005 252);
+  --metric-recommended:      oklch(42% 0.200 255);
 
-  --status-success-subtle:   oklch(65% 0.160 145 / 0.08);
-  --status-warning-subtle:   oklch(72% 0.150 75 / 0.08);
-  --status-danger-subtle:    oklch(62% 0.210 25 / 0.08);
+  --status-cyan:             oklch(44% 0.150 220);
+  --status-cyan-subtle:      oklch(44% 0.150 220 / 0.10);
+  --status-cyan-border:      oklch(44% 0.150 220 / 0.30);
+  --status-ahead-subtle:     oklch(20% 0.010 252 / 0.08);
+
+  --status-success:          oklch(42% 0.170 145);
+  --status-success-subtle:   oklch(42% 0.170 145 / 0.10);
+  --status-success-border:   oklch(42% 0.170 145 / 0.30);
+
+  --status-warning:          oklch(46% 0.160 65);
+  --status-warning-subtle:   oklch(46% 0.160 65 / 0.10);
+  --status-warning-border:   oklch(46% 0.160 65 / 0.30);
+
+  --status-danger:           oklch(46% 0.210 25);
+  --status-danger-subtle:    oklch(46% 0.210 25 / 0.10);
+  --status-danger-border:    oklch(46% 0.210 25 / 0.30);
 
   --shadow-sm:               0 1px 2px oklch(20% 0.010 252 / 0.05);
   --shadow-md:               0 8px 20px -4px oklch(20% 0.010 252 / 0.08);
@@ -1589,7 +1604,7 @@ a {
 }
 
 .metric-cell-value.highlight-recommended {
-  color: var(--accent-ink);
+  color: var(--metric-recommended);
 }
 
 .metric-cell-value.highlight-installed {

@@ -10,7 +10,8 @@
     "deploy": "node scripts/deploy-cf.cjs",
     "deploy:kv": "node scripts/deploy-cf.cjs --kv",
     "deploy:raw": "wrangler deploy",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "test": "node --test 'tests/**/*.test.js'"
   },
   "keywords": [
     "automorph",

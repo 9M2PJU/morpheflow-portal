@@ -2336,6 +2336,36 @@ function toggleBundleSelectAll(idx, isSelectAll) {
   checkboxes.forEach(cb => { cb.checked = Boolean(isSelectAll); });
 }
 
+function filterProvPatches(query) {
+  const q = (query || '').toLowerCase().trim();
+  const sections = document.querySelectorAll('.prov-bundle-section');
+
+  sections.forEach(sec => {
+    let visibleCount = 0;
+    const items = sec.querySelectorAll('.prov-patch-item');
+    items.forEach(item => {
+      const name = item.querySelector('.prov-patch-name')?.textContent?.toLowerCase() || '';
+      const desc = item.querySelector('.prov-patch-desc')?.textContent?.toLowerCase() || '';
+      const match = !q || name.includes(q) || desc.includes(q);
+      item.style.display = match ? 'flex' : 'none';
+      if (match) visibleCount++;
+    });
+
+    sec.style.display = visibleCount > 0 ? 'block' : 'none';
+    const countBadge = sec.querySelector('.prov-bundle-count');
+    if (countBadge) {
+      countBadge.textContent = q ? `${visibleCount} of ${items.length} Patches` : `${items.length} Patches`;
+    }
+
+    if (q && visibleCount > 0) {
+      const list = sec.querySelector('.prov-patch-list');
+      const arrow = sec.querySelector('.prov-accordion-arrow');
+      if (list) list.style.display = 'flex';
+      if (arrow) arrow.textContent = '▼';
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // App & Patch Update Action Modal
 // ---------------------------------------------------------------------------
@@ -2705,6 +2735,16 @@ function renderDrawerBody(app) {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Target Architecture</label>
+      <select id="drawer-app-arch" class="form-select">
+        <option value="arm64-v8a" ${(app.options?.target_arch || 'arm64-v8a') === 'arm64-v8a' ? 'selected' : ''}>arm64-v8a (64-bit Modern Android — Recommended)</option>
+        <option value="armeabi-v7a" ${(app.options?.target_arch) === 'armeabi-v7a' ? 'selected' : ''}>armeabi-v7a (32-bit Legacy Android)</option>
+        <option value="universal" ${(app.options?.target_arch) === 'universal' ? 'selected' : ''}>Universal (Combined All Architectures)</option>
+      </select>
+      <span class="form-helper" style="font-size: 0.6875rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">AutoMorph filters base APK downloads strictly matching this ABI.</span>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Connected Patch Repositories</label>
       <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
         ${reposHtml}
@@ -2759,6 +2799,12 @@ async function saveAppDrawerChanges() {
   const enabledCheckbox = document.getElementById('drawer-app-enabled');
   if (enabledCheckbox) {
     app.enabled = enabledCheckbox.checked;
+  }
+
+  const archSelect = document.getElementById('drawer-app-arch');
+  if (archSelect) {
+    if (!app.options) app.options = {};
+    app.options.target_arch = archSelect.value;
   }
 
   const saveBtn = document.getElementById('btn-drawer-save');
@@ -2851,11 +2897,59 @@ window.openAppUpdateModal = openAppUpdateModal;
 window.closeAppUpdateModal = closeAppUpdateModal;
 window.toggleBundleAccordion = toggleBundleAccordion;
 window.toggleBundleSelectAll = toggleBundleSelectAll;
+window.filterProvPatches = filterProvPatches;
 window.saveCustomApkUrl = saveCustomApkUrl;
 window.handleCustomApkFileSelected = handleCustomApkFileSelected;
+window.exportConfigBackup = exportConfigBackup;
+window.importConfigBackup = importConfigBackup;
 window.state = state;
 window.renderOverview = renderOverview;
 window.renderConfiguredApps = renderConfiguredApps;
+
+// ---------------------------------------------------------------------------
+// Config Backup & Restore Handlers
+// ---------------------------------------------------------------------------
+async function exportConfigBackup() {
+  try {
+    const res = await fetch('/api/config/backup');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `automorph-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('AutoMorph configuration exported successfully!', 'success');
+  } catch (err) {
+    showToast(`Export failed: ${err.message}`, 'error');
+  }
+}
+
+async function importConfigBackup(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const jsonPayload = JSON.parse(text);
+    if (!jsonPayload.packages && !jsonPayload.patch_repos) {
+      throw new Error('Unrecognized backup format: missing packages or patch_repos');
+    }
+    const res = await fetch('/api/config/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(jsonPayload)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const result = await res.json();
+    showToast(`Restored ${result.restored_packages || 0} apps and ${result.restored_repos || 0} repos!`, 'success');
+    await loadAllData();
+  } catch (err) {
+    showToast(`Import failed: ${err.message}`, 'error');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Custom Base APK Handlers (for unlisted/modded apps like InstaPrime)
@@ -3822,7 +3916,7 @@ function connectSseStream() {
     state.eventSource.close();
   }
 
-  const output = document.getElementById('terminal-output');
+  const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   const badge = document.getElementById('term-status-badge');
   const triggerBadge = document.getElementById('term-trigger-badge');
   const stopBtn = document.getElementById('btn-term-stop');
@@ -3946,7 +4040,7 @@ async function stopRunningPipeline() {
 }
 
 function appendTerminalLine(text) {
-  const output = document.getElementById('terminal-output');
+  const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   if (!output) return;
 
   const div = document.createElement('div');
@@ -3991,7 +4085,8 @@ function appendTerminalLine(text) {
 }
 
 function copyTerminalOutput() {
-  const text = document.getElementById('terminal-output')?.innerText || '';
+  const el = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
+  const text = el?.innerText || '';
   navigator.clipboard.writeText(text).then(() => {
     showToast('Logs copied to clipboard');
   });
@@ -4014,7 +4109,7 @@ async function openLastRunLogModal() {
   if (triggerBadge) {
     triggerBadge.style.display = 'none';
   }
-  const output = document.getElementById('terminal-output');
+  const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   const badge = document.getElementById('term-status-badge');
   const elapsedEl = document.getElementById('term-time-elapsed');
   clearInterval(state.streamTimerInterval);
