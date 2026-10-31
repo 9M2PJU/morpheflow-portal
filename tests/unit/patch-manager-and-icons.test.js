@@ -55,3 +55,24 @@ test('Multi-Source Aggregation: Aggregates across app.repos, communityRepos, and
   assert.ok(allSources.includes('https://github.com/Akshayykadam/PixelBoard'));
   assert.ok(allSources.includes('https://github.com/ImNoammm/gboard-patches'));
 });
+
+test('App Drawer: Embedded Patch Manager with Active, Matched, and Universal Separation', () => {
+  const appJs = fs.readFileSync(path.join(projectRoot, 'web/frontend/js/app.js'), 'utf-8');
+
+  // Verify elements rendered in drawer body
+  assert.ok(appJs.includes('id="drawer-active-list"'), 'Drawer must contain #drawer-active-list container');
+  assert.ok(appJs.includes('id="drawer-applied-count-badge"'), 'Drawer must contain #drawer-applied-count-badge');
+  assert.ok(appJs.includes('id="drawer-patches-search"'), 'Drawer must contain #drawer-patches-search');
+  assert.ok(appJs.includes('id="drawer-bundles-container"'), 'Drawer must contain #drawer-bundles-container');
+
+  // Verify rendering and interaction handlers exist
+  assert.ok(appJs.includes('function renderDrawerActivePatches'), 'renderDrawerActivePatches function must exist');
+  assert.ok(appJs.includes('function renderDrawerAvailableBundles'), 'renderDrawerAvailableBundles function must exist');
+  assert.ok(appJs.includes('function toggleDrawerPatch'), 'toggleDrawerPatch function must exist');
+  assert.ok(appJs.includes('function toggleDrawerBundleAll'), 'toggleDrawerBundleAll function must exist');
+  assert.ok(appJs.includes('function filterDrawerPatches'), 'filterDrawerPatches function must exist');
+
+  // Verify saving persists patches into app.options
+  assert.ok(appJs.includes('for (const [key, item] of currentDrawerPatchesState.entries())'), 'saveAppDrawerChanges must persist drawer patches state');
+  assert.ok(appJs.includes('app.options[repo].patches[item.name]'), 'saveAppDrawerChanges must group patches into app.options by repo');
+});

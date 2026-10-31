@@ -3717,12 +3717,19 @@ async function submitBaseApkAndBuild() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Slide-Over Drawer: App Configurator
 // ---------------------------------------------------------------------------
 let currentDrawerPkg = null;
+let currentDrawerBundles = [];
+let currentDrawerPatchesState = new Map();
+let currentDrawerSearchFilter = '';
 
 function openAppDrawer(pkg) {
   currentDrawerPkg = pkg;
+  currentDrawerSearchFilter = '';
+  currentDrawerPatchesState.clear();
+
   const drawer = document.getElementById('app-drawer-backdrop');
   if (!drawer) return;
 
@@ -3735,7 +3742,79 @@ function openAppDrawer(pkg) {
   if (titleEl) titleEl.textContent = friendlyName;
   if (pkgEl) pkgEl.textContent = pkg;
 
+  // 1. Collect compatible bundles from community catalog
+  const bundles = getCompatiblePatchesForPackage(pkg);
+  currentDrawerBundles = bundles.slice();
+
+  // 2. If app has any configured repos not in community bundles, add them as custom bundles
+  const configuredRepos = Array.isArray(app?.repos) ? app.repos : [];
+  for (const cr of configuredRepos) {
+    const slug = cleanRepoSlug(cr);
+    if (!currentDrawerBundles.some(b => cleanRepoSlug(b.bundleRepo) === slug)) {
+      currentDrawerBundles.push({
+        bundleName: slug.split('/')[1] || slug,
+        bundleAuthor: slug.split('/')[0] || 'Custom',
+        bundleRepo: cr,
+        patches: []
+      });
+    }
+  }
+
+  // 3. Pre-seed known patches from app.options
+  const appOptions = app?.options || {};
+  const hasConfiguredOptions = Object.keys(appOptions).length > 0;
+
+  for (const bundle of currentDrawerBundles) {
+    const bundleRepo = bundle.bundleRepo;
+    const repoOptions = appOptions[bundleRepo] || appOptions[cleanRepoSlug(bundleRepo)] || {};
+    const repoPatches = repoOptions.patches || {};
+
+    for (const p of (bundle.patches || [])) {
+      const key = `${p.name}@@${bundleRepo}`;
+      let isEnabled = false;
+
+      if (repoPatches[p.name] !== undefined) {
+        isEnabled = Boolean(repoPatches[p.name]?.enabled);
+      } else if (!hasConfiguredOptions) {
+        isEnabled = Boolean(p.default);
+      }
+
+      currentDrawerPatchesState.set(key, {
+        key,
+        name: p.name,
+        repo: bundleRepo,
+        owner: bundle.bundleName || bundle.bundleAuthor,
+        desc: p.description || 'Applies bytecode mutation and feature modification.',
+        targetVersion: p.targetVersion || null,
+        enabled: isEnabled,
+        isUniversal: Boolean(p.isUniversal)
+      });
+    }
+  }
+
+  // If there are applied patches in options that weren't in bundle catalogs
+  for (const repoKey of Object.keys(appOptions)) {
+    const repoPatches = appOptions[repoKey]?.patches || {};
+    for (const [pName, pCfg] of Object.entries(repoPatches)) {
+      const key = `${pName}@@${repoKey}`;
+      if (!currentDrawerPatchesState.has(key) && (pCfg && pCfg.enabled)) {
+        currentDrawerPatchesState.set(key, {
+          key,
+          name: pName,
+          repo: repoKey,
+          owner: cleanRepoSlug(repoKey),
+          desc: 'Custom configured bytecode mutation.',
+          targetVersion: null,
+          enabled: true,
+          isUniversal: determinePatchScope(pName, pCfg) === 'universal'
+        });
+      }
+    }
+  }
+
   renderDrawerBody(app);
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
   drawer.classList.add('open');
 }
 
@@ -3744,6 +3823,9 @@ function closeAppDrawer(e) {
   const drawer = document.getElementById('app-drawer-backdrop');
   if (drawer) drawer.classList.remove('open');
   currentDrawerPkg = null;
+  currentDrawerBundles = [];
+  currentDrawerPatchesState.clear();
+  currentDrawerSearchFilter = '';
 }
 
 function renderDrawerBody(app) {
@@ -3768,6 +3850,7 @@ function renderDrawerBody(app) {
   const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
 
   container.innerHTML = `
+    <!-- 1. Custom Base APK Source -->
     <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
       <label class="form-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Custom Base APK Source</label>
       <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">
@@ -3802,6 +3885,7 @@ function renderDrawerBody(app) {
       </div>
     </div>
 
+    <!-- 2. Build Automation Status -->
     <div class="form-group">
       <label class="form-label">Build Automation Status</label>
       <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
@@ -3816,6 +3900,7 @@ function renderDrawerBody(app) {
       </div>
     </div>
 
+    <!-- 3. Target Architecture -->
     <div class="form-group">
       <label class="form-label">Target Architecture</label>
       <select id="drawer-app-arch" class="form-select">
@@ -3826,6 +3911,44 @@ function renderDrawerBody(app) {
       <span class="form-helper" style="font-size: 0.6875rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">AutoMorph filters base APK downloads strictly matching this ABI.</span>
     </div>
 
+    <!-- 4. Bytecode Mutators & Patches Manager -->
+    <div class="form-group" style="padding: 1.125rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+      <div class="section-heading-row" style="margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.125rem; font-size: 0.875rem;">Patches & Bytecode Mutators</label>
+          <div style="font-size: 0.75rem; color: var(--text-secondary);">Select active patches, feature mutators, and community sources</div>
+        </div>
+        <span class="badge badge-accent" id="drawer-applied-count-badge" style="font-weight: 700; font-size: 0.6875rem;">0 Active</span>
+      </div>
+
+      <!-- Active Applied Patches -->
+      <div style="margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem;">
+          <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Active Applied Patches</span>
+          <span style="font-size: 0.6875rem; color: var(--text-secondary);">Toggle switch to enable/disable</span>
+        </div>
+        <div class="applied-active-list" id="drawer-active-list" style="max-height: 200px; overflow-y: auto; background: var(--surface-lowest); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.375rem;">
+          <!-- Dynamically populated by renderDrawerActivePatches() -->
+        </div>
+      </div>
+
+      <!-- Search Patches Input -->
+      <div style="margin-bottom: 0.75rem;">
+        <input type="text" id="drawer-patches-search" class="form-input" style="font-size: 0.75rem; padding: 0.4rem 0.625rem;" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)..." oninput="filterDrawerPatches(this.value)">
+      </div>
+
+      <!-- Available Bundles & Mutators Accordions -->
+      <div>
+        <div style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.375rem;">
+          Available Community Bundles & Mutators
+        </div>
+        <div id="drawer-bundles-container" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 340px; overflow-y: auto; padding-right: 2px;">
+          <!-- Dynamically populated by renderDrawerAvailableBundles() -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Connected Patch Repositories -->
     <div class="form-group">
       <label class="form-label">Connected Patch Repositories</label>
       <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
@@ -3837,6 +3960,7 @@ function renderDrawerBody(app) {
       </div>
     </div>
 
+    <!-- 6. Deterministic Keystore -->
     <div class="crypto-seal-card">
       <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
         Deterministic Keystore Attached
@@ -3848,12 +3972,308 @@ function renderDrawerBody(app) {
   `;
 }
 
+function renderDrawerActivePatches() {
+  const container = document.getElementById('drawer-active-list');
+  const countBadge = document.getElementById('drawer-applied-count-badge');
+  if (!container) return;
+
+  const activePatches = Array.from(currentDrawerPatchesState.values()).filter(p => p.enabled);
+  if (countBadge) {
+    countBadge.textContent = `${activePatches.length} Active`;
+  }
+
+  let displayPatches = activePatches;
+  if (currentDrawerSearchFilter) {
+    displayPatches = activePatches.filter(p =>
+      p.name.toLowerCase().includes(currentDrawerSearchFilter) ||
+      p.desc.toLowerCase().includes(currentDrawerSearchFilter) ||
+      p.owner.toLowerCase().includes(currentDrawerSearchFilter) ||
+      p.repo.toLowerCase().includes(currentDrawerSearchFilter)
+    );
+  }
+
+  if (activePatches.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.25rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No active patches. Select patches from available community bundles below.
+      </div>
+    `;
+    return;
+  }
+
+  if (displayPatches.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No active patches match "${escapeHtml(currentDrawerSearchFilter)}".
+      </div>
+    `;
+    return;
+  }
+
+  const appPatches = displayPatches.filter(p => !p.isUniversal);
+  const univPatches = displayPatches.filter(p => p.isUniversal);
+
+  const renderActiveRow = (p) => `
+    <div class="applied-patch-row" style="padding: 0.5rem 0.625rem; border-radius: var(--radius-sm);">
+      <label class="switch-control" style="flex-shrink: 0; margin-right: 0.25rem;">
+        <input type="checkbox" checked onchange="toggleDrawerPatch('${escapeHtml(p.key)}', false)">
+        <span class="switch-track"></span>
+      </label>
+      <div style="min-width: 0; flex: 1;">
+        <div class="applied-patch-title" style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+          <span>${escapeHtml(p.name)}</span>
+          ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
+          ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+        </div>
+        <div class="applied-patch-desc" style="font-size: 0.6875rem; line-height: 1.3;">${escapeHtml(p.desc)}</div>
+      </div>
+      <span class="badge" style="font-size: 0.625rem; flex-shrink: 0;" title="${escapeHtml(p.repo)}">${escapeHtml(cleanRepoSlug(p.repo || p.owner))}</span>
+    </div>
+  `;
+
+  const appHtml = appPatches.map(renderActiveRow).join('');
+  const univHtml = univPatches.map(renderActiveRow).join('');
+
+  if (appPatches.length > 0 && univPatches.length > 0) {
+    container.innerHTML = `
+      ${appHtml}
+      <div class="patch-section-divider" role="separator" aria-label="Active Universal Patches" style="margin: 0.5rem 0;">
+        <div class="patch-section-divider-line"></div>
+        <span class="patch-section-divider-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Active Universal Patches (${univPatches.length}) · Compatible with All Apps
+        </span>
+        <div class="patch-section-divider-line"></div>
+      </div>
+      ${univHtml}
+    `;
+  } else if (univPatches.length > 0 && appPatches.length === 0) {
+    container.innerHTML = `
+      <div class="patch-section-divider" style="margin: 0.25rem 0;" role="separator" aria-label="Active Universal Patches">
+        <div class="patch-section-divider-line"></div>
+        <span class="patch-section-divider-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Active Universal Patches (${univPatches.length})
+        </span>
+        <div class="patch-section-divider-line"></div>
+      </div>
+      ${univHtml}
+    `;
+  } else {
+    container.innerHTML = appHtml;
+  }
+}
+
+function renderDrawerAvailableBundles() {
+  const container = document.getElementById('drawer-bundles-container');
+  if (!container) return;
+
+  if (currentDrawerBundles.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No community patch bundles available for this application. You can connect a custom repository below.
+      </div>
+    `;
+    return;
+  }
+
+  // Preserve currently expanded bundle accordions
+  const openRepos = new Set();
+  container.querySelectorAll('details.prov-bundle-accordion[open]').forEach(d => {
+    if (d.dataset.bundleRepo) openRepos.add(d.dataset.bundleRepo);
+  });
+
+  let hasRenderedUniversalBundleSeparator = false;
+  let hasAppSpecificBundlePrior = false;
+
+  const html = currentDrawerBundles.map((bundle, bundleIdx) => {
+    let patches = bundle.patches || [];
+    if (currentDrawerSearchFilter) {
+      patches = patches.filter(p =>
+        p.name.toLowerCase().includes(currentDrawerSearchFilter) ||
+        (p.description || '').toLowerCase().includes(currentDrawerSearchFilter)
+      );
+    }
+
+    if (currentDrawerSearchFilter && patches.length === 0) {
+      return '';
+    }
+
+    const totalInBundle = (bundle.patches || []).length;
+    let enabledInBundle = 0;
+    for (const p of (bundle.patches || [])) {
+      const key = `${p.name}@@${bundle.bundleRepo}`;
+      if (currentDrawerPatchesState.get(key)?.enabled) {
+        enabledInBundle++;
+      }
+    }
+
+    const appPatches = patches.filter(p => !p.isUniversal);
+    const univPatches = patches.filter(p => p.isUniversal);
+
+    const isPurelyUniversalBundle = (bundle.patches || []).length > 0 && (bundle.patches || []).every(p => p.isUniversal);
+    if (!isPurelyUniversalBundle && (bundle.patches || []).length > 0) {
+      hasAppSpecificBundlePrior = true;
+    }
+
+    let bundleSeparatorHtml = '';
+    if (isPurelyUniversalBundle && hasAppSpecificBundlePrior && !hasRenderedUniversalBundleSeparator) {
+      hasRenderedUniversalBundleSeparator = true;
+      bundleSeparatorHtml = `
+        <div class="patch-section-divider" style="margin: 0.75rem 0 0.5rem 0;" role="separator" aria-label="Universal Patch Sources">
+          <div class="patch-section-divider-line"></div>
+          <span class="patch-section-divider-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            Universal Patch Sources · Compatible with All Apps
+          </span>
+          <div class="patch-section-divider-line"></div>
+        </div>
+      `;
+    }
+
+    const renderDrawerItem = (p) => {
+      const key = `${p.name}@@${bundle.bundleRepo}`;
+      const isChecked = Boolean(currentDrawerPatchesState.get(key)?.enabled);
+
+      return `
+        <label class="prov-patch-item" style="padding: 0.35rem 0.5rem;">
+          <input type="checkbox" data-drawer-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleDrawerPatch('${escapeHtml(key)}', this.checked)">
+          <div class="prov-patch-info">
+            <div class="prov-patch-name" style="font-size: 0.75rem;">
+              <span>${escapeHtml(p.name)}</span>
+              ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; margin-left: 0.25rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
+              ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem; margin-left: 0.25rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+            </div>
+            <div class="prov-patch-desc" style="font-size: 0.6875rem;">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
+          </div>
+        </label>
+      `;
+    };
+
+    let patchesHtml = '';
+    if (patches.length === 0) {
+      patchesHtml = `
+        <div style="font-size: 0.6875rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">
+          No patches listed in local cache for this source. Patches will be resolved during compilation.
+        </div>
+      `;
+    } else {
+      const appHtml = appPatches.map(renderDrawerItem).join('');
+      const univHtml = univPatches.map(renderDrawerItem).join('');
+
+      if (appPatches.length > 0 && univPatches.length > 0) {
+        patchesHtml = `
+          ${appHtml}
+          <div class="patch-section-divider" role="separator" aria-label="Universal Patches" style="margin: 0.5rem 0;">
+            <div class="patch-section-divider-line"></div>
+            <span class="patch-section-divider-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              Universal Patches (${univPatches.length}) · Compatible with All Apps
+            </span>
+            <div class="patch-section-divider-line"></div>
+          </div>
+          ${univHtml}
+        `;
+      } else if (univPatches.length > 0 && appPatches.length === 0) {
+        patchesHtml = `
+          <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Universal Patches">
+            <div class="patch-section-divider-line"></div>
+            <span class="patch-section-divider-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              Universal Bundle · ${univPatches.length} Patches
+            </span>
+            <div class="patch-section-divider-line"></div>
+          </div>
+          ${univHtml}
+        `;
+      } else {
+        patchesHtml = appHtml;
+      }
+    }
+
+    const isOpen = openRepos.has(bundle.bundleRepo) || Boolean(currentDrawerSearchFilter) || (openRepos.size === 0 && bundleIdx === 0);
+
+    return `
+      ${bundleSeparatorHtml}
+      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''} style="border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised);">
+        <summary class="prov-bundle-header" style="padding: 0.5rem 0.75rem;">
+          <div class="prov-bundle-title-col">
+            <span class="prov-bundle-name" style="font-size: 0.8125rem;">${escapeHtml(bundle.bundleName)}</span>
+            <span class="prov-bundle-author" style="font-size: 0.6875rem;">by ${escapeHtml(bundle.bundleAuthor || 'Community')}</span>
+          </div>
+          <div class="prov-bundle-ctrls">
+            <span class="prov-bundle-count" data-drawer-count-repo="${escapeHtml(bundle.bundleRepo)}" style="font-size: 0.6875rem;">${enabledInBundle}/${totalInBundle}</span>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleAll('${escapeHtml(bundle.bundleRepo)}', true)">All</button>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleAll('${escapeHtml(bundle.bundleRepo)}', false)">None</button>
+            <svg class="prov-bundle-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </summary>
+        <div class="prov-bundle-body" style="padding: 0.375rem; background: var(--surface-lowest); max-height: 220px; overflow-y: auto;">
+          ${patchesHtml}
+        </div>
+      </details>
+    `;
+  }).join('');
+
+  container.innerHTML = html || `
+    <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+      No patches found matching "${escapeHtml(currentDrawerSearchFilter)}".
+    </div>
+  `;
+}
+
+function toggleDrawerPatch(key, isChecked) {
+  const item = currentDrawerPatchesState.get(key);
+  if (item) {
+    item.enabled = Boolean(isChecked);
+  }
+  renderDrawerActivePatches();
+
+  // In-place DOM update prevents accordion collapsing
+  const container = document.getElementById('drawer-bundles-container');
+  if (container) {
+    const cb = container.querySelector(`input[data-drawer-patch-key="${CSS.escape(key)}"]`);
+    if (cb) cb.checked = Boolean(isChecked);
+
+    if (item && item.repo) {
+      let enabledCount = 0;
+      let totalCount = 0;
+      for (const p of currentDrawerPatchesState.values()) {
+        if (cleanRepoSlug(p.repo) === cleanRepoSlug(item.repo)) {
+          totalCount++;
+          if (p.enabled) enabledCount++;
+        }
+      }
+      const countEl = container.querySelector(`[data-drawer-count-repo="${CSS.escape(item.repo)}"]`);
+      if (countEl) countEl.textContent = `${enabledCount}/${totalCount}`;
+    }
+  }
+}
+
+function toggleDrawerBundleAll(repo, isChecked) {
+  for (const item of currentDrawerPatchesState.values()) {
+    if (cleanRepoSlug(item.repo) === cleanRepoSlug(repo)) {
+      item.enabled = Boolean(isChecked);
+    }
+  }
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+}
+
+function filterDrawerPatches(keyword) {
+  currentDrawerSearchFilter = (keyword || '').toLowerCase().trim();
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+}
+
 function removeDrawerRepo(idx) {
   if (!currentDrawerPkg) return;
   const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg);
   if (app && Array.isArray(app.repos)) {
     app.repos.splice(idx, 1);
     renderDrawerBody(app);
+    renderDrawerActivePatches();
+    renderDrawerAvailableBundles();
   }
 }
 
@@ -3868,8 +4288,20 @@ function addDrawerRepo() {
     if (!app.repos.includes(url)) {
       app.repos.push(url);
     }
+    const slug = cleanRepoSlug(url);
+    if (!currentDrawerBundles.some(b => cleanRepoSlug(b.bundleRepo) === slug)) {
+      currentDrawerBundles.push({
+        bundleName: slug.split('/')[1] || slug,
+        bundleAuthor: slug.split('/')[0] || 'Custom',
+        bundleRepo: url.startsWith('http') ? url : `https://github.com/${slug}`,
+        patches: []
+      });
+    }
     input.value = '';
     renderDrawerBody(app);
+    renderDrawerActivePatches();
+    renderDrawerAvailableBundles();
+    showToast(`Added repository ${slug}`, 'success');
   }
 }
 
@@ -3889,6 +4321,31 @@ async function saveAppDrawerChanges() {
     app.options.target_arch = archSelect.value;
   }
 
+  // Persist patches from currentDrawerPatchesState
+  if (!app.options) app.options = {};
+  const configuredRepos = new Set(Array.isArray(app.repos) ? app.repos : []);
+
+  for (const [key, item] of currentDrawerPatchesState.entries()) {
+    const repo = item.repo;
+    if (!app.options[repo]) app.options[repo] = { patches: {} };
+    if (!app.options[repo].patches) app.options[repo].patches = {};
+
+    app.options[repo].patches[item.name] = {
+      enabled: Boolean(item.enabled)
+    };
+
+    if (item.enabled) {
+      configuredRepos.add(repo);
+    }
+  }
+
+  // Also include any bundles present in currentDrawerBundles
+  for (const b of currentDrawerBundles) {
+    if (b.bundleRepo) configuredRepos.add(b.bundleRepo);
+  }
+
+  app.repos = Array.from(configuredRepos).filter(Boolean);
+
   const saveBtn = document.getElementById('btn-drawer-save');
   if (saveBtn) saveBtn.disabled = true;
 
@@ -3899,7 +4356,7 @@ async function saveAppDrawerChanges() {
       body: JSON.stringify(app)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    showToast(`Saved ${app.name || currentDrawerPkg}`, 'success');
+    showToast(`Saved changes & patches for ${app.name || currentDrawerPkg}!`, 'success');
     closeAppDrawer();
     await loadConfig();
   } catch (err) {
