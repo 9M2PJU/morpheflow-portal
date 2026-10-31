@@ -388,15 +388,25 @@ a {
 }
 
 .btn-icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--surface-raised);
   border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-icon svg {
+  display: block;
+  margin: auto;
+  pointer-events: none;
 }
 
 .btn-icon:hover {
@@ -475,38 +485,59 @@ a {
   transform: translateY(-1px);
 }
 
-/* Strict Icon Boundaries (Never blown up as raw images) */
-.app-avatar,
-.app-icon-slot,
-.store-app-icon,
-.store-card-avatar,
-.app-card-icon {
-  width: 44px !important;
-  height: 44px !important;
-  min-width: 44px !important;
-  max-width: 44px !important;
-  min-height: 44px !important;
-  max-height: 44px !important;
-  border-radius: var(--radius-sm) !important;
-  background: var(--surface-sunken) !important;
-  border: 1px solid var(--border-hairline) !important;
-  overflow: hidden !important;
-  flex-shrink: 0 !important;
-  display: grid !important;
-  place-items: center !important;
+/* Role-Differentiated Icon Containers */
+.app-avatar {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.store-card-avatar {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-icon-slot {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  border-radius: var(--radius-md);
+  background: var(--surface-lowest);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-avatar img,
-.app-icon-slot img,
-.store-app-icon img,
 .store-card-avatar img,
-.app-card-icon img {
-  width: 44px !important;
-  height: 44px !important;
-  max-width: 44px !important;
-  max-height: 44px !important;
-  object-fit: cover !important;
-  display: block !important;
+.app-icon-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .queue-app-meta {
@@ -920,9 +951,9 @@ a {
 .store-tag {
   font-size: 0.6875rem;
   padding: 0.125rem 0.4375rem;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
 }
 
@@ -1005,9 +1036,9 @@ a {
   padding: 0.125rem 0.375rem;
   font-size: 0.6875rem;
   font-weight: 500;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   cursor: pointer;
   line-height: 1.2;
@@ -1214,9 +1245,9 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   padding: 0.75rem;
-  background: var(--surface-sunken);
+  background: var(--surface-lowest);
   border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   gap: 0.75rem;
 }
 
@@ -1798,6 +1829,112 @@ a {
 .app-card-actions .btn {
   margin: 0;
   white-space: nowrap;
+}
+
+/* Card Action Square Icon Buttons (Settings & Delete) - Strictly Centered */
+.btn-card-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-spring);
+  cursor: pointer;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.btn-card-icon:hover {
+  color: var(--text-primary);
+  background: var(--surface-overlay);
+  border-color: var(--border-subtle);
+}
+
+.btn-card-icon:active {
+  transform: translateY(1px);
+}
+
+.btn-card-icon svg {
+  display: block;
+  margin: auto;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.btn-card-icon.btn-danger {
+  color: var(--status-danger) !important;
+}
+
+.btn-card-icon.btn-danger:hover {
+  color: var(--status-danger) !important;
+  background: var(--status-danger-subtle) !important;
+  border-color: var(--status-danger-border) !important;
+}
+
+/* Patches & Community Sources Manager Modal */
+.modal-section-divider {
+  height: 1px;
+  background: var(--border-hairline);
+  margin: 1.25rem 0;
+}
+
+.section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.applied-active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.applied-active-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  gap: 0.75rem;
+  transition: border-color var(--dur-fast) ease;
+}
+
+.applied-active-item:hover {
+  border-color: var(--border-subtle);
+}
+
+.btn-micro-danger {
+  padding: 0.125rem 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--status-danger);
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.btn-micro-danger:hover {
+  background: var(--status-danger-subtle);
+  border-color: var(--status-danger-border);
 }
 
 .btn-danger {

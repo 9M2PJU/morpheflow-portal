@@ -836,8 +836,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     // Default repository fallback if none provided
     const defaultRepo = 'https://github.com/MorpheApp/morphe-patches';
     let repos: string[] = [];
-    if (Array.isArray(body.repos) && body.repos.length > 0) {
-      repos = body.repos.map((r: any) => String(r).trim());
+    if (Array.isArray(body.all_repos) && body.all_repos.length > 0) {
+      repos = body.all_repos.map((r: any) => String(r).trim()).filter(Boolean);
+    } else if (Array.isArray(body.repos) && body.repos.length > 0) {
+      repos = body.repos.map((r: any) => String(r).trim()).filter(Boolean);
     } else if (body.repo && typeof body.repo === 'string') {
       repos = [body.repo.trim()];
     } else if (body.repo_url && typeof body.repo_url === 'string') {

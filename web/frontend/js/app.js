@@ -1807,9 +1807,18 @@ function renderOverview() {
       statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
-    const primaryRepo = repos.length > 0 ? cleanRepoSlug(repos[0]) : 'MorpheApp/morphe-patches';
-    const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
-    const fullReposTooltip = repos.join('\n');
+    const communityBundles = getCompatiblePatchesForPackage(pkg);
+    const communityRepos = communityBundles.map(b => b.bundleRepo).filter(Boolean);
+    const catalogRepos = catalogItem?.supported_repos || [];
+    const allSources = Array.from(new Set([
+      ...repos,
+      ...communityRepos,
+      ...catalogRepos
+    ].filter(Boolean)));
+
+    const primaryRepo = allSources.length > 0 ? cleanRepoSlug(allSources[0]) : 'MorpheApp/morphe-patches';
+    const extraReposCount = allSources.length > 1 ? allSources.length - 1 : 0;
+    const fullReposTooltip = allSources.map(r => cleanRepoSlug(r)).join(', ');
 
     let badgesHtml = verInfo.badges.map(b => {
       const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
@@ -1881,8 +1890,8 @@ function renderOverview() {
         </div>
 
         <footer class="app-card-footer">
-          <div class="app-card-sources">
-            <span class="source-tag-label">Source:</span>
+          <div class="app-card-sources" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" style="cursor: pointer;" title="Manage patches & all community sources for ${escapeHtml(friendlyName)}">
+            <span class="source-tag-label">Sources:</span>
             <span class="source-tag-pill" title="${escapeHtml(fullReposTooltip)}">${escapeHtml(primaryRepo)}</span>
             ${extraReposCount > 0 ? `<span class="source-tag-more" title="${escapeHtml(fullReposTooltip)}">+${extraReposCount} more</span>` : ''}
           </div>
@@ -1912,8 +1921,12 @@ function renderOverview() {
               <span>Release</span>
             </a>
 
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <button class="btn-card-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+
+            <button class="btn-card-icon btn-danger" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Delete App from Pipeline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
         </footer>
@@ -1976,6 +1989,15 @@ function renderConfiguredApps() {
     const isEnabled = app.enabled !== false;
     const repos = app.repos || [];
     const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+    const communityBundles = getCompatiblePatchesForPackage(pkg);
+    const communityRepos = communityBundles.map(b => b.bundleRepo).filter(Boolean);
+    const catalogRepos = catalogItem?.supported_repos || [];
+    const allSources = Array.from(new Set([
+      ...repos,
+      ...communityRepos,
+      ...catalogRepos
+    ].filter(Boolean)));
+
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
     const verInfo = getAppVersionInfo(app);
@@ -1996,9 +2018,9 @@ function renderConfiguredApps() {
       statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
-    const primaryRepo = repos.length > 0 ? cleanRepoSlug(repos[0]) : 'MorpheApp/morphe-patches';
-    const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
-    const fullReposTooltip = repos.join('\n');
+    const primaryRepo = allSources.length > 0 ? cleanRepoSlug(allSources[0]) : 'MorpheApp/morphe-patches';
+    const extraReposCount = allSources.length > 1 ? allSources.length - 1 : 0;
+    const fullReposTooltip = allSources.map(r => cleanRepoSlug(r)).join(', ');
 
     let badgesHtml = verInfo.badges.map(b => {
       const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
@@ -2077,8 +2099,8 @@ function renderConfiguredApps() {
 
         <!-- BOTTOM ROW: Horizontal Sources on Left, Horizontal Actions on Right -->
         <footer class="app-card-footer">
-          <div class="app-card-sources">
-            <span class="source-tag-label">Source:</span>
+          <div class="app-card-sources" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" style="cursor: pointer;" title="Manage patches & all community sources for ${escapeHtml(friendlyName)}">
+            <span class="source-tag-label">Sources:</span>
             <span class="source-tag-pill" title="${escapeHtml(fullReposTooltip)}">${escapeHtml(primaryRepo)}</span>
             ${extraReposCount > 0 ? `<span class="source-tag-more" title="${escapeHtml(fullReposTooltip)}">+${extraReposCount} more</span>` : ''}
           </div>
@@ -2108,12 +2130,16 @@ function renderConfiguredApps() {
               <span>Release</span>
             </a>
 
-            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <button class="btn-card-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             </button>
 
-            <button class="btn btn-secondary btn-sm btn-icon btn-danger" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Delete App from Pipeline">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <button class="btn-card-icon btn-danger" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Delete App from Pipeline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+
+            <button class="btn-card-icon btn-danger" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Delete App from Pipeline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
         </footer>
@@ -2637,6 +2663,15 @@ async function confirmProvisionApp() {
     repo: cb.dataset.repo || repo
   }));
 
+  const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+  const bundleGroups = getCompatiblePatchesForPackage(pkg);
+  const allCommunityRepos = Array.from(new Set([
+    repo,
+    ...(catalogItem?.supported_repos || []),
+    ...bundleGroups.map(b => b.bundleRepo).filter(Boolean),
+    ...selectedPatches.map(p => p.repo).filter(Boolean)
+  ].filter(Boolean)));
+
   const confirmBtn = document.getElementById('btn-confirm-provision');
   if (confirmBtn) confirmBtn.disabled = true;
 
@@ -2648,6 +2683,7 @@ async function confirmProvisionApp() {
         package: pkg,
         name: name || pkg,
         repo_url: repo,
+        all_repos: allCommunityRepos,
         patches: selectedPatches
       })
     });
@@ -2666,55 +2702,104 @@ async function confirmProvisionApp() {
 }
 
 // ---------------------------------------------------------------------------
-// Applied Patches Inspector Modal
+// Applied Patches & Community Sources Manager Modal
 // ---------------------------------------------------------------------------
-let currentAppliedPatches = [];
 let currentAppliedPkg = null;
+let currentAppliedBundles = [];
+let currentManagePatchesState = new Map();
+let currentManageSearchFilter = '';
 
 function openAppliedPatchesModal(pkg) {
   currentAppliedPkg = pkg;
+  currentManageSearchFilter = '';
+  currentManagePatchesState.clear();
+
   const modal = document.getElementById('modal-applied-patches');
   if (!modal) return;
 
   const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg);
-  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
   const friendlyName = app?.name || catalogItem?.name || getFallbackAppName(pkg);
-  const verInfo = app ? getAppVersionInfo(app) : null;
 
   const titleEl = document.getElementById('applied-modal-title');
   const subtitleEl = document.getElementById('applied-modal-subtitle');
-  const searchInput = document.getElementById('applied-patches-search');
+  const searchInput = document.getElementById('manage-patches-search');
   if (searchInput) searchInput.value = '';
 
-  let patches = verInfo?.appliedPatches || [];
-  if (patches.length === 0 && app?.options) {
-    for (const repoKey of Object.keys(app.options)) {
-      const repoPatches = app.options[repoKey]?.patches || {};
-      for (const pKey of Object.keys(repoPatches)) {
-        if (repoPatches[pKey]?.enabled) {
-          patches.push({ name: pKey, owner: repoKey });
-        }
+  if (titleEl) titleEl.textContent = `${friendlyName} — Patch Manager`;
+  if (subtitleEl) subtitleEl.textContent = `${pkg} • Select active patches & community sources`;
+
+  // Collect compatible bundles from community catalog
+  const bundles = getCompatiblePatchesForPackage(pkg);
+  currentAppliedBundles = bundles.slice();
+
+  // If app has any configured repos not in community bundles, add them as custom bundles
+  const configuredRepos = Array.isArray(app?.repos) ? app.repos : [];
+  for (const cr of configuredRepos) {
+    const slug = cleanRepoSlug(cr);
+    if (!currentAppliedBundles.some(b => cleanRepoSlug(b.bundleRepo) === slug)) {
+      currentAppliedBundles.push({
+        bundleName: slug.split('/')[1] || slug,
+        bundleAuthor: slug.split('/')[0] || 'Custom',
+        bundleRepo: cr,
+        patches: []
+      });
+    }
+  }
+
+  // Pre-seed known patches from app.options
+  const appOptions = app?.options || {};
+  const hasConfiguredOptions = Object.keys(appOptions).length > 0;
+
+  // Track enabled patches
+  for (const bundle of currentAppliedBundles) {
+    const bundleRepo = bundle.bundleRepo;
+    const repoOptions = appOptions[bundleRepo] || appOptions[cleanRepoSlug(bundleRepo)] || {};
+    const repoPatches = repoOptions.patches || {};
+
+    for (const p of (bundle.patches || [])) {
+      const key = `${p.name}@@${bundleRepo}`;
+      let isEnabled = false;
+
+      if (repoPatches[p.name] !== undefined) {
+        isEnabled = Boolean(repoPatches[p.name]?.enabled);
+      } else if (!hasConfiguredOptions) {
+        isEnabled = Boolean(p.default);
+      }
+
+      currentManagePatchesState.set(key, {
+        key,
+        name: p.name,
+        repo: bundleRepo,
+        owner: bundle.bundleName || bundle.bundleAuthor,
+        desc: p.description || 'Applies bytecode mutation and feature modification.',
+        enabled: isEnabled
+      });
+    }
+  }
+
+  // If there are applied patches in options that weren't in bundle catalogs
+  for (const repoKey of Object.keys(appOptions)) {
+    const repoPatches = appOptions[repoKey]?.patches || {};
+    for (const [pName, pCfg] of Object.entries(repoPatches)) {
+      const key = `${pName}@@${repoKey}`;
+      if (!currentManagePatchesState.has(key) && (pCfg && pCfg.enabled)) {
+        currentManagePatchesState.set(key, {
+          key,
+          name: pName,
+          repo: repoKey,
+          owner: cleanRepoSlug(repoKey),
+          desc: 'Custom configured bytecode mutation.',
+          enabled: true
+        });
       }
     }
   }
 
-  if (patches.length === 0) {
-    const groups = getCompatiblePatchesForPackage(pkg);
-    for (const g of groups) {
-      for (const p of g.patches) {
-        if (p.default) {
-          patches.push({ name: p.name, owner: g.bundleName, description: p.description });
-        }
-      }
-    }
-  }
+  renderActiveAppliedPatches();
+  renderManageAvailableBundles();
+  updateManageSummaryStatus();
 
-  currentAppliedPatches = patches;
-
-  if (titleEl) titleEl.textContent = `${friendlyName} - Applied Patches`;
-  if (subtitleEl) subtitleEl.textContent = `${pkg} • ${patches.length} Patches Enforced`;
-
-  renderAppliedPatchesList(patches);
   modal.classList.add('open');
 }
 
@@ -2723,54 +2808,283 @@ function closeAppliedPatchesModal(e) {
   const modal = document.getElementById('modal-applied-patches');
   if (modal) modal.classList.remove('open');
   currentAppliedPkg = null;
-  currentAppliedPatches = [];
+  currentAppliedBundles = [];
+  currentManagePatchesState.clear();
 }
 
-function filterAppliedPatches(query) {
-  const q = (query || '').toLowerCase().trim();
-  if (!q) {
-    renderAppliedPatchesList(currentAppliedPatches);
-    return;
-  }
-  const filtered = currentAppliedPatches.filter(p => {
-    const name = (typeof p === 'string' ? p : p.name || '').toLowerCase();
-    const desc = (p.description || '').toLowerCase();
-    const owner = (p.owner || '').toLowerCase();
-    return name.includes(q) || desc.includes(q) || owner.includes(q);
-  });
-  renderAppliedPatchesList(filtered);
-}
-
-function renderAppliedPatchesList(patches) {
-  const container = document.getElementById('applied-patches-list');
+function renderActiveAppliedPatches() {
+  const container = document.getElementById('applied-active-list');
+  const countBadge = document.getElementById('applied-count-badge');
   if (!container) return;
 
-  if (patches.length === 0) {
+  const activePatches = Array.from(currentManagePatchesState.values()).filter(p => p.enabled);
+  if (countBadge) {
+    countBadge.textContent = `${activePatches.length} Active`;
+  }
+
+  let displayPatches = activePatches;
+  if (currentManageSearchFilter) {
+    displayPatches = activePatches.filter(p =>
+      p.name.toLowerCase().includes(currentManageSearchFilter) ||
+      p.desc.toLowerCase().includes(currentManageSearchFilter) ||
+      p.owner.toLowerCase().includes(currentManageSearchFilter) ||
+      p.repo.toLowerCase().includes(currentManageSearchFilter)
+    );
+  }
+
+  if (activePatches.length === 0) {
     container.innerHTML = `
-      <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.8125rem;">
-        No patches match criteria.
+      <div style="text-align: center; padding: 1.25rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No active patches. Select patches from available community bundles below.
       </div>
     `;
     return;
   }
 
-  container.innerHTML = patches.map(p => {
-    const name = typeof p === 'string' ? p : p.name;
-    const owner = p.owner ? cleanRepoSlug(p.owner) : 'Morphe Patches';
-    const desc = p.description || 'Applies bytecode mutation and security modification.';
-
-    return `
-      <div class="applied-patch-row">
-        <div style="min-width: 0; flex: 1;">
-          <div class="applied-patch-title">
-            <span>${escapeHtml(name)}</span>
-          </div>
-          <div class="applied-patch-desc">${escapeHtml(desc)}</div>
-        </div>
-        <span class="badge" style="font-size: 0.6875rem; flex-shrink: 0;">${escapeHtml(owner)}</span>
+  if (displayPatches.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No active patches match "${escapeHtml(currentManageSearchFilter)}".
       </div>
     `;
+    return;
+  }
+
+  container.innerHTML = displayPatches.map(p => `
+    <div class="applied-patch-row">
+      <label class="switch-control" style="flex-shrink: 0; margin-right: 0.25rem;">
+        <input type="checkbox" checked onchange="toggleManagePatch('${escapeHtml(p.key)}', false)">
+        <span class="switch-track"></span>
+      </label>
+      <div style="min-width: 0; flex: 1;">
+        <div class="applied-patch-title">
+          <span>${escapeHtml(p.name)}</span>
+        </div>
+        <div class="applied-patch-desc">${escapeHtml(p.desc)}</div>
+      </div>
+      <span class="badge" style="font-size: 0.6875rem; flex-shrink: 0;" title="${escapeHtml(p.repo)}">${escapeHtml(cleanRepoSlug(p.repo || p.owner))}</span>
+    </div>
+  `).join('');
+}
+
+function renderManageAvailableBundles() {
+  const container = document.getElementById('manage-bundles-container');
+  if (!container) return;
+
+  if (currentAppliedBundles.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No community patch bundles available for this application. You can connect a custom repository below.
+      </div>
+    `;
+    return;
+  }
+
+  const html = currentAppliedBundles.map(bundle => {
+    let patches = bundle.patches || [];
+    if (currentManageSearchFilter) {
+      patches = patches.filter(p =>
+        p.name.toLowerCase().includes(currentManageSearchFilter) ||
+        (p.description || '').toLowerCase().includes(currentManageSearchFilter)
+      );
+    }
+
+    if (currentManageSearchFilter && patches.length === 0) {
+      return '';
+    }
+
+    const totalInBundle = (bundle.patches || []).length;
+    let enabledInBundle = 0;
+    for (const p of (bundle.patches || [])) {
+      const key = `${p.name}@@${bundle.bundleRepo}`;
+      if (currentManagePatchesState.get(key)?.enabled) {
+        enabledInBundle++;
+      }
+    }
+
+    const patchesHtml = patches.length > 0 ? patches.map(p => {
+      const key = `${p.name}@@${bundle.bundleRepo}`;
+      const isChecked = Boolean(currentManagePatchesState.get(key)?.enabled);
+
+      return `
+        <label class="prov-patch-item">
+          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleManagePatch('${escapeHtml(key)}', this.checked)">
+          <div class="prov-patch-info">
+            <div class="prov-patch-name">${escapeHtml(p.name)}</div>
+            <div class="prov-patch-desc">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
+          </div>
+        </label>
+      `;
+    }).join('') : `
+      <div style="font-size: 0.75rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">
+        No patches listed in local cache for this source. Patches will be resolved during compilation.
+      </div>
+    `;
+
+    return `
+      <details class="prov-bundle-accordion" ${currentManageSearchFilter ? 'open' : ''}>
+        <summary class="prov-bundle-header">
+          <div class="prov-bundle-title-col">
+            <span class="prov-bundle-name">${escapeHtml(bundle.bundleName)}</span>
+            <span class="prov-bundle-author">by ${escapeHtml(bundle.bundleAuthor || 'Community')}</span>
+          </div>
+          <div class="prov-bundle-ctrls">
+            <span class="prov-bundle-count">${enabledInBundle}/${totalInBundle}</span>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleManageBundleAll('${escapeHtml(bundle.bundleRepo)}', true)">All</button>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleManageBundleAll('${escapeHtml(bundle.bundleRepo)}', false)">None</button>
+            <svg class="prov-bundle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </summary>
+        <div class="prov-bundle-body">
+          ${patchesHtml}
+        </div>
+      </details>
+    `;
   }).join('');
+
+  container.innerHTML = html || `
+    <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+      No patches found matching "${escapeHtml(currentManageSearchFilter)}".
+    </div>
+  `;
+}
+
+function toggleManagePatch(key, isChecked) {
+  const item = currentManagePatchesState.get(key);
+  if (item) {
+    item.enabled = Boolean(isChecked);
+  }
+  renderActiveAppliedPatches();
+  renderManageAvailableBundles();
+  updateManageSummaryStatus();
+}
+
+function clearAllAppliedPatches() {
+  for (const item of currentManagePatchesState.values()) {
+    item.enabled = false;
+  }
+  renderActiveAppliedPatches();
+  renderManageAvailableBundles();
+  updateManageSummaryStatus();
+}
+
+function toggleManageBundleAll(bundleRepo, enableAll) {
+  for (const item of currentManagePatchesState.values()) {
+    if (cleanRepoSlug(item.repo) === cleanRepoSlug(bundleRepo)) {
+      item.enabled = Boolean(enableAll);
+    }
+  }
+  renderActiveAppliedPatches();
+  renderManageAvailableBundles();
+  updateManageSummaryStatus();
+}
+
+function expandAllManageBundles(open) {
+  const container = document.getElementById('manage-bundles-container');
+  if (!container) return;
+  const details = container.querySelectorAll('details.prov-bundle-accordion');
+  details.forEach(d => { d.open = Boolean(open); });
+}
+
+function filterManagePatches(query) {
+  currentManageSearchFilter = (query || '').toLowerCase().trim();
+  renderActiveAppliedPatches();
+  renderManageAvailableBundles();
+}
+
+const filterAppliedPatches = filterManagePatches;
+
+function updateManageSummaryStatus() {
+  const summaryEl = document.getElementById('manage-summary-status');
+  if (!summaryEl) return;
+
+  const activePatches = Array.from(currentManagePatchesState.values()).filter(p => p.enabled);
+  const activeSources = new Set(activePatches.map(p => cleanRepoSlug(p.repo)));
+
+  if (activePatches.length === 0) {
+    summaryEl.textContent = '0 patches selected';
+  } else {
+    summaryEl.textContent = `${activePatches.length} patch${activePatches.length > 1 ? 'es' : ''} enabled across ${activeSources.size} source${activeSources.size > 1 ? 's' : ''}`;
+  }
+}
+
+function addManageCustomRepo() {
+  const input = document.getElementById('manage-new-repo-input');
+  if (!input) return;
+  const rawUrl = input.value.trim();
+  if (!rawUrl) return;
+
+  const slug = cleanRepoSlug(rawUrl);
+  if (currentAppliedBundles.some(b => cleanRepoSlug(b.bundleRepo) === slug)) {
+    showToast(`Source already in list: ${slug}`, 'info');
+    input.value = '';
+    return;
+  }
+
+  currentAppliedBundles.push({
+    bundleName: slug.split('/')[1] || slug,
+    bundleAuthor: slug.split('/')[0] || 'Custom',
+    bundleRepo: rawUrl.startsWith('http') ? rawUrl : `https://github.com/${slug}`,
+    patches: []
+  });
+
+  input.value = '';
+  renderManageAvailableBundles();
+  showToast(`Added source: ${slug}`, 'success');
+}
+
+async function saveAppliedPatchesChanges() {
+  if (!currentAppliedPkg) return;
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === currentAppliedPkg);
+  if (!app) {
+    showToast('Application not found', 'error');
+    return;
+  }
+
+  const saveBtn = document.getElementById('btn-save-applied-patches');
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    if (!app.options) app.options = {};
+
+    const configuredRepos = new Set(Array.isArray(app.repos) ? app.repos : []);
+
+    for (const [key, item] of currentManagePatchesState.entries()) {
+      const repo = item.repo;
+      if (!app.options[repo]) app.options[repo] = { patches: {} };
+      if (!app.options[repo].patches) app.options[repo].patches = {};
+
+      app.options[repo].patches[item.name] = {
+        enabled: Boolean(item.enabled)
+      };
+
+      if (item.enabled) {
+        configuredRepos.add(repo);
+      }
+    }
+
+    // Also include any bundles currently visible in modal
+    for (const b of currentAppliedBundles) {
+      if (b.bundleRepo) configuredRepos.add(b.bundleRepo);
+    }
+
+    app.repos = Array.from(configuredRepos).filter(Boolean);
+
+    const res = await fetch('/api/config/app', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(app)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    showToast(`Saved patches for ${app.name || currentAppliedPkg}!`, 'success');
+    closeAppliedPatchesModal();
+    await loadConfig();
+  } catch (err) {
+    showToast(`Failed to save patches: ${err.message}`, 'error');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3122,6 +3436,13 @@ window.submitBaseApkAndBuild = submitBaseApkAndBuild;
 window.openAppliedPatchesModal = openAppliedPatchesModal;
 window.closeAppliedPatchesModal = closeAppliedPatchesModal;
 window.filterAppliedPatches = filterAppliedPatches;
+window.filterManagePatches = filterManagePatches;
+window.clearAllAppliedPatches = clearAllAppliedPatches;
+window.toggleManagePatch = toggleManagePatch;
+window.toggleManageBundleAll = toggleManageBundleAll;
+window.expandAllManageBundles = expandAllManageBundles;
+window.addManageCustomRepo = addManageCustomRepo;
+window.saveAppliedPatchesChanges = saveAppliedPatchesChanges;
 window.switchStoreSubtab = switchStoreSubtab;
 window.renderStoreBundles = renderStoreBundles;
 window.filterAppsByRepo = filterAppsByRepo;
