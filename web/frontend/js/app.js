@@ -248,6 +248,8 @@ function setupEventListeners() {
   document.getElementById('btn-copy-obtainium-json')?.addEventListener('click', () => copyObtainiumJson());
   document.getElementById('btn-confirm-provision')?.addEventListener('click', () => confirmProvisionApp());
   document.getElementById('btn-drawer-save')?.addEventListener('click', () => saveAppDrawerChanges());
+  document.getElementById('btn-pipeline-refresh')?.addEventListener('click', () => loadPipelineViewLogs());
+  document.getElementById('btn-pipeline-run')?.addEventListener('click', () => runPipeline());
 
   // Store Subtabs (Applications vs Patch Bundles)
   document.getElementById('btn-subtab-apps')?.addEventListener('click', () => switchStoreSubtab('apps'));
@@ -1066,9 +1068,7 @@ function switchTab(tabName, targetPath = null) {
   } else if (tabName === 'store') {
     renderStoreCatalog();
   } else if (tabName === 'pipeline') {
-    if (!state.eventSource && state.status?.is_running) {
-      openTerminalAndConnect();
-    }
+    loadPipelineViewLogs();
   } else if (tabName === 'settings') {
     loadSettings();
   }
@@ -2976,8 +2976,38 @@ async function saveCustomApkUrl(pkg) {
 async function handleCustomApkFileSelected(pkg, file) {
   if (!file) return;
   const statusEl = document.getElementById('drawer-apk-upload-status');
-  if (statusEl) statusEl.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
-  showToast(`Staged ${file.name}. Enter a direct download URL or upload via release.`, 'info');
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="badge badge-pulse badge-info">Uploading ${escapeHtml(file.name)} (${(file.size / 1024 / 1024).toFixed(1)} MB)...</span>`;
+  }
+  showToast(`Uploading ${file.name} to persistent cloud storage...`, 'info');
+
+  const formData = new FormData();
+  formData.append('package', pkg);
+  formData.append('apk', file);
+
+  try {
+    const res = await fetch('/api/upload/apk', {
+      method: 'POST',
+      body: formData
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+
+    if (statusEl) {
+      statusEl.innerHTML = `<span class="badge badge-success">✓ Uploaded & Linked: ${escapeHtml(file.name)}</span>`;
+    }
+    const input = document.getElementById('drawer-base-apk-url');
+    if (input && result.base_apk_url) {
+      input.value = result.base_apk_url;
+    }
+    showToast(`Successfully uploaded custom base APK for ${pkg}!`, 'success');
+    await loadConfig();
+  } catch (err) {
+    if (statusEl) {
+      statusEl.innerHTML = `<span class="badge badge-danger">Upload failed: ${escapeHtml(err.message)}</span>`;
+    }
+    showToast(`Upload failed: ${err.message}`, 'error');
+  }
 }
 
 
@@ -4043,11 +4073,18 @@ function appendTerminalLine(text) {
   const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   if (!output) return;
 
+  // Clean raw ANSI terminal escape characters (e.g. ^[[36;1m or \x1b[0m)
+  let cleanText = typeof text === 'string' ? text : String(text || '');
+  cleanText = cleanText
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+    .replace(/\^\[\[[0-9;]*m/g, '');
+
   const div = document.createElement('div');
   div.className = 'terminal-line';
 
   // Strip leading whitespace, newlines, and box-drawing tree characters to identify tags
-  const clean = text.replace(/^[\s\r\n\u2500-\u257F\u00A0]+/, '');
+  const clean = cleanText.replace(/^[\s\r\n\u2500-\u257F\u00A0]+/, '');
 
   if (clean.startsWith('[*]')) {
     div.classList.add('log-info');
@@ -4057,30 +4094,113 @@ function appendTerminalLine(text) {
     div.classList.add('log-warning');
   } else if (clean.startsWith('[✗]') || clean.startsWith('[x]') || clean.startsWith('[X]')) {
     div.classList.add('log-error');
-  } else if (text.includes('[✓]') || text.includes('[✔]')) {
+  } else if (cleanText.includes('[✓]') || cleanText.includes('[✔]')) {
     div.classList.add('log-success');
-  } else if (text.includes('[✗]')) {
+  } else if (cleanText.includes('[✗]')) {
     div.classList.add('log-error');
-  } else if (text.includes('[!]')) {
+  } else if (cleanText.includes('[!]')) {
     div.classList.add('log-warning');
-  } else if (text.includes('[*]')) {
+  } else if (cleanText.includes('[*]')) {
     div.classList.add('log-info');
   }
 
   // Prominently highlight core patch milestones
-  if (text.includes('Successfully patched')) {
+  if (cleanText.includes('Successfully patched')) {
     div.classList.add('log-success', 'log-patch-success');
-  } else if (text.includes('Morphe CLI failed') || text.includes('All attempts failed for')) {
+  } else if (cleanText.includes('Morphe CLI failed') || cleanText.includes('All attempts failed for')) {
     div.classList.remove('log-warning');
     div.classList.add('log-error', 'log-patch-error');
   }
 
-  div.textContent = text;
+  div.textContent = cleanText;
   output.appendChild(div);
 
-  const autoScroll = document.getElementById('term-autoscroll')?.checked;
+  const autoScroll = document.getElementById('pipeline-autoscroll')?.checked ?? document.getElementById('term-autoscroll')?.checked ?? true;
   if (autoScroll) {
     output.scrollTop = output.scrollHeight;
+  }
+}
+
+async function loadPipelineViewLogs() {
+  const output = document.getElementById('terminal-stream-log');
+  const statusBadge = document.getElementById('pipeline-status-badge');
+  const targetBadge = document.getElementById('pipeline-target-badge');
+  const durBadge = document.getElementById('pipeline-duration-badge');
+  const stopBtn = document.getElementById('btn-term-stop');
+
+  if (state.status?.is_running) {
+    if (statusBadge) {
+      statusBadge.className = 'badge badge-pulse badge-info';
+      statusBadge.textContent = '● Streaming Live';
+    }
+    if (stopBtn) stopBtn.style.display = 'inline-flex';
+    connectSseStream();
+    return;
+  }
+
+  if (stopBtn) stopBtn.style.display = 'none';
+  if (statusBadge) {
+    statusBadge.className = 'badge badge-pulse badge-info';
+    statusBadge.textContent = 'Loading Log...';
+  }
+
+  try {
+    const res = await fetch('/api/run/logs');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (output) output.innerHTML = '';
+
+    const lastRun = data.run_info || state.status?.last_run;
+    const isSuccess = (lastRun?.status === 'success') || (data.status === 'success');
+    const isFailed = (lastRun?.status === 'failed') || (data.status === 'failed');
+
+    if (statusBadge) {
+      if (isSuccess) {
+        statusBadge.className = 'badge badge-success';
+        statusBadge.textContent = '● Completed';
+      } else if (isFailed) {
+        statusBadge.className = 'badge badge-danger';
+        statusBadge.textContent = '● Failed';
+      } else {
+        statusBadge.className = 'badge badge-secondary';
+        statusBadge.textContent = lastRun?.status || 'Idle';
+      }
+    }
+
+    if (targetBadge && lastRun && (lastRun.package || lastRun.source)) {
+      targetBadge.style.display = 'inline-flex';
+      targetBadge.textContent = lastRun.package ? `Target: ${lastRun.package}` : `Source: ${lastRun.source}`;
+    } else if (targetBadge) {
+      targetBadge.style.display = 'none';
+    }
+
+    if (durBadge && lastRun) {
+      durBadge.style.display = 'inline-flex';
+      const dur = lastRun.duration_formatted || formatDuration(lastRun.duration_seconds || lastRun.duration);
+      durBadge.textContent = `Duration: ${dur}`;
+    } else if (durBadge) {
+      durBadge.style.display = 'none';
+    }
+
+    const lines = data.lines || [];
+    if (lines.length === 0) {
+      appendTerminalLine('[*] No previous pipeline execution logs found.');
+      appendTerminalLine('[*] Click "Run Pipeline" to trigger a build and stream live execution logs.');
+    } else {
+      for (const line of lines) {
+        appendTerminalLine(typeof line === 'string' ? line : (line.line || ''));
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load pipeline view logs:', err);
+    if (statusBadge) {
+      statusBadge.className = 'badge badge-danger';
+      statusBadge.textContent = '● Error';
+    }
+    if (output) {
+      appendTerminalLine(`[✗] Could not load execution log: ${err.message}`);
+    }
   }
 }
 

@@ -608,6 +608,139 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({ status: 'success', package: body.package, base_apk_url: body.base_apk_url });
   }
 
+  // 9c. Direct Base APK File Upload: POST /api/upload/apk
+  if (path === '/api/upload/apk' && method === 'POST') {
+    const contentType = request.headers.get('content-type') || '';
+    let pkg = url.searchParams.get('package') || '';
+    let fileBuffer: ArrayBuffer | null = null;
+    let fileName = '';
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const file = formData.get('apk') as File | null;
+      pkg = (formData.get('package') as string) || pkg;
+      if (!file) {
+        return json({ error: 'No APK file provided in formData field "apk"' }, 400);
+      }
+      fileName = file.name || `${pkg}.apk`;
+      fileBuffer = await file.arrayBuffer();
+    } else {
+      fileBuffer = await request.arrayBuffer();
+      fileName = `${pkg || 'base'}.apk`;
+    }
+
+    if (!pkg) {
+      return json({ error: 'Package identifier is required (query parameter ?package=... or form field)' }, 400);
+    }
+    if (!fileBuffer || fileBuffer.byteLength === 0) {
+      return json({ error: 'Uploaded APK file is empty' }, 400);
+    }
+
+    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const token = env.GITHUB_TOKEN;
+
+    if (!token) {
+      return json({ error: 'GITHUB_TOKEN is not configured on Cloudflare Worker.' }, 500);
+    }
+
+    // 1. Get or create release with tag 'base-apks'
+    let releaseId: number | null = null;
+    let uploadUrlTemplate = '';
+    const relRes = await fetch(`https://api.github.com/repos/${repo}/releases/tags/base-apks`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+      },
+    });
+
+    if (relRes.ok) {
+      const relData = await relRes.json<any>();
+      releaseId = relData.id;
+      uploadUrlTemplate = relData.upload_url || '';
+
+      // Check if asset already exists and delete to overwrite cleanly
+      if (Array.isArray(relData.assets)) {
+        const targetAssetName = `${pkg}.apk`;
+        const existingAsset = relData.assets.find((a: any) => a.name === targetAssetName);
+        if (existingAsset && existingAsset.id) {
+          await fetch(`https://api.github.com/repos/${repo}/releases/assets/${existingAsset.id}`, {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+            },
+          });
+        }
+      }
+    } else {
+      // Create 'base-apks' release
+      const createRes = await fetch(`https://api.github.com/repos/${repo}/releases`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tag_name: 'base-apks',
+          target_commitish: 'main',
+          name: 'AutoMorph Custom Base APKs',
+          body: 'Persistent cloud storage for user-uploaded custom base APKs.',
+          draft: false,
+          prerelease: false,
+        }),
+      });
+      if (!createRes.ok) {
+        const errTxt = await createRes.text();
+        return json({ error: `Failed to create base-apks release on GitHub: ${errTxt}` }, 502);
+      }
+      const createData = await createRes.json<any>();
+      releaseId = createData.id;
+      uploadUrlTemplate = createData.upload_url || '';
+    }
+
+    // 2. Upload asset
+    const uploadBaseUrl = uploadUrlTemplate.replace(/\{[^{}]*\}$/, '');
+    const finalUploadUrl = `${uploadBaseUrl}?name=${encodeURIComponent(pkg + '.apk')}`;
+
+    const upRes = await fetch(finalUploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+        'Content-Type': 'application/vnd.android.package-archive',
+      },
+      body: fileBuffer,
+    });
+
+    if (!upRes.ok) {
+      const upErr = await upRes.text();
+      return json({ error: `Failed to upload APK asset to GitHub Releases: ${upErr}` }, 502);
+    }
+
+    const directDownloadUrl = `https://github.com/${repo}/releases/download/base-apks/${pkg}.apk`;
+
+    // 3. Save URL to package options in D1
+    const pkgRecord = await storage.getPackage(pkg);
+    const currentOptions = pkgRecord?.options || {};
+    currentOptions.base_apk_url = directDownloadUrl;
+    await storage.savePackage({
+      package: pkg,
+      options: currentOptions,
+    });
+
+    return json({
+      status: 'success',
+      package: pkg,
+      filename: `${pkg}.apk`,
+      size_bytes: fileBuffer.byteLength,
+      base_apk_url: directDownloadUrl,
+    });
+  }
+
   // 10. Packages: POST /api/config/app/toggle
   if (path === '/api/config/app/toggle' && method === 'POST') {
     const body = await request.json<any>();
@@ -692,27 +825,68 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const pkg = String(body.package).trim();
     const existing = await storage.getPackage(pkg);
+    const appName = body.package_name || body.name || existing?.package_name || pkg;
     
     // Default repository fallback if none provided
     const defaultRepo = 'https://github.com/MorpheApp/morphe-patches';
     let repos: string[] = [];
     if (Array.isArray(body.repos) && body.repos.length > 0) {
-      repos = body.repos;
+      repos = body.repos.map((r: any) => String(r).trim());
     } else if (body.repo && typeof body.repo === 'string') {
-      repos = [body.repo];
+      repos = [body.repo.trim()];
+    } else if (body.repo_url && typeof body.repo_url === 'string') {
+      repos = [body.repo_url.trim()];
     } else if (existing?.repos && existing.repos.length > 0) {
       repos = existing.repos;
     } else {
       repos = [defaultRepo];
     }
 
+    // Build options structure with enabled patches
+    const options: Record<string, any> = existing?.options ? JSON.parse(JSON.stringify(existing.options)) : {};
+    if (Array.isArray(body.patches) && body.patches.length > 0) {
+      for (const p of body.patches) {
+        const pName = typeof p === 'string' ? p.trim() : (p.name || '').trim();
+        if (!pName) continue;
+        const pRepo = (typeof p === 'object' && (p.repo || p.repo_url)) ? String(p.repo || p.repo_url).trim() : repos[0];
+        
+        // Normalize owner from repo slug
+        let owner = 'default';
+        try {
+          const cleanRepo = pRepo.replace(/https?:\/\/github\.com\//, '').replace(/\/+$/, '');
+          const parts = cleanRepo.split('/');
+          owner = parts[0] || 'default';
+        } catch (_) {}
+
+        if (!options[owner]) {
+          options[owner] = {
+            meta: {
+              package: pkg,
+              repo: pRepo,
+            },
+            patches: {},
+          };
+        }
+        if (!options[owner].patches) options[owner].patches = {};
+        options[owner].patches[pName] = { enabled: true };
+
+        if (pRepo && !repos.includes(pRepo)) {
+          repos.push(pRepo);
+        }
+      }
+    }
+
+    if (body.base_apk_url) {
+      options.base_apk_url = body.base_apk_url;
+    }
+
     const saved = await storage.savePackage({
       package: pkg,
-      package_name: body.package_name || existing?.package_name || pkg,
+      package_name: appName,
       enabled: true,
       repos: repos,
       patch_aliases: existing?.patch_aliases || [],
-      options: existing?.options || {},
+      options: options,
     });
 
     return json({
@@ -849,22 +1023,48 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   // 21. Run Logs: GET /api/run/logs
   if (path === '/api/run/logs' && method === 'GET') {
     const logs = await storage.getRunLogs();
+    const lastRun = await storage.getLastRunInfo();
+    const activeLock = await storage.getActiveLock();
+    const now = Date.now() / 1000;
+    const isRunning = Boolean(activeLock && (!activeLock.expires_at || activeLock.expires_at > now));
+
     return json({
       lines: logs.logs,
       run_id: logs.run_id,
+      run_info: lastRun,
+      active_lock: activeLock,
+      is_running: isRunning,
+      status: isRunning ? 'running' : (lastRun?.status || 'idle'),
     });
   }
 
   // 22. Run Stream: GET /api/run/stream (SSE)
   if (path === '/api/run/stream' && method === 'GET') {
     const logs = await storage.getRunLogs();
+    const lastRun = await storage.getLastRunInfo();
+    const activeLock = await storage.getActiveLock();
+    const now = Date.now() / 1000;
+    const isRunning = Boolean(activeLock && (!activeLock.expires_at || activeLock.expires_at > now));
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
         for (const line of logs.logs) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ line, type: 'stdout' })}\n\n`));
         }
-        controller.enqueue(encoder.encode(`event: ping\ndata: keepalive\n\n`));
+        if (!isRunning) {
+          controller.enqueue(
+            encoder.encode(
+              `event: complete\ndata: ${JSON.stringify({
+                status: lastRun?.status || 'success',
+                package: lastRun?.package || null,
+                duration: lastRun?.duration_seconds || 0,
+              })}\n\n`
+            )
+          );
+        } else {
+          controller.enqueue(encoder.encode(`event: ping\ndata: keepalive\n\n`));
+        }
         controller.close();
       },
     });

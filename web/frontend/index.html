@@ -338,18 +338,36 @@
 
     <!-- VIEW 4: PIPELINE LOGS -->
     <main id="view-pipeline" class="view-panel" style="display: none;">
-      <section class="terminal-tray">
+      <section class="terminal-tray pipeline-view-tray">
         <div class="log-tray-bar">
-          <div class="log-session-label" id="terminal-session-label">
-            github-actions // worker-run-telemetry
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="log-session-label" id="terminal-session-label">
+              GitHub Actions // Cloud Patcher
+            </div>
+            <span class="badge badge-secondary" id="pipeline-status-badge">Idle</span>
+            <span class="badge badge-outline" id="pipeline-target-badge" style="display: none;">All Targets</span>
+            <span class="badge badge-outline" id="pipeline-duration-badge" style="display: none;">Duration: --</span>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn-secondary" id="btn-term-copy" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Copy Log</button>
-            <button class="btn-secondary" id="btn-term-stop" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; color: var(--status-danger);">Stop Pipeline</button>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="pipeline-autoscroll" checked style="accent-color: var(--accent);"> Auto-scroll
+            </label>
+            <button class="btn-secondary" id="btn-pipeline-refresh" style="font-size: 0.75rem; padding: 0.3rem 0.65rem;">
+              <span class="material-symbols-rounded" style="font-size: 0.9rem;">refresh</span> Refresh
+            </button>
+            <button class="btn-secondary" id="btn-term-copy" style="font-size: 0.75rem; padding: 0.3rem 0.65rem;">
+              <span class="material-symbols-rounded" style="font-size: 0.9rem;">content_copy</span> Copy Log
+            </button>
+            <button class="btn-primary" id="btn-pipeline-run" style="font-size: 0.75rem; padding: 0.3rem 0.65rem;">
+              <span class="material-symbols-rounded" style="font-size: 0.9rem;">play_arrow</span> Run Pipeline
+            </button>
+            <button class="btn-secondary" id="btn-term-stop" style="display: none; font-size: 0.75rem; padding: 0.3rem 0.65rem; color: var(--status-danger);">
+              <span class="material-symbols-rounded" style="font-size: 0.9rem;">stop</span> Stop Pipeline
+            </button>
           </div>
         </div>
         <div class="terminal-stream" id="terminal-stream-log">
-          <div class="log-line"><span class="log-time">00:00:00</span><span class="log-lvl-info">[INFO]</span><span class="log-msg">AutoMorph Edge Console connected to telemetry stream.</span></div>
+          <div class="terminal-line log-info">[*] AutoMorph Edge Console ready. Click 'Run Pipeline' or select a target app to view live telemetry.</div>
         </div>
       </section>
     </main>
