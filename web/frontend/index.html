@@ -97,7 +97,7 @@
         </div>
         <span class="brand-title">
           AutoMorph
-          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.2.0</span>
+          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.3.0</span>
         </span>
       </div>
 
@@ -185,7 +185,7 @@
               <h2 class="bento-title">Operations Queue</h2>
               <span class="brand-badge" id="badge-overview-count">0 Targets</span>
             </div>
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <div class="bento-header-actions">
               <button class="btn-primary" id="btn-patch-all-waiting" title="Trigger parallel builds for all apps waiting for compilation">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                 <span>Patch All Waiting</span>
@@ -282,19 +282,21 @@
               <button class="cat-pill filter-pill" data-app-filter="disabled">Disabled (<span id="count-disabled">0</span>)</button>
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <div class="store-search-wrap" style="width: 240px;">
+          <div class="apps-header-controls">
+            <div class="store-search-wrap">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" id="apps-search-input" placeholder="Search configured apps…">
             </div>
-            <button class="btn-secondary" id="btn-apps-patch-all-waiting" title="Trigger parallel builds for all apps waiting for compilation">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              <span>Patch Waiting</span>
-            </button>
-            <button class="btn-primary" id="btn-add-app-nav">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              <span>Add Package</span>
-            </button>
+            <div class="apps-header-btn-row">
+              <button class="btn-secondary" id="btn-apps-patch-all-waiting" title="Trigger parallel builds for all apps waiting for compilation">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>Patch Waiting</span>
+              </button>
+              <button class="btn-primary" id="btn-add-app-nav">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Add Package</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -308,7 +310,7 @@
     <main id="view-store" class="view-panel" style="display: none;">
       <div class="store-view-wrap">
         
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+        <div class="store-header-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
           <div class="store-subnav">
             <button class="store-subtab active" id="btn-subtab-apps" data-subtab="apps">
               Applications (1,342)

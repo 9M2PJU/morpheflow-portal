@@ -1946,6 +1946,29 @@ a {
   border-color: var(--status-danger-border) !important;
 }
 
+/* Base helper classes for header controls */
+.bento-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.apps-header-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.apps-header-btn-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ==========================================================================
+   Mobile & Responsive Adaptations (Autosizing for Handhelds / Phones)
+   ========================================================================== */
+
+/* 1. Medium Tablets & Large Phones (<= 880px) */
 @media (max-width: 880px) {
   .app-card-metrics {
     grid-template-columns: repeat(2, 1fr);
@@ -1965,7 +1988,511 @@ a {
     gap: 0.75rem;
   }
   .app-card-actions {
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+}
+
+/* 2. Tablets & Mobile Landscape / Standard Viewports (<= 768px) */
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 0.5rem 0.75rem 2.5rem 0.75rem;
+  }
+
+  /* Two-row Monolith Top Chrome */
+  .top-chrome {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    top: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .brand-deck {
+    order: 1;
+    padding-left: 0;
+  }
+
+  .brand-title {
+    font-size: 0.9375rem;
+  }
+
+  .action-monolith {
+    order: 2;
+    margin-left: auto;
+    gap: 0.375rem;
+  }
+
+  .keystore-seal-chip {
+    display: none;
+  }
+
+  .beacon-capsule {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    gap: 0.35rem;
+  }
+
+  .beacon-capsule #stat-next-run {
+    display: none;
+  }
+
+  #btn-run-pipeline {
+    padding: 0.35rem 0.625rem;
+    font-size: 0.75rem;
+  }
+
+  .btn-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  /* Horizontally Scrollable Segmented Nav Dock */
+  .nav-dock {
+    order: 3;
+    width: 100%;
+    margin-top: 0.25rem;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: flex-start;
+    padding: 3px;
+  }
+
+  .nav-dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.75rem;
+    gap: 0.375rem;
+  }
+
+  .nav-tab-btn svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .nav-badge {
+    font-size: 0.5625rem;
+    padding: 0.05rem 0.25rem;
+  }
+
+  /* Active Banner */
+  #active-run-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  #active-run-banner > div:last-child {
+    display: flex;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  #active-run-banner > div:last-child button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* 3. Standard Smartphone Viewports (<= 640px) */
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 0.5rem 0.5rem 2rem 0.5rem;
+  }
+
+  .bento-card {
+    padding: 1rem 0.875rem;
+    border-radius: var(--radius-md);
+  }
+
+  .bento-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .bento-title-wrap {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .bento-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .bento-header-actions .btn-primary,
+  .bento-header-actions .btn-secondary {
+    justify-content: center;
+    text-align: center;
+    padding: 0.4375rem 0.5rem;
+    font-size: 0.75rem;
+    width: 100%;
+  }
+
+  /* View 2: Configured Apps Header */
+  #view-apps .bento-title-wrap {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  #view-apps .bento-title-wrap > div {
+    margin-left: 0 !important;
+    display: flex;
+    width: 100%;
+    gap: 0.375rem;
+  }
+
+  #view-apps .bento-title-wrap .cat-pill {
+    flex: 1;
+    text-align: center;
+    padding: 0.3125rem 0.375rem;
+    font-size: 0.6875rem;
+  }
+
+  .apps-header-controls {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .apps-header-controls .store-search-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .apps-header-btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .apps-header-btn-row .btn-primary,
+  .apps-header-btn-row .btn-secondary {
+    justify-content: center;
+    padding: 0.4375rem 0.5rem;
+    font-size: 0.75rem;
+    width: 100%;
+  }
+
+  /* App Card Mobile Optimization */
+  .app-card-header {
+    padding: 0.75rem 0.875rem;
+    gap: 0.5rem;
+  }
+
+  .app-card-identity {
+    gap: 0.625rem;
+    min-width: 0;
+  }
+
+  .app-card-icon-frame {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .app-card-icon-frame img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .app-card-name-row {
+    gap: 0.375rem;
+  }
+
+  .app-card-title {
+    font-size: 0.875rem;
+  }
+
+  .app-card-pkg {
+    font-size: 0.6875rem;
+    max-width: 170px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .apple-switch {
+    width: 38px;
+    height: 22px;
+  }
+
+  .apple-switch-slider::before {
+    height: 16px;
+    width: 16px;
+  }
+
+  .apple-switch input:checked + .apple-switch-slider::before {
+    transform: translateX(16px);
+  }
+
+  .metric-cell {
+    padding: 0.5rem 0.625rem;
+  }
+
+  .metric-cell-label {
+    font-size: 0.625rem;
+  }
+
+  .metric-cell-value {
+    font-size: 0.75rem;
+  }
+
+  .status-pill-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+  }
+
+  .app-card-footer {
+    padding: 0.625rem 0.875rem;
+    gap: 0.625rem;
+  }
+
+  .app-card-sources {
+    width: 100%;
+  }
+
+  .source-tag-pill {
+    max-width: 160px;
+  }
+
+  .app-card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.375rem;
+    width: 100%;
+  }
+
+  .app-card-actions .btn {
+    justify-content: center;
+    font-size: 0.75rem;
+    padding: 0.375rem 0.5rem;
+    width: 100%;
+  }
+
+  /* View 3: Store & Catalog */
+  .store-header-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .store-subnav {
+    width: 100%;
+    display: flex;
+  }
+
+  .store-subtab {
+    flex: 1;
+    text-align: center;
+    padding: 0.4375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .store-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+  }
+
+  .store-search-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .category-pills {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .category-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .store-catalog-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .bundle-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  /* Slide Drawer Autosized to Fullscreen Bottom/Side Sheet */
+  .slide-drawer {
+    width: 100vw;
+    max-width: 100vw;
+    border-left: none;
+  }
+
+  .drawer-head {
+    padding: 0.875rem 1rem;
+  }
+
+  .drawer-body {
+    padding: 1rem 0.875rem;
+    gap: 1rem;
+  }
+
+  .drawer-footer {
+    padding: 0.75rem 1rem;
+  }
+
+  /* Mobile Native Bottom-Sheet Dialogs */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    margin: 0;
+    transform: translateY(100%);
+    transition: transform var(--dur-normal) var(--ease-spring);
+  }
+
+  .modal-overlay.open .modal-container {
+    transform: translateY(0);
+  }
+
+  .modal-head {
+    padding: 0.875rem 1rem;
+  }
+
+  .modal-body {
+    padding: 1rem 0.875rem;
+    max-height: calc(92dvh - 120px) !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-foot,
+  .modal-footer {
+    padding: 0.75rem 1rem;
+  }
+
+  /* Patch Manager inside Modal & Drawer on Phone */
+  .patch-bundle-accordion-header {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .bundle-header-actions {
+    margin-left: auto;
+  }
+
+  .patch-item-row {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .manage-add-source-bar {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.5rem;
+  }
+
+  .manage-add-source-bar button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  #modal-applied-patches .drawer-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  #modal-applied-patches .drawer-footer > div:last-child {
+    display: flex;
+    width: 100%;
+  }
+
+  #modal-applied-patches .drawer-footer > div:last-child button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Telemetry Pillar & Crypto Seal */
+  .crypto-seal-card {
+    padding: 1rem 0.875rem;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .metric-box {
+    padding: 0.75rem 0.625rem;
+  }
+
+  .metric-value {
+    font-size: 1.125rem;
+  }
+}
+
+/* 4. Compact Phones (<= 400px, e.g. 360px-390px) */
+@media (max-width: 400px) {
+  .brand-title {
+    font-size: 0.875rem;
+  }
+
+  .brand-icon-slot {
+    width: 24px;
+    height: 24px;
+  }
+
+  .brand-icon-slot svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  #btn-run-pipeline span {
+    display: none;
+  }
+
+  #btn-run-pipeline {
+    padding: 0.35rem 0.5rem;
+  }
+
+  .app-card-pkg {
+    max-width: 130px;
+  }
+
+  .metric-cell-value {
+    font-size: 0.6875rem;
   }
 }
 

@@ -365,6 +365,12 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
       padding: 36px 32px;
       text-align: center;
     }
+    @media (max-width: 480px) {
+      body { padding: 12px; }
+      .card { padding: 28px 20px; }
+      .logo { width: 72px; height: 72px; }
+      h1 { font-size: 1.25rem; }
+    }
     .logo {
       width: 90px;
       height: 90px;
