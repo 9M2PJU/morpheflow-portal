@@ -1464,12 +1464,61 @@ function getCompatiblePatchesForPackage(pkg) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// SemVer Helpers & Disambiguated Update Detection
+// ---------------------------------------------------------------------------
+function parseSemVer(v) {
+  if (!v || typeof v !== 'string') return null;
+  const clean = v.replace(/^[vV]/, '').trim();
+  const base = clean.split(/[-_+]/)[0];
+  const parts = base.split('.').map(n => parseInt(n, 10));
+  return parts.every(n => !isNaN(n)) ? parts : null;
+}
+
+function compareSemVer(v1, v2) {
+  const p1 = parseSemVer(v1);
+  const p2 = parseSemVer(v2);
+  if (!p1 || !p2) {
+    if (v1 === v2) return 0;
+    return (v1 || '') > (v2 || '') ? 1 : -1;
+  }
+  const maxLen = Math.max(p1.length, p2.length);
+  for (let i = 0; i < maxLen; i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
+
+function getLatestPatchBundleVersion(appRepos) {
+  if (!rawBundlesData || !Array.isArray(rawBundlesData) || rawBundlesData.length === 0) return null;
+  const repos = (appRepos && appRepos.length > 0) ? appRepos : ['MorpheApp/morphe-patches'];
+  let latestVer = null;
+  for (const r of repos) {
+    const cleanR = cleanRepoSlug(r).toLowerCase().trim();
+    const bundle = rawBundlesData.find(b => {
+      const bRepo = cleanRepoSlug(b.repo || '').toLowerCase().trim();
+      return bRepo === cleanR;
+    });
+    if (bundle && bundle.version) {
+      const v = bundle.version.startsWith('v') ? bundle.version : `v${bundle.version}`;
+      if (!latestVer || compareSemVer(v, latestVer) > 0) {
+        latestVer = v;
+      }
+    }
+  }
+  return latestVer;
+}
+
 function getAppVersionInfo(app) {
   const pkg = app.package || app.package_name;
   const lastRes = app.last_result || null;
   const isSuccess = lastRes && lastRes.status === 'success';
   const isFailed = lastRes && lastRes.status === 'failed';
 
+  // 1. Current Compiled / Installed Version
   let currentVer = null;
   if (lastRes && lastRes.version && lastRes.version !== 'target') {
     currentVer = lastRes.version.startsWith('v') ? lastRes.version : `v${lastRes.version}`;
@@ -1477,9 +1526,11 @@ function getAppVersionInfo(app) {
     currentVer = app.version.startsWith('v') ? app.version : `v${app.version}`;
   }
 
+  // 2. Recommended Target Version (from Patches) - FIRST!
   const recTarget = getRecommendedTargetVersion(pkg);
   const targetVer = recTarget ? (recTarget.startsWith('v') ? recTarget : `v${recTarget}`) : null;
 
+  // 3. Patch Bundle Version
   let patchBundleVer = 'v1.0.0';
   if (lastRes && lastRes.patch_version) {
     patchBundleVer = lastRes.patch_version.startsWith('v') ? lastRes.patch_version : `v${lastRes.patch_version}`;
@@ -1490,15 +1541,70 @@ function getAppVersionInfo(app) {
     }
   }
 
+  // 4. Latest Available Patch Bundle Version upstream
+  const repos = app.repos || [];
+  const latestPatchVer = getLatestPatchBundleVersion(repos);
+
+  // 5. Update Classification
+  const badges = [];
+  let appUpdate = false;
+  let appAhead = false;
+  let patchUpdate = false;
   let hasUpdate = false;
-  if (targetVer && currentVer) {
-    const cleanCur = currentVer.replace(/^v/, '');
-    const cleanTgt = targetVer.replace(/^v/, '');
-    if (cleanCur !== cleanTgt) {
+
+  if (!currentVer) {
+    badges.push({
+      type: 'pending',
+      class: 'badge-pending',
+      label: '○ Awaiting Build',
+      tooltip: 'Target APK has not been compiled yet'
+    });
+  } else if (targetVer) {
+    const cmp = compareSemVer(currentVer, targetVer);
+    if (cmp < 0) {
+      appUpdate = true;
       hasUpdate = true;
+      badges.push({
+        type: 'app_update',
+        class: 'badge-app-update',
+        label: `⬆ App Update: ${targetVer}`,
+        tooltip: `Recommended tested target ${targetVer} is newer than current ${currentVer}`
+      });
+    } else if (cmp > 0) {
+      appAhead = true;
+      badges.push({
+        type: 'ahead',
+        class: 'badge-ahead',
+        label: `⚡ Ahead (v${currentVer.replace(/^v/, '')})`,
+        tooltip: `Installed APK (${currentVer}) is newer than patch recommended target (${targetVer})`
+      });
     }
   }
 
+  if (latestPatchVer && patchBundleVer) {
+    const pCmp = compareSemVer(patchBundleVer, latestPatchVer);
+    if (pCmp < 0) {
+      patchUpdate = true;
+      hasUpdate = true;
+      badges.push({
+        type: 'patch_update',
+        class: 'badge-patch-update',
+        label: `⬆ Patch Update: ${latestPatchVer}`,
+        tooltip: `Newer patch bundle version ${latestPatchVer} available (currently using ${patchBundleVer})`
+      });
+    }
+  }
+
+  if (badges.length === 0) {
+    badges.push({
+      type: 'uptodate',
+      class: 'badge-uptodate',
+      label: `✓ Up to Date`,
+      tooltip: `Installed binary and patch bundle match recommended target versions`
+    });
+  }
+
+  // URLs & Metadata
   const apkName = lastRes?.apk_name || app.apk_name || (isSuccess && currentVer ? `${pkg}_${currentVer.replace(/^v/, '')}_patched.apk` : null);
   const downloadUrl = (lastRes?.download_url || app.download_url)
     ? (lastRes?.download_url || app.download_url)
@@ -1530,7 +1636,12 @@ function getAppVersionInfo(app) {
     currentVer,
     targetVer,
     patchBundleVer,
+    latestPatchVer,
     hasUpdate,
+    appUpdate,
+    appAhead,
+    patchUpdate,
+    badges,
     isSuccess,
     isFailed,
     downloadUrl,
@@ -1542,14 +1653,14 @@ function getAppVersionInfo(app) {
 }
 
 // ---------------------------------------------------------------------------
-// Hallmark Monolith: Overview Queue Renderer
+// Hallmark Monolith: Overview Operations Queue
 // ---------------------------------------------------------------------------
 function renderOverview() {
   const container = document.getElementById('overview-queue-container');
   if (!container) return;
 
   const countBadge = document.getElementById('badge-overview-count');
-  if (countBadge) countBadge.textContent = state.configuredApps.length;
+  if (countBadge) countBadge.textContent = `${state.configuredApps.length} Targets`;
 
   if (state.configuredApps.length === 0) {
     container.innerHTML = `
@@ -1566,6 +1677,8 @@ function renderOverview() {
 
   container.innerHTML = state.configuredApps.map(app => {
     const pkg = app.package || app.package_name;
+    const isEnabled = app.enabled !== false;
+    const repos = app.repos || [];
     const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
@@ -1575,70 +1688,115 @@ function renderOverview() {
       ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
-    let statusBadge = '<span class="status-pill status-pill-waiting">Waiting</span>';
+    let statusPill = '<span class="status-pill status-pill-waiting">Waiting</span>';
     if (verInfo.isSuccess) {
-      statusBadge = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
+      statusPill = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
     } else if (verInfo.isFailed) {
-      statusBadge = `<span class="status-pill status-pill-failed">Failed</span>`;
+      statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
-    const repos = app.repos || [];
-    const reposLabel = repos.length > 0
-      ? `${repos.length} Source${repos.length > 1 ? 's' : ''}`
-      : 'Default Morphe';
+    const primaryRepo = repos.length > 0 ? cleanRepoSlug(repos[0]) : 'MorpheApp/morphe-patches';
+    const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
+    const fullReposTooltip = repos.join('\n');
+
+    const badgesHtml = verInfo.badges.map(b => `
+      <span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}">${escapeHtml(b.label)}</span>
+    `).join(' ');
 
     return `
-      <div class="queue-row" data-pkg="${escapeHtml(pkg)}">
-        <div class="queue-app-meta">
-          <div class="app-avatar" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
-            ${iconHtml}
-          </div>
-          <div class="queue-app-info">
-            <div class="queue-app-header-line">
-              <span class="queue-app-title">${escapeHtml(friendlyName)}</span>
-              <span class="queue-app-pkg">${escapeHtml(pkg)}</span>
-              ${statusBadge}
+      <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
+        <header class="app-card-header">
+          <div class="app-card-identity">
+            <div class="app-card-icon-frame">
+              ${iconHtml}
             </div>
-            <div class="queue-badges-row">
-              <span class="badge" title="Installed / Built APK version">App: ${verInfo.currentVer || 'Never Run'}</span>
-              ${verInfo.targetVer ? `<span class="badge" title="Recommended Target Version by Patch Bundle">Target: ${verInfo.targetVer}</span>` : ''}
-              <span class="badge" title="Patch Bundle Version">Patches: ${verInfo.patchBundleVer}</span>
-              <span class="badge" title="Connected Repositories">${escapeHtml(reposLabel)}</span>
-              ${verInfo.hasUpdate ? `<span class="badge" style="background: var(--status-warning); color: #000; font-weight: 600;">Update Available</span>` : ''}
+            <div class="app-card-titles">
+              <div class="app-card-name-row">
+                <h3 class="app-card-title">${escapeHtml(friendlyName)}</h3>
+                ${statusPill}
+              </div>
+              <div class="app-card-pkg">${escapeHtml(pkg)}</div>
+            </div>
+          </div>
+
+          <label class="apple-switch" title="Toggle active status in automated pipeline">
+            <input type="checkbox" onchange="toggleAppActive('${escapeHtml(pkg)}', this.checked)" ${isEnabled ? 'checked' : ''}>
+            <span class="apple-switch-slider"></span>
+          </label>
+        </header>
+
+        <div class="app-card-metrics">
+          <div class="metric-cell metric-cell-recommended">
+            <span class="metric-cell-label">Recommended (Patches)</span>
+            <span class="metric-cell-value highlight-recommended" title="Version explicitly tested & targeted by patch creators">
+              ${escapeHtml(verInfo.targetVer || 'Any Compatible')}
+            </span>
+          </div>
+
+          <div class="metric-cell">
+            <span class="metric-cell-label">Installed Base</span>
+            <span class="metric-cell-value ${verInfo.currentVer ? 'highlight-installed' : 'text-muted'}" title="Compiled APK binary version currently stored">
+              ${escapeHtml(verInfo.currentVer || 'Never Run')}
+            </span>
+          </div>
+
+          <div class="metric-cell">
+            <span class="metric-cell-label">Patch Bundle</span>
+            <span class="metric-cell-value" title="Applied patch mutations bundle release">
+              ${escapeHtml(verInfo.patchBundleVer)}
+            </span>
+          </div>
+
+          <div class="metric-cell">
+            <span class="metric-cell-label">Update Status</span>
+            <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+              ${badgesHtml}
             </div>
           </div>
         </div>
 
-        <div class="queue-actions-slot">
-          ${verInfo.downloadUrl ? `
-            <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              <span>APK</span>
+        <footer class="app-card-footer">
+          <div class="app-card-sources">
+            <span class="source-tag-label">Source:</span>
+            <span class="source-tag-pill" title="${escapeHtml(fullReposTooltip)}">${escapeHtml(primaryRepo)}</span>
+            ${extraReposCount > 0 ? `<span class="source-tag-more" title="${escapeHtml(fullReposTooltip)}">+${extraReposCount} more</span>` : ''}
+          </div>
+
+          <div class="app-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Patch</span>
+            </button>
+
+            <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              <span>Patches (${verInfo.patchCount})</span>
+            </button>
+
+            ${verInfo.downloadUrl ? `
+              <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>APK</span>
+              </a>
+            ` : ''}
+
+            <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              <span>Release</span>
             </a>
-          ` : ''}
-          <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-            <span>Release</span>
-          </a>
-          <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="Inspect Applied Patches">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            <span>Patches (${verInfo.patchCount})</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')">
-            <span>Configure</span>
-          </button>
-          <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            <span>Build</span>
-          </button>
-        </div>
-      </div>
+
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+          </div>
+        </footer>
+      </article>
     `;
   }).join('');
 }
 
 // ---------------------------------------------------------------------------
-// Hallmark Monolith: Configured Apps Grid Renderer
+// Hallmark Monolith: Configured Applications Registry
 // ---------------------------------------------------------------------------
 function renderConfiguredApps() {
   const container = document.getElementById('apps-container');
@@ -1706,71 +1864,118 @@ function renderConfiguredApps() {
       statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
-    const reposChips = repos.length > 0
-      ? repos.map(r => `<span class="badge" title="${escapeHtml(r)}">${escapeHtml(cleanRepoSlug(r))}</span>`).join('')
-      : '<span class="badge">Default Morphe Patches</span>';
+    const primaryRepo = repos.length > 0 ? cleanRepoSlug(repos[0]) : 'MorpheApp/morphe-patches';
+    const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
+    const fullReposTooltip = repos.join('\n');
+
+    const badgesHtml = verInfo.badges.map(b => `
+      <span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}">${escapeHtml(b.label)}</span>
+    `).join(' ');
 
     return `
-      <div class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
-        <div class="app-card-top">
-          <div class="app-card-meta">
-            <div class="app-card-icon" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
+      <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
+        <!-- TOP ROW: Identity + Status + Apple Switch -->
+        <header class="app-card-header">
+          <div class="app-card-identity">
+            <div class="app-card-icon-frame">
               ${iconHtml}
             </div>
-            <div>
-              <div class="app-card-name">${escapeHtml(friendlyName)}</div>
+            <div class="app-card-titles">
+              <div class="app-card-name-row">
+                <h3 class="app-card-title">${escapeHtml(friendlyName)}</h3>
+                ${statusPill}
+              </div>
               <div class="app-card-pkg">${escapeHtml(pkg)}</div>
             </div>
           </div>
-          <label class="switch-control" title="Toggle active status">
+
+          <label class="apple-switch" title="Toggle active status in automated pipeline">
             <input type="checkbox" onchange="toggleAppActive('${escapeHtml(pkg)}', this.checked)" ${isEnabled ? 'checked' : ''}>
-            <span class="switch-track"></span>
+            <span class="apple-switch-slider"></span>
           </label>
+        </header>
+
+        <!-- MIDDLE ROW: Metric Grid (4 Horizontal Columns, Separated with Dividers) -->
+        <div class="app-card-metrics">
+          <!-- COL 1: RECOMMENDED FROM PATCHES (FIRST!) -->
+          <div class="metric-cell metric-cell-recommended">
+            <span class="metric-cell-label">Recommended (Patches)</span>
+            <span class="metric-cell-value highlight-recommended" title="Version explicitly tested & targeted by patch creators">
+              ${escapeHtml(verInfo.targetVer || 'Any Compatible')}
+            </span>
+          </div>
+
+          <!-- COL 2: INSTALLED BASE (SECOND) -->
+          <div class="metric-cell">
+            <span class="metric-cell-label">Installed Base</span>
+            <span class="metric-cell-value ${verInfo.currentVer ? 'highlight-installed' : 'text-muted'}" title="Compiled APK binary version currently stored">
+              ${escapeHtml(verInfo.currentVer || 'Never Run')}
+            </span>
+          </div>
+
+          <!-- COL 3: PATCH BUNDLE VERSION (THIRD) -->
+          <div class="metric-cell">
+            <span class="metric-cell-label">Patch Bundle</span>
+            <span class="metric-cell-value" title="Applied patch mutations bundle release">
+              ${escapeHtml(verInfo.patchBundleVer)}
+            </span>
+          </div>
+
+          <!-- COL 4: UPDATE CLASSIFICATION (FOURTH) -->
+          <div class="metric-cell">
+            <span class="metric-cell-label">Update Status</span>
+            <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+              ${badgesHtml}
+            </div>
+          </div>
         </div>
 
-        <div class="app-card-body">
-          <div style="display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.5rem;">
-            ${reposChips}
+        <!-- BOTTOM ROW: Horizontal Sources on Left, Horizontal Actions on Right -->
+        <footer class="app-card-footer">
+          <div class="app-card-sources">
+            <span class="source-tag-label">Source:</span>
+            <span class="source-tag-pill" title="${escapeHtml(fullReposTooltip)}">${escapeHtml(primaryRepo)}</span>
+            ${extraReposCount > 0 ? `<span class="source-tag-more" title="${escapeHtml(fullReposTooltip)}">+${extraReposCount} more</span>` : ''}
           </div>
-          <div class="queue-badges-row" style="margin-bottom: 0.5rem;">
-            <span class="badge">App: ${verInfo.currentVer || 'Never Run'}</span>
-            ${verInfo.targetVer ? `<span class="badge">Target: ${verInfo.targetVer}</span>` : ''}
-            <span class="badge">Patches: ${verInfo.patchBundleVer}</span>
-            ${verInfo.hasUpdate ? `<span class="badge" style="background: var(--status-warning); color: #000; font-weight: 600;">Update Available</span>` : ''}
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted);">
-            <span>Last Build:</span>
-            ${statusPill}
-          </div>
-        </div>
 
-        <div class="app-card-footer">
-          <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            <span>Patch</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="Applied Patches">
-            <span>Patches (${verInfo.patchCount})</span>
-          </button>
-          ${verInfo.downloadUrl ? `
-            <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <div class="app-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Patch</span>
+            </button>
+
+            <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              <span>Patches (${verInfo.patchCount})</span>
+            </button>
+
+            ${verInfo.downloadUrl ? `
+              <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>APK</span>
+              </a>
+            ` : ''}
+
+            <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              <span>Release</span>
             </a>
-          ` : ''}
-          <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Remove Target" style="color: var(--status-danger);">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-          </button>
-        </div>
-      </div>
+
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure App Options">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+
+            <button class="btn btn-secondary btn-sm btn-icon btn-danger" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Delete App from Pipeline">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </footer>
+      </article>
     `;
   }).join('');
 }
 
-// ---------------------------------------------------------------------------
-// Hallmark Monolith: Community Store Subtabs & Catalog Renderer
+// // Hallmark Monolith: Community Store Subtabs & Catalog Renderer
 // ---------------------------------------------------------------------------
 let storeCurrentCategory = 'all';
 let storeSearchQuery = '';

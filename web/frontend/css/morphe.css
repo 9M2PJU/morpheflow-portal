@@ -37,6 +37,13 @@
   --accent-border:           oklch(58% 0.190 255 / 0.32);
   --accent-ink:              oklch(97% 0.005 252);
 
+
+  /* Additional Status & Tint Tokens */
+  --status-cyan:             oklch(75% 0.140 220);
+  --status-cyan-subtle:      oklch(68% 0.140 220 / 0.15);
+  --status-cyan-border:      oklch(68% 0.140 220 / 0.32);
+  --status-ahead-subtle:     oklch(50% 0.030 252 / 0.20);
+  --accent-tint:             oklch(58% 0.190 255 / 0.05);
   /* Semantic Statuses */
   --status-success:          oklch(65% 0.160 145);
   --status-success-subtle:   oklch(65% 0.160 145 / 0.12);
@@ -1251,6 +1258,344 @@ a {
 .form-helper {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+
+/* ==========================================================================
+   Apple Pro Application Target Cards (Configured Apps & Overview)
+   ========================================================================== */
+
+.app-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm), var(--refraction-rim);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  overflow: hidden;
+  margin-bottom: 0.875rem;
+}
+
+.app-card:hover {
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-md), var(--refraction-rim);
+}
+
+.app-card.is-disabled {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+
+/* Card Header: 44px Icon + Names + Status Pill + Apple Switch */
+.app-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1.25rem;
+  gap: 1rem;
+}
+
+.app-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.app-card-icon-frame {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 44px;
+  max-height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.app-card-icon-frame img {
+  width: 44px;
+  height: 44px;
+  max-width: 44px;
+  max-height: 44px;
+  object-fit: cover;
+  display: block;
+}
+
+.app-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+
+.app-card-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.app-card-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.app-card-pkg {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+/* Apple Switch Control */
+.apple-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.apple-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.apple-switch-slider {
+  position: absolute;
+  inset: 0;
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.apple-switch-slider::before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  top: 2px;
+  background-color: var(--text-secondary);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast) ease;
+}
+
+.apple-switch input:checked + .apple-switch-slider {
+  background-color: var(--accent-base);
+  border-color: var(--accent-hover);
+}
+
+.apple-switch input:checked + .apple-switch-slider::before {
+  transform: translateX(18px);
+  background-color: var(--accent-ink);
+}
+
+/* Metric Bar: 4 Horizontal Columns with Dividers */
+.app-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surface-lowest);
+  border-top: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border-right: 1px solid var(--border-hairline);
+}
+
+.metric-cell:last-child {
+  border-right: none;
+}
+
+.metric-cell-recommended {
+  background: var(--accent-tint);
+}
+
+.metric-cell-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.metric-cell-value {
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.metric-cell-value.highlight-recommended {
+  color: var(--accent-ink);
+}
+
+.metric-cell-value.highlight-installed {
+  color: var(--text-primary);
+}
+
+/* Status Badges within Metric Bar */
+.status-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 0.1875rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  line-height: 1.2;
+}
+
+.badge-app-update {
+  background: var(--status-warning-subtle);
+  color: var(--status-warning);
+  border: 1px solid var(--status-warning-border);
+}
+
+.badge-patch-update {
+  background: var(--status-cyan-subtle);
+  color: var(--status-cyan);
+  border: 1px solid var(--status-cyan-border);
+}
+
+.badge-ahead {
+  background: var(--status-ahead-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.badge-uptodate {
+  background: var(--status-success-subtle);
+  color: var(--status-success);
+  border: 1px solid var(--status-success-border);
+}
+
+.badge-pending {
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+}
+
+/* Footer Section: Horizontal Sources on Left, Horizontal Buttons on Right */
+.app-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  gap: 1rem;
+  background: var(--surface-raised);
+}
+
+.app-card-sources {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.source-tag-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.source-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.5rem;
+  font-size: 0.6875rem;
+  background: var(--surface-lowest);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-tag-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1875rem 0.4375rem;
+  font-size: 0.6875rem;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+/* Actions Row: Horizontally Aligned Buttons */
+.app-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.app-card-actions .btn {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.btn-danger {
+  color: var(--status-danger) !important;
+}
+
+.btn-danger:hover {
+  background: var(--status-danger-subtle) !important;
+  border-color: var(--status-danger-border) !important;
+}
+
+@media (max-width: 880px) {
+  .app-card-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .metric-cell:nth-child(2) {
+    border-right: none;
+  }
+  .metric-cell:nth-child(3) {
+    border-top: 1px solid var(--border-hairline);
+  }
+  .metric-cell:nth-child(4) {
+    border-top: 1px solid var(--border-hairline);
+  }
+  .app-card-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .app-card-actions {
+    justify-content: flex-end;
+  }
 }
 
 /* Reduced motion accessibility */
