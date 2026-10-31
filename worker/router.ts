@@ -552,23 +552,76 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({ status: 'success', repo_url: body.repo_url });
   }
 
-  // 15. GET /api/catalog
+  // 15. GET /api/catalog (Proxies & Caches Morphe Bundles Catalog)
   if (path === '/api/catalog' && method === 'GET') {
     try {
       const resp = await fetch('https://morphe-patches.software/data/bundles.json', {
-        headers: { 'User-Agent': 'AutoMorph-CloudflareWorker' },
+        headers: {
+          'User-Agent': 'AutoMorph-EdgeWorker/2.1.0 (https://github.com/wiwek13/AutoMorph)',
+          'Accept': 'application/json',
+        },
+        cf: {
+          cacheTtl: 21600, // 6 hours on Cloudflare edge
+          cacheEverything: true,
+        },
       });
       if (resp.ok) {
         const data = await resp.json();
-        return json(data);
+        return new Response(JSON.stringify(data), {
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600, s-maxage=21600',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      console.warn('[AutoMorph Worker] Failed to fetch remote catalog:', err?.message || err);
     }
     return json({
-      store: 'Morphe Bundles',
+      store: {},
       bundles: [],
-      compatibilities: {},
+      compatibilities: [],
+      featured: [],
+    });
+  }
+
+  // 15b. POST /api/catalog/provision (1-Click App Provisioning into Pipeline)
+  if (path === '/api/catalog/provision' && method === 'POST') {
+    const body = await request.json<any>();
+    if (!body || !body.package) {
+      return json({ error: 'Package identifier is required' }, 400);
+    }
+
+    const pkg = String(body.package).trim();
+    const existing = await storage.getPackage(pkg);
+    
+    // Default repository fallback if none provided
+    const defaultRepo = 'https://github.com/MorpheApp/morphe-patches';
+    let repos: string[] = [];
+    if (Array.isArray(body.repos) && body.repos.length > 0) {
+      repos = body.repos;
+    } else if (body.repo && typeof body.repo === 'string') {
+      repos = [body.repo];
+    } else if (existing?.repos && existing.repos.length > 0) {
+      repos = existing.repos;
+    } else {
+      repos = [defaultRepo];
+    }
+
+    const saved = await storage.savePackage({
+      package: pkg,
+      package_name: body.package_name || existing?.package_name || pkg,
+      enabled: true,
+      repos: repos,
+      patch_aliases: existing?.patch_aliases || [],
+      options: existing?.options || {},
+    });
+
+    return json({
+      status: 'success',
+      message: `Successfully provisioned ${saved.package_name || saved.package} into AutoMorph pipeline.`,
+      result: saved,
     });
   }
 

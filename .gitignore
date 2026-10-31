@@ -46,3 +46,6 @@ node_modules/
 test-results/
 playwright-report/
 .playwright/
+.DS_Store
+.playwright-mcp/
+.wrangler/

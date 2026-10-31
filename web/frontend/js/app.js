@@ -31,7 +31,7 @@ const state = {
   config: null,
   configuredApps: [],
   globalRepos: [],
-  activeTab: 'apps',
+  activeTab: 'overview',
   activeSearch: '',
   appFilter: 'all',
   currentFilesPath: '',
@@ -230,15 +230,41 @@ function setupEventListeners() {
     });
   });
 
-  // Tabs Switching
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  // Tabs Switching (Monolithic Top Nav & Subnav)
+  document.querySelectorAll('.nav-tab-btn, .tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
-      if (tab === 'files') {
-        switchTab('files', '');
-      } else {
-        switchTab(tab);
-      }
+      if (tab) switchTab(tab);
+    });
+  });
+
+  // Monolith and Quick Action Navigations
+  document.getElementById('btn-quick-store')?.addEventListener('click', () => switchTab('store'));
+  document.getElementById('btn-overview-provision-launch')?.addEventListener('click', () => switchTab('store'));
+  document.getElementById('btn-quick-new-app')?.addEventListener('click', () => switchTab('store'));
+  document.getElementById('btn-quick-manage-repos')?.addEventListener('click', () => switchTab('settings'));
+  document.getElementById('btn-add-app-nav')?.addEventListener('click', () => switchTab('store'));
+  document.getElementById('btn-obtainium-sync')?.addEventListener('click', () => openObtainiumModal());
+  document.getElementById('btn-copy-obtainium-json')?.addEventListener('click', () => copyObtainiumJson());
+  document.getElementById('btn-confirm-provision')?.addEventListener('click', () => confirmProvisionApp());
+  document.getElementById('btn-drawer-save')?.addEventListener('click', () => saveAppDrawerChanges());
+
+  // Store Catalog Live Search & Category Filtering
+  let storeSearchTimeout = null;
+  document.getElementById('store-search-input')?.addEventListener('input', (e) => {
+    clearTimeout(storeSearchTimeout);
+    storeSearchTimeout = setTimeout(() => {
+      storeSearchQuery = e.target.value;
+      renderStoreCatalog(true);
+    }, 200);
+  });
+
+  document.querySelectorAll('#store-category-pills .cat-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#store-category-pills .cat-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      storeCurrentCategory = pill.dataset.cat || 'all';
+      renderStoreCatalog(true);
     });
   });
 
@@ -256,9 +282,6 @@ function setupEventListeners() {
   });
   document.getElementById('btn-files-root')?.addEventListener('click', () => {
     loadFiles('');
-  });
-  document.getElementById('btn-obtainium-sync')?.addEventListener('click', () => {
-    showObtainiumSyncModal();
   });
   document.getElementById('files-filter-input')?.addEventListener('input', () => {
     filterFilesTable();
@@ -772,6 +795,25 @@ function renderStatus(data) {
       versionTagEl.title = `AutoMorph v${version.version} (${version.branch}) — Click to view update details`;
     }
   }
+
+  // 7. Hallmark Monolith Telemetry Pillar
+  const telStatus = document.getElementById('telemetry-status');
+  if (telStatus) {
+    telStatus.textContent = data.is_running ? 'PIPELINE RUNNING' : 'IDLE & READY';
+    telStatus.className = 'metric-val ' + (data.is_running ? 'text-cobalt' : 'text-success');
+  }
+  const telCron = document.getElementById('telemetry-cron');
+  if (telCron) {
+    telCron.textContent = nextRun ? `Daily at ${nextRun.schedule_time}` : 'Daily 03:00 UTC';
+  }
+  const telStorage = document.getElementById('telemetry-storage');
+  if (telStorage && storage) {
+    telStorage.textContent = storage.formatted_size || '0 MB';
+  }
+  const telAppCount = document.getElementById('telemetry-app-count');
+  if (telAppCount) {
+    telAppCount.textContent = `${state.configuredApps.length} Targets`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -990,28 +1032,36 @@ function updateStatusBadge(text, className) {
 }
 
 // ---------------------------------------------------------------------------
-// Tabs Switching
+// Tabs Switching (5 Core Monolithic Views)
 // ---------------------------------------------------------------------------
 function switchTab(tabName, targetPath = null) {
+  if (tabName === 'files' || tabName === 'repos') {
+    tabName = 'apps';
+  }
   state.activeTab = tabName;
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+
+  document.querySelectorAll('.nav-tab-btn, .tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabName);
   });
 
-  document.getElementById('tab-content-apps')?.classList.toggle('hidden', tabName !== 'apps');
-  document.getElementById('tab-content-repos')?.classList.toggle('hidden', tabName !== 'repos');
-  document.getElementById('tab-content-settings')?.classList.toggle('hidden', tabName !== 'settings');
-  document.getElementById('tab-content-files')?.classList.toggle('hidden', tabName !== 'files');
+  const views = ['overview', 'apps', 'store', 'pipeline', 'settings'];
+  views.forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    if (el) el.style.display = (v === tabName) ? 'block' : 'none';
+  });
 
-  document.getElementById('apps-search-wrap')?.classList.toggle('hidden', tabName !== 'apps');
-
-  if (tabName === 'files') {
-    const pathToLoad = targetPath !== null ? targetPath : '';
-    loadFiles(pathToLoad);
-  } else {
-    if (window.location.hash.startsWith('#files') || window.location.hash.startsWith('#/files')) {
-      history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (tabName === 'overview') {
+    renderOverview();
+  } else if (tabName === 'apps') {
+    renderConfiguredApps();
+  } else if (tabName === 'store') {
+    renderStoreCatalog();
+  } else if (tabName === 'pipeline') {
+    if (!state.eventSource && state.status?.is_running) {
+      openTerminalAndConnect();
     }
+  } else if (tabName === 'settings') {
+    loadSettings();
   }
 }
 
@@ -1302,20 +1352,95 @@ function renderDrawerReposSection(repos) {
   `;
 }
 
+// ---------------------------------------------------------------------------
+// Hallmark Monolith: Overview Queue Renderer
+// ---------------------------------------------------------------------------
+function renderOverview() {
+  const container = document.getElementById('overview-queue-container');
+  if (!container) return;
+
+  const countBadge = document.getElementById('badge-overview-count');
+  if (countBadge) countBadge.textContent = state.configuredApps.length;
+
+  if (state.configuredApps.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        <p style="margin-bottom: 1rem; font-size: 0.875rem;">No application targets currently configured in pipeline.</p>
+        <button class="btn btn-primary" onclick="switchTab('store')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>Provision from Morphe Catalog</span>
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = state.configuredApps.map(app => {
+    const pkg = app.package || app.package_name;
+    const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+    const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+    const iconUrl = catalogItem?.icon_url;
+
+    const iconHtml = iconUrl
+      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+
+    let statusBadge = '<span class="status-pill status-pill-waiting">Waiting</span>';
+    const lastRes = app.last_result;
+    if (lastRes) {
+      if (lastRes.status === 'success') {
+        const verStr = lastRes.app_version ? ` • v${lastRes.app_version}` : '';
+        statusBadge = `<span class="status-pill status-pill-success">Success${escapeHtml(verStr)}</span>`;
+      } else if (lastRes.status === 'failed') {
+        statusBadge = `<span class="status-pill status-pill-failed">Failed</span>`;
+      }
+    }
+
+    const repos = app.repos || [];
+    const reposLabel = repos.length > 0
+      ? `${repos.length} Source${repos.length > 1 ? 's' : ''}`
+      : 'Default Source';
+
+    return `
+      <div class="queue-row" data-pkg="${escapeHtml(pkg)}">
+        <div class="queue-app-meta">
+          <div class="app-icon-slot">
+            ${iconHtml}
+          </div>
+          <div class="app-identity">
+            <span class="app-title">${escapeHtml(friendlyName)}</span>
+            <span class="app-pkg">${escapeHtml(pkg)}</span>
+          </div>
+        </div>
+        <div class="queue-status-slot">
+          ${statusBadge}
+          <span class="queue-repos-info">${escapeHtml(reposLabel)}</span>
+        </div>
+        <div class="queue-actions-slot">
+          <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>Configure</span>
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>Build</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Hallmark Monolith: Configured Apps Grid Renderer
+// ---------------------------------------------------------------------------
 function renderConfiguredApps() {
   const container = document.getElementById('apps-container');
   if (!container) return;
 
-  // Preserve any currently opened drawer IDs before re-rendering
-  const openDrawers = new Set(
-    Array.from(container.querySelectorAll('.patch-drawer.open'))
-      .map(el => el.id.replace('drawer-', ''))
-      .filter(Boolean)
-  );
-
   const totalCount = state.configuredApps.length;
-  const activeCount = state.configuredApps.filter(a => a.enabled).length;
-  const disabledCount = state.configuredApps.filter(a => !a.enabled).length;
+  const activeCount = state.configuredApps.filter(a => a.enabled !== false).length;
+  const disabledCount = state.configuredApps.filter(a => a.enabled === false).length;
 
   const countAllEl = document.getElementById('count-all');
   const countActiveEl = document.getElementById('count-active');
@@ -1324,12 +1449,15 @@ function renderConfiguredApps() {
   if (countActiveEl) countActiveEl.textContent = activeCount;
   if (countDisabledEl) countDisabledEl.textContent = disabledCount;
 
-  const apps = state.configuredApps.filter(app => {
-    // 1. App filter tab (all / active / disabled)
-    if (state.appFilter === 'active' && !app.enabled) return false;
-    if (state.appFilter === 'disabled' && app.enabled) return false;
+  const navCount = document.getElementById('nav-count-apps');
+  if (navCount) navCount.textContent = totalCount;
 
-    // 2. Search query filter
+  // Sync Overview queue as well
+  renderOverview();
+
+  const apps = state.configuredApps.filter(app => {
+    if (state.appFilter === 'active' && app.enabled === false) return false;
+    if (state.appFilter === 'disabled' && app.enabled !== false) return false;
     if (!state.activeSearch) return true;
     const pkg = (app.package || app.package_name || '').toLowerCase();
     const catalogItem = (morpheCatalogData && morpheCatalogData[app.package || app.package_name]) ? morpheCatalogData[app.package || app.package_name] : null;
@@ -1338,23 +1466,14 @@ function renderConfiguredApps() {
   });
 
   if (apps.length === 0) {
-    let emptyMsg = 'No applications configured in config.yaml yet.';
-    if (state.activeSearch) {
-      emptyMsg = 'No apps match your search filter.';
-    } else if (state.appFilter === 'active') {
-      emptyMsg = 'No apps currently active for next run.';
-    } else if (state.appFilter === 'disabled') {
-      emptyMsg = 'No apps currently disabled.';
-    }
-
+    let emptyMsg = 'No configured applications in pipeline.';
+    if (state.activeSearch) emptyMsg = 'No applications match your search filter.';
     container.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
-        <span class="material-symbols-rounded" style="font-size: 48px; color: var(--text-dim);">search_off</span>
-        <h3 style="margin-top: 12px; font-family: var(--font-display);">No Applications Found</h3>
-        <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 4px;">${emptyMsg}</p>
-        <button onclick="openAddPackageWizard()" class="btn btn-primary btn-sm" style="margin-top: 16px;">
-          <span class="material-symbols-rounded">add</span>
-          <span>Add Application</span>
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+        <p style="margin-bottom: 1rem; font-size: 0.9375rem;">${emptyMsg}</p>
+        <button class="btn btn-primary" onclick="switchTab('store')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>Provision Target</span>
         </button>
       </div>
     `;
@@ -1365,296 +1484,462 @@ function renderConfiguredApps() {
     const pkg = app.package || app.package_name;
     const isEnabled = app.enabled !== false;
     const repos = app.repos || [];
-    const aliases = app.patch_aliases || [];
     const lastRes = app.last_result;
-
-    // Official app name & icon from Morphe catalog (or intelligent fallback)
     const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
-    const friendlyName = catalogItem?.name || getFallbackAppName(pkg);
+    const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
 
-    const avatarHtml = iconUrl
-      ? `<img src="${iconUrl}" alt="${escapeHtml(friendlyName)}" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\\'material-symbols-rounded\\' style=\\'font-size: 26px;\\'>android</span>'">`
-      : `<span class="material-symbols-rounded" style="font-size: 26px;">android</span>`;
+    const iconHtml = iconUrl
+      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
-    // 1. Clean Front Summary Chips for Repositories (Clickable links to repositories)
-    let repoSummaryChip = '';
-    if (repos.length === 0) {
-      repoSummaryChip = `<span class="meta-chip" title="Uses no configured patch repositories"><span class="material-symbols-rounded" style="font-size: 13px;">public_off</span> No Repos</span>`;
-    } else if (repos.length <= 2) {
-      repoSummaryChip = repos.map(r => {
-        const rUrl = formatRepoUrl(r);
-        return `<a href="${escapeHtml(rUrl)}" target="_blank" rel="noopener noreferrer" class="meta-chip repo clickable" title="Open repository: ${escapeHtml(rUrl)}" onclick="event.stopPropagation()"><span class="material-symbols-rounded" style="font-size: 13px;">source</span> ${escapeHtml(cleanRepoSlug(r))}</a>`;
-      }).join('');
-    } else {
-      const firstTwo = repos.slice(0, 2).map(r => {
-        const rUrl = formatRepoUrl(r);
-        return `<a href="${escapeHtml(rUrl)}" target="_blank" rel="noopener noreferrer" class="meta-chip repo clickable" title="Open repository: ${escapeHtml(rUrl)}" onclick="event.stopPropagation()"><span class="material-symbols-rounded" style="font-size: 13px;">source</span> ${escapeHtml(cleanRepoSlug(r))}</a>`;
-      }).join('');
-      repoSummaryChip = `${firstTwo}<span class="meta-chip clickable" style="cursor: pointer;" title="View all ${repos.length} repositories in details drawer" onclick="event.stopPropagation(); togglePatchDrawer('${pkg}')">+${repos.length - 2} more</span>`;
-    }
-
-    const aliasChip = aliases.length > 0
-      ? `<span class="meta-chip alias" title="Configured patch aliases"><span class="material-symbols-rounded" style="font-size: 13px;">alt_route</span> ${aliases.length} Aliases</span>`
-      : '';
-
-    // 2. Status Row & Drawer Content
-    let statusRowHtml = '';
-    let drawerHtml = '';
-
+    let statusPill = '<span class="status-pill status-pill-waiting">Waiting</span>';
     if (lastRes) {
-      const attemptsList = lastRes.attempts || [];
-      const hasMultiAttempts = attemptsList.length > 1 || (lastRes.total_attempts || 0) > 1;
-      let attemptBadgeHtml = '';
-      if (hasMultiAttempts) {
-        const total = lastRes.total_attempts || attemptsList.length;
-        const stratWon = lastRes.winning_strategy || (attemptsList.find(a => a.status === 'success')?.strategy) || null;
-        const stratText = stratWon ? ` • Strategy ${stratWon}` : '';
-        attemptBadgeHtml = `<span class="badge-attempt-count" title="${total} attempts recorded across strategies for this package"><span class="material-symbols-rounded" style="font-size: 11px;">layers</span> ${total} Attempts${stratText}</span>`;
+      if (lastRes.status === 'success') {
+        const ver = lastRes.app_version ? ` • v${lastRes.app_version}` : '';
+        statusPill = `<span class="status-pill status-pill-success">Success${escapeHtml(ver)}</span>`;
+      } else if (lastRes.status === 'failed') {
+        statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
       }
-
-      if (lastRes.is_pipeline_failure) {
-        // Pipeline failed before reaching patching (e.g. Download, APKPure, Options)
-        statusRowHtml = `
-          <div class="app-status-row" onclick="togglePatchDrawer('${pkg}')" title="Click to view failure diagnostics">
-            <div class="app-status-badges">
-              <span class="badge-version">v${escapeHtml(lastRes.version || 'target')}</span>
-              <span class="badge badge-danger" style="font-size: 0.75rem;"><span class="material-symbols-rounded" style="font-size: 13px;">error</span> ${escapeHtml(lastRes.failure_stage || 'Pipeline Failed')}</span>
-              ${attemptBadgeHtml}
-            </div>
-            <button class="patch-count-btn" id="drawer-btn-${pkg}" onclick="event.stopPropagation(); togglePatchDrawer('${pkg}')">
-              <span class="count-failed">Diagnostics ▾</span>
-            </button>
-          </div>
-        `;
-
-        let attemptsDetailHtml = '';
-        if (hasMultiAttempts) {
-          attemptsDetailHtml = `
-            <div class="drawer-section-title">Failed Attempts (${attemptsList.length})</div>
-            <div class="drawer-attempts-container">
-              ${attemptsList.map((att, idx) => renderAttemptCard(att, idx, attemptsList.length, lastRes.patch_owners)).join('')}
-            </div>
-          `;
-        } else {
-          const attemptsHtml = attemptsList.map(att => {
-            const v = att.version || att.target_version || 'target';
-            const st = att.stage || 'Pipeline';
-            const r = att.reason || 'Failed';
-            return `<div class="diag-attempt-item"><span style="color: var(--primary-cyan); font-weight: 600;">v${escapeHtml(v)}</span> <span>${escapeHtml(st)}:</span> <span style="color: #fca5a5;">${escapeHtml(r)}</span></div>`;
-          }).join('');
-
-          attemptsDetailHtml = `
-            <div class="diag-box">
-              <div class="diag-title">
-                <span class="material-symbols-rounded" style="font-size: 14px;">report_problem</span>
-                <span>Pipeline Failure Diagnostics</span>
-              </div>
-              <div class="diag-reason">${escapeHtml(lastRes.failure_reason || 'Unknown error occurred in pipeline')}</div>
-              ${attemptsHtml ? `<div class="diag-attempts">${attemptsHtml}</div>` : ''}
-            </div>
-          `;
-        }
-
-        drawerHtml = `
-          <div class="patch-drawer" id="drawer-${pkg}">
-            ${attemptsDetailHtml}
-
-            ${renderDrawerReposSection(repos)}
-
-            <div class="drawer-footer-time" onclick="togglePatchDrawer('${pkg}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;" title="Click to collapse drawer">
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span class="material-symbols-rounded" style="font-size: 13px;">schedule</span>
-                <span>Attempted: ${lastRes.timestamp_formatted || 'Recent run'}</span>
-              </div>
-              <span style="color: var(--primary-cyan); font-weight: 500; font-size: 0.6875rem;">Collapse ▴</span>
-            </div>
-          </div>
-        `;
-      } else {
-        // Normal patch result from result.json
-        let statusBadge = '';
-        if (lastRes.status === 'success') {
-          statusBadge = `<span class="badge badge-success" style="font-size: 0.75rem;"><span class="material-symbols-rounded" style="font-size: 13px;">check_circle</span> Built</span>`;
-        } else if (lastRes.status === 'partial') {
-          statusBadge = `<span class="badge badge-warning" style="font-size: 0.75rem;"><span class="material-symbols-rounded" style="font-size: 13px;">warning</span> Partial</span>`;
-        } else {
-          statusBadge = `<span class="badge badge-danger" style="font-size: 0.75rem;"><span class="material-symbols-rounded" style="font-size: 13px;">error</span> Failed</span>`;
-        }
-
-        statusRowHtml = `
-          <div class="app-status-row" onclick="togglePatchDrawer('${pkg}')" title="Click to view patch breakdown">
-            <div class="app-status-badges">
-              <span class="badge-version" title="Built target version">v${escapeHtml(lastRes.version || 'latest')}</span>
-              ${statusBadge}
-              ${attemptBadgeHtml}
-            </div>
-            <button class="patch-count-btn" id="drawer-btn-${pkg}" onclick="event.stopPropagation(); togglePatchDrawer('${pkg}')">
-              <span class="count-applied">✓ ${lastRes.applied_count || 0}</span>
-              ${lastRes.failed_count > 0 ? `<span class="count-failed">✗ ${lastRes.failed_count}</span>` : ''}
-              <span class="material-symbols-rounded chevron">expand_more</span>
-            </button>
-          </div>
-        `;
-
-        let runsBodyHtml = '';
-        if (hasMultiAttempts) {
-          const stratWon = lastRes.winning_strategy || (attemptsList.find(a => a.status === 'success')?.strategy) || null;
-          const stratSub = stratWon ? ` • Strategy ${stratWon} Succeeded` : '';
-          runsBodyHtml = `
-            <div class="drawer-section-title">Patch Attempts (${attemptsList.length} Attempts${stratSub})</div>
-            <div class="drawer-attempts-container">
-              ${attemptsList.map((att, idx) => renderAttemptCard(att, idx, attemptsList.length, lastRes.patch_owners)).join('')}
-            </div>
-          `;
-        } else {
-          // Applied Patches (with owner badge and compact options)
-          const appliedList = (lastRes.applied_patches || []).map(p => {
-            const pName = resolvePatchDisplayName(p, '');
-            const pOwner = resolvePatchOwner(p, lastRes.patch_owners);
-            const ownerChip = formatPatchOwnerChip(pOwner);
-            const optsHtml = typeof p === 'object' && p.options ? formatPatchOptions(p.options) : '';
-            return `
-              <div class="drawer-patch-item">
-                <div class="drawer-patch-head">
-                  <span class="material-symbols-rounded" style="font-size: 14px; color: var(--color-success); flex-shrink: 0;">check</span>
-                  <span>${escapeHtml(pName)}</span>
-                  ${ownerChip}
-                  ${optsHtml}
-                </div>
-              </div>
-            `;
-          }).join('');
-
-          // Failed Patches (with owner badge, clean 1-line summary + collapsible stack trace)
-          const failedList = (lastRes.failed_patches || []).map(p => {
-            const pReason = typeof p === 'object' ? (p.reason || p.error || '') : '';
-            const pName = resolvePatchDisplayName(p, pReason);
-            const pOwner = resolvePatchOwner(p, lastRes.patch_owners);
-            const ownerChip = formatPatchOwnerChip(pOwner);
-            const err = cleanPatchErrorMessage(pReason);
-            const stackHtml = err.stack
-              ? `<details class="stacktrace-details"><summary>View stack trace ▾</summary><pre class="stacktrace-pre">${escapeHtml(err.stack)}</pre></details>`
-              : '';
-
-            return `
-              <div class="drawer-patch-item failed">
-                <div class="drawer-patch-head">
-                  <span class="material-symbols-rounded" style="font-size: 14px; color: var(--color-danger); flex-shrink: 0;">close</span>
-                  <span>${escapeHtml(pName)} ${ownerChip} — <span style="font-weight: 500;">${escapeHtml(err.summary)}</span></span>
-                </div>
-                ${stackHtml}
-              </div>
-            `;
-          }).join('');
-
-          runsBodyHtml = `
-            ${appliedList ? `<div class="drawer-section-title">Applied Patches (${lastRes.applied_count})</div><div class="drawer-patch-list">${appliedList}</div>` : ''}
-            ${failedList ? `<div class="drawer-section-title" style="color: var(--color-danger);">Failed Patches (${lastRes.failed_count})</div><div class="drawer-patch-list">${failedList}</div>` : ''}
-            ${!appliedList && !failedList ? `<div style="color: var(--text-dim); margin-bottom: 8px;">No patch breakdown recorded in result.json.</div>` : ''}
-          `;
-        }
-
-        drawerHtml = `
-          <div class="patch-drawer" id="drawer-${pkg}">
-            ${runsBodyHtml}
-
-            ${renderDrawerReposSection(repos)}
-
-            <div class="drawer-footer-time" onclick="togglePatchDrawer('${pkg}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;" title="Click to collapse drawer">
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span class="material-symbols-rounded" style="font-size: 13px;">schedule</span>
-                <span>Last built: ${lastRes.timestamp_formatted || 'N/A'}</span>
-              </div>
-              <span style="color: var(--primary-cyan); font-weight: 500; font-size: 0.6875rem;">Collapse ▴</span>
-            </div>
-          </div>
-        `;
-      }
-    } else {
-      statusRowHtml = `
-        <div class="app-status-row" style="color: var(--text-dim);" onclick="togglePatchDrawer('${pkg}')">
-          <div class="app-status-badges">
-            <span class="meta-chip" style="font-size: 0.75rem;"><span class="material-symbols-rounded" style="font-size: 13px;">hourglass_empty</span> Never Run</span>
-          </div>
-          <button class="patch-count-btn" id="drawer-btn-${pkg}" onclick="event.stopPropagation(); togglePatchDrawer('${pkg}')">
-            <span>Repositories ▾</span>
-          </button>
-        </div>
-      `;
-
-      drawerHtml = `
-        <div class="patch-drawer" id="drawer-${pkg}">
-          ${renderDrawerReposSection(repos)}
-          <div class="drawer-footer-time" onclick="togglePatchDrawer('${pkg}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between;" title="Click to collapse drawer">
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <span class="material-symbols-rounded" style="font-size: 13px;">info</span>
-              <span>Waiting for initial patching execution.</span>
-            </div>
-            <span style="color: var(--primary-cyan); font-weight: 500; font-size: 0.6875rem;">Collapse ▴</span>
-          </div>
-        </div>
-      `;
     }
+
+    const reposChips = repos.length > 0
+      ? repos.map(r => `<span class="badge" title="${escapeHtml(r)}">${escapeHtml(cleanRepoSlug(r))}</span>`).join('')
+      : '<span class="badge">Default Morphe Patches</span>';
 
     return `
-      <div class="app-card ${isEnabled ? '' : 'is-disabled'}">
-        <div class="app-card-header">
-          <div class="app-avatar">
-            ${avatarHtml}
+      <div class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
+        <div class="app-card-top">
+          <div class="app-card-meta">
+            <div class="app-card-icon">
+              ${iconHtml}
+            </div>
+            <div>
+              <div class="app-card-name">${escapeHtml(friendlyName)}</div>
+              <div class="app-card-pkg">${escapeHtml(pkg)}</div>
+            </div>
           </div>
-          <div class="app-titles">
-            <div class="app-name">${escapeHtml(friendlyName)}</div>
-            <div class="app-package" title="${pkg}">${pkg}</div>
-          </div>
-          <label class="toggle-switch" title="${isEnabled ? 'Active for next run (Click to disable)' : 'Disabled for next run (Click to enable)'}">
-            <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleAppActive('${pkg}', this.checked)">
-            <span class="toggle-slider"></span>
+          <label class="switch-control" title="Toggle active status">
+            <input type="checkbox" onchange="toggleAppActive('${escapeHtml(pkg)}', this.checked)" ${isEnabled ? 'checked' : ''}>
+            <span class="switch-track"></span>
           </label>
         </div>
 
-        ${statusRowHtml}
-        ${drawerHtml}
-
-        <div class="app-meta-tags">
-          ${repoSummaryChip}
-          ${aliasChip}
+        <div class="app-card-body">
+          <div style="display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.75rem;">
+            ${reposChips}
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted);">
+            <span>Last Build:</span>
+            ${statusPill}
+          </div>
         </div>
 
         <div class="app-card-footer">
-          <button onclick="runSingleAppPatch('${pkg}')" class="btn btn-sm btn-patch-now" title="Patch only ${pkg} right now">
-            <span class="material-symbols-rounded" style="font-size: 15px;">play_arrow</span>
+          <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             <span>Patch Now</span>
           </button>
-          <div class="card-actions-group">
-            ${lastRes?.download_url ? `
-              <a href="${escapeHtml(lastRes.download_url)}" download="${escapeHtml(lastRes.apk_name || (pkg + '.apk'))}" class="btn btn-primary btn-sm" title="Direct download patched APK (v${escapeHtml(lastRes.version || '')})" onclick="event.stopPropagation()">
-                <span class="material-symbols-rounded" style="font-size: 16px;">download</span>
-              </a>
-            ` : ''}
-            <button onclick="navigateToPackageFiles('${pkg}')" class="btn btn-secondary btn-sm" title="Browse files for ${pkg}">
-              <span class="material-symbols-rounded" style="font-size: 16px;">folder_open</span>
+          <div style="display: flex; gap: 0.375rem;">
+            <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure Patches">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              <span>Configure</span>
             </button>
-            <button onclick="openEditAppModal('${pkg}')" class="btn btn-secondary btn-sm" title="Configure App & Patches">
-              <span class="material-symbols-rounded" style="font-size: 16px;">tune</span>
-            </button>
-            <button onclick="deleteConfigApp('${pkg}')" class="btn btn-danger btn-sm btn-icon-only" title="Remove from config.yaml">
-              <span class="material-symbols-rounded" style="font-size: 16px;">delete</span>
+            <button class="btn btn-secondary btn-sm" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Remove Target" style="color: var(--status-danger);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
         </div>
       </div>
     `;
   }).join('');
-
-  // Restore open state for drawers that were open prior to re-render
-  openDrawers.forEach(pkg => {
-    const drawer = document.getElementById('drawer-' + pkg);
-    const btn = document.getElementById('drawer-btn-' + pkg);
-    if (drawer) drawer.classList.add('open');
-    if (btn) btn.classList.add('open');
-  });
 }
+
+// ---------------------------------------------------------------------------
+// Hallmark Monolith: Morphe Community Catalog Store (1,342 Apps)
+// ---------------------------------------------------------------------------
+let storeCurrentCategory = 'all';
+let storeSearchQuery = '';
+let storeDisplayLimit = 60;
+
+async function renderStoreCatalog(resetLimit = true) {
+  const grid = document.getElementById('store-catalog-grid');
+  if (!grid) return;
+
+  if (resetLimit) storeDisplayLimit = 60;
+
+  if (!morpheCatalogData) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+        Connecting to Morphe Community Catalog…
+      </div>
+    `;
+    await fetchMorpheCatalog();
+  }
+
+  if (!morpheCatalogData) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--status-danger);">
+        Failed to load catalog data from server.
+      </div>
+    `;
+    return;
+  }
+
+  const allApps = Object.values(morpheCatalogData);
+  const q = storeSearchQuery.toLowerCase().trim();
+  const cat = storeCurrentCategory;
+
+  const filtered = allApps.filter(app => {
+    if (cat !== 'all') {
+      const appCat = (app.category || '').toLowerCase();
+      const targetCat = cat.toLowerCase();
+      if (!appCat.includes(targetCat)) return false;
+    }
+    if (q) {
+      const name = (app.name || '').toLowerCase();
+      const pkg = (app.package || '').toLowerCase();
+      if (!name.includes(q) && !pkg.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+        No applications match "${escapeHtml(storeSearchQuery)}" in category "${escapeHtml(cat)}".
+      </div>
+    `;
+    return;
+  }
+
+  const visible = filtered.slice(0, storeDisplayLimit);
+
+  grid.innerHTML = visible.map(app => {
+    const isConfigured = state.configuredApps.some(a => (a.package || a.package_name) === app.package);
+    const friendlyName = app.name || getFallbackAppName(app.package);
+    const iconUrl = app.icon_url;
+
+    const iconHtml = iconUrl
+      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1.125rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 600; font-size: 1.125rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+
+    const repoCount = app.supported_repos?.length || (app.repo_details?.length || 1);
+
+    return `
+      <div class="store-card" data-pkg="${escapeHtml(app.package)}">
+        <div class="store-card-header">
+          <div class="store-card-avatar">
+            ${iconHtml}
+          </div>
+          <div class="store-card-identity">
+            <h3 class="store-card-name" title="${escapeHtml(friendlyName)}">${escapeHtml(friendlyName)}</h3>
+            <span class="store-card-pkg" title="${escapeHtml(app.package)}">${escapeHtml(app.package)}</span>
+          </div>
+        </div>
+        <p class="store-card-desc">${escapeHtml(app.description || 'Verified Android ecosystem application with compatible community patch bundles.')}</p>
+        <div class="store-card-meta">
+          <span class="store-tag">${escapeHtml(app.category || 'Tools')}</span>
+          <span class="store-tag">${repoCount} Source${repoCount > 1 ? 's' : ''}</span>
+        </div>
+        <div class="store-card-action">
+          ${isConfigured
+            ? `<button class="btn btn-secondary btn-sm" style="width: 100%; justify-content: center;" onclick="openAppDrawer('${escapeHtml(app.package)}')">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                 <span>Configured</span>
+               </button>`
+            : `<button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;" onclick="openProvisionModal('${escapeHtml(friendlyName).replace(/'/g, "\'")}', '${escapeHtml(app.package)}')">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                 <span>1-Click Provision</span>
+               </button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (filtered.length > storeDisplayLimit) {
+    const loadMoreContainer = document.createElement('div');
+    loadMoreContainer.style.gridColumn = '1 / -1';
+    loadMoreContainer.style.textAlign = 'center';
+    loadMoreContainer.style.padding = '2rem 1rem';
+    loadMoreContainer.innerHTML = `
+      <button class="btn btn-secondary" id="btn-store-load-more">
+        <span>Load More (${filtered.length - storeDisplayLimit} remaining)</span>
+      </button>
+    `;
+    grid.appendChild(loadMoreContainer);
+    document.getElementById('btn-store-load-more')?.addEventListener('click', () => {
+      storeDisplayLimit += 60;
+      renderStoreCatalog(false);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1-Click Provisioning Sheet
+// ---------------------------------------------------------------------------
+function openProvisionModal(name, pkg) {
+  const modal = document.getElementById('provision-modal');
+  if (!modal) return;
+
+  const nameInput = document.getElementById('prov-app-name');
+  const pkgInput = document.getElementById('prov-app-pkg');
+  const repoInput = document.getElementById('prov-app-repo');
+  if (nameInput) nameInput.value = name || pkg;
+  if (pkgInput) pkgInput.value = pkg;
+
+  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const bestRepo = (catalogItem?.supported_repos && catalogItem.supported_repos[0]) || 'https://github.com/MorpheApp/morphe-patches';
+  if (repoInput) repoInput.value = bestRepo;
+
+  modal.classList.add('open');
+}
+
+function closeProvisionModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'provision-modal') return;
+  const modal = document.getElementById('provision-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+async function confirmProvisionApp() {
+  const nameInput = document.getElementById('prov-app-name');
+  const pkgInput = document.getElementById('prov-app-pkg');
+  const repoInput = document.getElementById('prov-app-repo');
+
+  const name = nameInput?.value?.trim() || '';
+  const pkg = pkgInput?.value?.trim() || '';
+  const repo = repoInput?.value?.trim() || '';
+
+  if (!pkg) {
+    showToast('Package identifier is required', 'error');
+    return;
+  }
+
+  const confirmBtn = document.getElementById('btn-confirm-provision');
+  if (confirmBtn) confirmBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/catalog/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package: pkg, name: name || pkg, repo_url: repo })
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+
+    showToast(`Provisioned ${name || pkg} successfully!`, 'success');
+    closeProvisionModal();
+    await loadConfig();
+    switchTab('overview');
+  } catch (err) {
+    showToast(`Provisioning failed: ${err.message}`, 'error');
+  } finally {
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Slide-Over Drawer: App Configurator
+// ---------------------------------------------------------------------------
+let currentDrawerPkg = null;
+
+function openAppDrawer(pkg) {
+  currentDrawerPkg = pkg;
+  const drawer = document.getElementById('app-drawer-backdrop');
+  if (!drawer) return;
+
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg, repos: [] };
+  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+
+  const titleEl = document.getElementById('drawer-app-title');
+  const pkgEl = document.getElementById('drawer-app-pkg');
+  if (titleEl) titleEl.textContent = friendlyName;
+  if (pkgEl) pkgEl.textContent = pkg;
+
+  renderDrawerBody(app);
+  drawer.classList.add('open');
+}
+
+function closeAppDrawer(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'app-drawer-backdrop') return;
+  const drawer = document.getElementById('app-drawer-backdrop');
+  if (drawer) drawer.classList.remove('open');
+  currentDrawerPkg = null;
+}
+
+function renderDrawerBody(app) {
+  const container = document.getElementById('drawer-body-content');
+  if (!container) return;
+
+  const isEnabled = app.enabled !== false;
+  const repos = Array.isArray(app.repos) ? app.repos : [];
+
+  const reposHtml = repos.length > 0
+    ? repos.map((r, idx) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.75rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-primary);">${escapeHtml(cleanRepoSlug(r))}</span>
+          <button type="button" class="btn btn-icon" onclick="removeDrawerRepo(${idx})" title="Remove repository">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      `).join('')
+    : `<div style="font-size: 0.8125rem; color: var(--text-muted); padding: 0.5rem 0;">No dedicated repositories configured. Inherits default Morphe repository.</div>`;
+
+  container.innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Build Automation Status</label>
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
+        <div>
+          <div style="font-size: 0.8125rem; font-weight: 500; color: var(--text-primary);">Active in Pipeline</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Include this application in scheduled nightly builds</div>
+        </div>
+        <label class="switch-control">
+          <input type="checkbox" id="drawer-app-enabled" ${isEnabled ? 'checked' : ''}>
+          <span class="switch-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Connected Patch Repositories</label>
+      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+        ${reposHtml}
+      </div>
+      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo">
+        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">Add</button>
+      </div>
+    </div>
+
+    <div class="crypto-seal-card">
+      <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
+        Deterministic Keystore Attached
+      </div>
+      <div style="font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4;">
+        Signed with permanent PKCS12 keystore. SHA256: 0B:30:8B:4C:8F:C4:BA:5B:FF:8F:4A:68:B5:AB:EF:5F:DA:FB:F1:D5:7E:9F:74:80:AD:6F:9D:78:60:85:40:9F
+      </div>
+    </div>
+  `;
+}
+
+function removeDrawerRepo(idx) {
+  if (!currentDrawerPkg) return;
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg);
+  if (app && Array.isArray(app.repos)) {
+    app.repos.splice(idx, 1);
+    renderDrawerBody(app);
+  }
+}
+
+function addDrawerRepo() {
+  if (!currentDrawerPkg) return;
+  const input = document.getElementById('drawer-new-repo-url');
+  const url = input?.value?.trim();
+  if (!url) return;
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg);
+  if (app) {
+    if (!Array.isArray(app.repos)) app.repos = [];
+    if (!app.repos.includes(url)) {
+      app.repos.push(url);
+    }
+    input.value = '';
+    renderDrawerBody(app);
+  }
+}
+
+async function saveAppDrawerChanges() {
+  if (!currentDrawerPkg) return;
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg);
+  if (!app) return;
+
+  const enabledCheckbox = document.getElementById('drawer-app-enabled');
+  if (enabledCheckbox) {
+    app.enabled = enabledCheckbox.checked;
+  }
+
+  const saveBtn = document.getElementById('btn-drawer-save');
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/config/app', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(app)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showToast(`Saved ${app.name || currentDrawerPkg}`, 'success');
+    closeAppDrawer();
+    await loadConfig();
+  } catch (err) {
+    showToast(`Failed to save changes: ${err.message}`, 'error');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Obtainium Bulk Sync Modal
+// ---------------------------------------------------------------------------
+function openObtainiumModal() {
+  const modal = document.getElementById('modal-obtainium');
+  if (!modal) return;
+
+  const baseUrl = window.location.origin;
+  const exportData = {
+    apps: state.configuredApps.map(app => {
+      const pkg = app.package || app.package_name;
+      const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+      return {
+        id: pkg,
+        url: `${baseUrl}/api/obtainium/${pkg}`,
+        author: 'AutoMorph',
+        name: app.name || catalogItem?.name || pkg,
+        preferredApkIndex: 0
+      };
+    })
+  };
+
+  const pre = document.getElementById('obtainium-export-pre');
+  if (pre) pre.textContent = JSON.stringify(exportData, null, 2);
+  modal.classList.add('open');
+}
+
+function closeObtainiumModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-obtainium') return;
+  const modal = document.getElementById('modal-obtainium');
+  if (modal) modal.classList.remove('open');
+}
+
+function copyObtainiumJson() {
+  const pre = document.getElementById('obtainium-export-pre');
+  if (pre) {
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      showToast('Obtainium configuration copied to clipboard!', 'success');
+    }).catch(() => {
+      showToast('Failed to copy Obtainium configuration', 'error');
+    });
+  }
+}
+
+// Attach globally
+window.switchTab = switchTab;
+window.openAppDrawer = openAppDrawer;
+window.closeAppDrawer = closeAppDrawer;
+window.removeDrawerRepo = removeDrawerRepo;
+window.addDrawerRepo = addDrawerRepo;
+window.saveAppDrawerChanges = saveAppDrawerChanges;
+window.openProvisionModal = openProvisionModal;
+window.closeProvisionModal = closeProvisionModal;
+window.confirmProvisionApp = confirmProvisionApp;
+window.openObtainiumModal = openObtainiumModal;
+window.closeObtainiumModal = closeObtainiumModal;
+window.copyObtainiumJson = copyObtainiumJson;
+window.runSingleAppPatch = runSingleAppPatch;
+window.deleteConfiguredApp = deleteConfigApp;
+
+
 
 async function toggleAppActive(pkg, isChecked) {
   try {

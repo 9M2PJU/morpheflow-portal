@@ -36,6 +36,14 @@ Choose a guide below to get started:
   * Enabling **Low-Spec Mode** for 1GB RAM instances.
   * Setting up automated email build notifications and downloading APKs.
 
+### 🎨 [5. UI Revamp & Morphe Catalog Integration](superpowers/specs/2026-10-31-ui-redesign-and-morphe-catalog-spec.md)
+* **Master Specification & Architecture**: [Design Specification](superpowers/specs/2026-10-31-ui-redesign-and-morphe-catalog-spec.md)
+* **Phase-by-Phase Implementation Runbook**: [Implementation Plan](superpowers/plans/2026-10-31-ui-redesign-and-morphe-catalog-plan.md)
+* **Interactive HTML Mockup (0 FAIL Hallmark sloplint)**: [NextGen Mockup](mockups/automorph_nextgen_mockup.html)
+* **Visual Renderings**:
+  * [Overview Deck](mockups/nextgen_overview.png)
+  * [Community Store (1,342 Apps)](mockups/nextgen_store.png)
+  * [App Configuration Drawer](mockups/nextgen_drawer.png)
 
 ---
 
