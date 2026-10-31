@@ -145,6 +145,23 @@ jobs:
           except Exception as e:
               print(f'[!] Could not fetch runner state from Worker: {e}. Falling back to defaults.')
           EOF
+
+          # Ensure custom base APKs from GitHub release 'base-apks' are restored
+          echo "[*] Checking for persistent custom base APKs in GitHub release 'base-apks'..."
+          if gh release view base-apks -R "${{ github.repository }}" >/dev/null 2>&1; then
+            mkdir -p apps/original/com.instaprime.android
+            gh release download base-apks -R "${{ github.repository }}" -D "apps/original/com.instaprime.android" --pattern "com.instaprime.android.apk" --clobber || true
+            if [ ! -f "apps/original/com.instaprime.android/com.instaprime.android.apk" ]; then
+              gh release download base-apks -R "${{ github.repository }}" -D "apps/original/com.instaprime.android" --pattern "*InstaPrime*.apk" --clobber || true
+              alt_apk=$(find apps/original/com.instaprime.android -name "*.apk" | head -n 1)
+              if [ -n "$alt_apk" ] && [ "$alt_apk" != "apps/original/com.instaprime.android/com.instaprime.android.apk" ]; then
+                cp "$alt_apk" "apps/original/com.instaprime.android/com.instaprime.android.apk"
+              fi
+            fi
+            if [ -f "apps/original/com.instaprime.android/com.instaprime.android.apk" ]; then
+              echo "[✓] Successfully restored com.instaprime.android base APK ($(wc -c < "apps/original/com.instaprime.android/com.instaprime.android.apk") bytes)."
+            fi
+          fi
           fi
 
       - name: Run AutoMorph Patching Pipeline
@@ -277,7 +294,7 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           RELEASE_TAG: ${{ steps.release.outputs.TAG }}
           DURATION: ${{ steps.patch.outputs.DURATION || 0 }}
-          PACKAGE_FILTER: ${{ inputs.package }}
+          PACKAGE_FILTER: ${{ inputs.target_package }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$CF_WORKER_URL" ]; then

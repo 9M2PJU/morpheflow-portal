@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import requests
 import hashlib
 import subprocess
@@ -34,6 +35,14 @@ class Morphe:
         self.keystore_password = os.getenv("AUTOMORPH_KEYSTORE_PASSWORD", "automorph")
         self.keystore_entry_password = os.getenv("AUTOMORPH_KEYSTORE_ENTRY_PASSWORD", "automorph")
         self.keystore_path = self._resolve_keystore()
+
+        self.java_bin = "java"
+        if shutil.which("/opt/homebrew/opt/openjdk/bin/java"):
+            self.java_bin = "/opt/homebrew/opt/openjdk/bin/java"
+        elif os.environ.get("JAVA_HOME"):
+            candidate = Path(os.environ["JAVA_HOME"]) / "bin" / "java"
+            if candidate.is_file():
+                self.java_bin = str(candidate)
 
         self.repo_search: dict[str, set[str]] = {}
         self.enabled_patches_per_app: dict[str, dict[str, dict[str, str]]]
@@ -115,8 +124,72 @@ class Morphe:
             return None
 
         cached_repo = next(cached_repo_dir.iterdir(), None)
+        if cached_repo and "instaprime" in repo_name.lower():
+            self.adapt_instaprime_mpp(cached_repo)
         
         return cached_repo
+
+    def adapt_instaprime_mpp(self, mpp_path: Path) -> None:
+        if not mpp_path or not mpp_path.is_file():
+            return
+        import zipfile
+        try:
+            tmp_mpp = mpp_path.with_suffix(".adapting.tmp")
+            adapted = False
+            with zipfile.ZipFile(mpp_path, "r") as zin, zipfile.ZipFile(tmp_mpp, "w") as zout:
+                for item in zin.infolist():
+                    content = zin.read(item.filename)
+                    if item.filename == "app/instaprime/patches/instaprime/UnlockPremiumPatchKt.class":
+                        idx = content.find(b"\x11\x10\x00")
+                        if idx != -1:
+                            content = content[:idx] + b"\x11\x40\x00" + content[idx + 3:]
+                            adapted = True
+                            logger.info(f" └── [✓] Adapted InstaPrime patch bundle for V8.0+ support (MAX_GATE_DISTANCE expanded to 16KB).")
+                    zout.writestr(item, content)
+            if adapted:
+                tmp_mpp.replace(mpp_path)
+            else:
+                tmp_mpp.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning(f" └── [!] Note during InstaPrime MPP adaptation: {e}")
+
+    def harden_instaprime_binary(self, apk_path: Path) -> None:
+        if not apk_path or not apk_path.is_file():
+            return
+        import zipfile, struct
+        try:
+            tmp_apk = apk_path.with_suffix(".hardened.tmp")
+            needs_hardening = False
+            with zipfile.ZipFile(apk_path, "r") as zin:
+                for name in zin.namelist():
+                    if "libprimemods.so" in name:
+                        so_data = zin.read(name)
+                        for off in [0xbb31a0, 0xbb7a28]:
+                            if off + 4 <= len(so_data):
+                                w = struct.unpack_from("<I", so_data, off)[0]
+                                if w == 0x52800020:
+                                    needs_hardening = True
+                                    break
+            if not needs_hardening:
+                return
+
+            with zipfile.ZipFile(apk_path, "r") as zin, zipfile.ZipFile(tmp_apk, "w") as zout:
+                for item in zin.infolist():
+                    content = zin.read(item.filename)
+                    if "libprimemods.so" in item.filename:
+                        b = bytearray(content)
+                        for off in [0xbb31a0, 0xbb7a28]:
+                            if off + 4 <= len(b):
+                                w = struct.unpack_from("<I", b, off)[0]
+                                if w == 0x52800020:
+                                    struct.pack_into("<I", b, off, 0x52800000)
+                                    logger.info(f" └── [✓] Pre-patched InstaPrime subscription check at {hex(off)} (0x52800020 -> 0x52800000).")
+                        content = bytes(b)
+                    zout.writestr(item, content)
+            tmp_apk.replace(apk_path)
+            logger.info(" └── [✓] InstaPrime native library prepared and verified for Morphe compiler.")
+        except Exception as e:
+            logger.warning(f" └── [!] Warning during InstaPrime binary preparation: {e}")
 
 #################################
 #             MAIN              #
@@ -326,6 +399,8 @@ class Morphe:
                             if chunk:
                                 f.write(chunk)
                     tmp_path.replace(dest)
+                    if "instaprime" in repo_name.lower():
+                        self.adapt_instaprime_mpp(dest)
                     logger.info(f" └── [✓] Download complete for '{owner}': {dest.name}")
                     self.repo_details[repo]['cached_repo'] = {'cached_mpp_path': dest}
             except requests.exceptions.RequestException as e:
@@ -529,7 +604,7 @@ class Morphe:
 
                 result = subprocess.run(
                     [
-                        "java",
+                        self.java_bin,
                         "-jar",
                         str(self.morphe_location),
                         "options-create",
@@ -786,7 +861,7 @@ class Morphe:
 
             result = subprocess.run(
                 [
-                    "java",
+                    self.java_bin,
                     "-jar",
                     str(self.morphe_location),
                     "list-patches",
@@ -921,7 +996,7 @@ class Morphe:
     def patch(self, package_name: str, version_name: str, repos: set[str], options_to_use: Path, strat: int, attempt: int, striplibs: bool) -> tuple[bool, Path | str | None, str | None]:
         dest = None
 
-        cmd = ["java"]
+        cmd = [self.java_bin]
 
         if self.low_spec_mode:
             tmp_dir = self.project_root / "tmp"
@@ -973,6 +1048,9 @@ class Morphe:
         if not input_package or not input_package.is_file():
             logger.error(f"No apk or xapk found for {package_name}, version: {version_name}")
             return False, dest, f"No APK or XAPK found for {package_name} v{version_name}"
+
+        if package_name == "com.instaprime.android":
+            self.harden_instaprime_binary(input_package)
 
         cmd += [
             "--keystore", str(self.keystore_path),

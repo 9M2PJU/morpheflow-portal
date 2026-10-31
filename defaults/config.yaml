@@ -26,6 +26,11 @@ packages:
     repos:
       - https://github.com/heval99/Heval-Morphe-Patches
 
+  - package: com.instaprime.android
+    package_name: InstaPrime
+    repos:
+      - https://github.com/drappula/morphe-patches-instaprime
+
 
 
 # ---------------------------------------------------------------------------

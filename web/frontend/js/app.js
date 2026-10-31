@@ -205,10 +205,14 @@ function setupEventListeners() {
     }
   });
 
-  // Refresh Button
+  // Refresh & Pipeline Batch Controls
   document.getElementById('btn-refresh-status')?.addEventListener('click', () => {
     loadAllData(true);
   });
+  document.getElementById('btn-patch-all-waiting')?.addEventListener('click', patchAllWaitingApps);
+  document.getElementById('btn-apps-patch-all-waiting')?.addEventListener('click', patchAllWaitingApps);
+  document.getElementById('btn-reset-pipeline-lock')?.addEventListener('click', resetPipelineLock);
+  document.getElementById('btn-banner-reset-lock')?.addEventListener('click', resetPipelineLock);
 
   // Docker Image Update Modal Controls
   document.getElementById('site-update-btn')?.addEventListener('click', openUpdateModal);
@@ -787,6 +791,11 @@ function renderStatus(data) {
   const activeBanner = document.getElementById('active-run-banner');
   const bannerSource = document.getElementById('active-run-banner-source');
 
+  const activePackages = Array.isArray(data.active_packages)
+    ? data.active_packages
+    : (data.active_lock?.package ? [data.active_lock.package] : []);
+  state.activePackages = activePackages;
+
   if (data.is_running) {
     const triggerInfo = getRunTriggerInfo(data.active_run || data.active_lock);
     updateStatusBadge(triggerInfo.navBadgeText, 'badge-pulse badge-warning');
@@ -794,7 +803,13 @@ function renderStatus(data) {
     if (activeBanner) {
       activeBanner.classList.remove('hidden');
       const runId = (data.active_run?.run_id || data.active_lock?.run_id || 'active');
-      if (bannerSource) bannerSource.textContent = `Triggered by ${triggerInfo.label} (${runId})`;
+      if (bannerSource) {
+        if (activePackages.length > 0) {
+          bannerSource.textContent = `Building ${activePackages.length} package${activePackages.length > 1 ? 's' : ''} in parallel: ${activePackages.join(', ')} (${runId})`;
+        } else {
+          bannerSource.textContent = `Triggered by ${triggerInfo.label} (${runId})`;
+        }
+      }
     }
   } else {
     updateStatusBadge('Idle & Ready', 'badge-success');
@@ -805,8 +820,10 @@ function renderStatus(data) {
   // 2. Next scheduled run card
   const nextRun = data.next_run;
   if (nextRun) {
-    document.getElementById('stat-next-run').textContent = nextRun.countdown_formatted;
-    document.getElementById('stat-next-sub').textContent = `Daily at ${nextRun.schedule_time} (${nextRun.display_time})`;
+    const statNextRun = document.getElementById('stat-next-run');
+    if (statNextRun) statNextRun.textContent = nextRun.countdown_formatted;
+    const statNextSub = document.getElementById('stat-next-sub');
+    if (statNextSub) statNextSub.textContent = `Daily at ${nextRun.schedule_time} (${nextRun.display_time})`;
   }
 
   // 3. Last run card
@@ -817,14 +834,16 @@ function renderStatus(data) {
 
   if (lastRun) {
     const isSuccess = lastRun.status === 'success';
-    lastStatusEl.textContent = isSuccess ? 'Success' : 'Failed';
-    lastStatusEl.style.color = isSuccess ? 'var(--color-success)' : 'var(--color-danger)';
+    if (lastStatusEl) {
+      lastStatusEl.textContent = isSuccess ? 'Success' : 'Failed';
+      lastStatusEl.style.color = isSuccess ? 'var(--status-success)' : 'var(--status-danger)';
+    }
     const durStr = lastRun.duration_formatted || formatDuration(lastRun.duration_seconds || lastRun.duration);
-    lastSubEl.textContent = `Duration: ${durStr} (${lastRun.source || 'pipeline'})`;
-    lastIconWrap.style.color = isSuccess ? 'var(--color-success)' : 'var(--color-danger)';
+    if (lastSubEl) lastSubEl.textContent = `Duration: ${durStr} (${lastRun.source || 'pipeline'})`;
+    if (lastIconWrap) lastIconWrap.style.color = isSuccess ? 'var(--status-success)' : 'var(--status-danger)';
   } else {
-    lastStatusEl.textContent = 'None Yet';
-    lastSubEl.textContent = 'Waiting for first execution';
+    if (lastStatusEl) lastStatusEl.textContent = 'None Yet';
+    if (lastSubEl) lastSubEl.textContent = 'Waiting for first execution';
   }
 
   // 4. Patched Storage card
@@ -834,10 +853,14 @@ function renderStatus(data) {
     document.getElementById('stat-apk-count').textContent = `${storage.apk_count} ready APK files`;
   }
 
-  // 5. Config totals
+  // 5. Config totals (prioritize active loaded configuredApps)
   const stats = data.stats;
-  const count = (stats && stats.configured_apps !== undefined) ? stats.configured_apps : state.configuredApps.length;
-  const reposCount = (stats && stats.connected_repos !== undefined) ? stats.connected_repos : state.globalRepos.length;
+  const count = (state.configuredApps && state.configuredApps.length > 0)
+    ? state.configuredApps.length
+    : ((stats && stats.configured_apps !== undefined) ? stats.configured_apps : 0);
+  const reposCount = (state.globalRepos && state.globalRepos.length > 0)
+    ? state.globalRepos.length
+    : ((stats && stats.connected_repos !== undefined) ? stats.connected_repos : 0);
   const statApps = document.getElementById('stat-apps-count');
   if (statApps) statApps.textContent = `${count} Apps`;
   const statRepos = document.getElementById('stat-repos-count');
@@ -1772,8 +1795,13 @@ function renderOverview() {
       ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
+    const activePackages = state.activePackages || [];
+    const isAppRunning = activePackages.includes(pkg) || (Boolean(state.status?.is_running) && activePackages.length === 0);
+
     let statusPill = '<span class="status-pill status-pill-waiting">Waiting</span>';
-    if (verInfo.isSuccess) {
+    if (isAppRunning) {
+      statusPill = `<span class="status-pill badge-running"><span class="live-pulse-dot" aria-hidden="true"></span> Building</span>`;
+    } else if (verInfo.isSuccess) {
       statusPill = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
     } else if (verInfo.isFailed) {
       statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
@@ -1783,10 +1811,24 @@ function renderOverview() {
     const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
     const fullReposTooltip = repos.join('\n');
 
-    const badgesHtml = verInfo.badges.map(b => {
+    let badgesHtml = verInfo.badges.map(b => {
       const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
       return `<span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}" ${clickAttr}>${escapeHtml(b.label)}</span>`;
     }).join(' ');
+
+    if (isAppRunning) {
+      badgesHtml = `<span class="status-pill-badge badge-running" title="Pipeline runner actively building this package"><span class="live-pulse-dot" aria-hidden="true"></span> Building Live</span>`;
+    }
+
+    const patchBtnHtml = isAppRunning
+      ? `<button class="btn btn-secondary btn-sm" disabled style="opacity: 0.65; cursor: wait;" title="This app is currently compiling">
+           <span class="live-pulse-dot" aria-hidden="true"></span>
+           <span>Building…</span>
+         </button>`
+      : `<button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+           <span>Patch</span>
+         </button>`;
 
     return `
       <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
@@ -1846,10 +1888,7 @@ function renderOverview() {
           </div>
 
           <div class="app-card-actions">
-            <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              <span>Patch</span>
-            </button>
+            ${patchBtnHtml}
 
             <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
@@ -1945,8 +1984,13 @@ function renderConfiguredApps() {
       ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
+    const activePackages = state.activePackages || [];
+    const isAppRunning = activePackages.includes(pkg) || (Boolean(state.status?.is_running) && activePackages.length === 0);
+
     let statusPill = '<span class="status-pill status-pill-waiting">Waiting</span>';
-    if (verInfo.isSuccess) {
+    if (isAppRunning) {
+      statusPill = `<span class="status-pill badge-running"><span class="live-pulse-dot" aria-hidden="true"></span> Building</span>`;
+    } else if (verInfo.isSuccess) {
       statusPill = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
     } else if (verInfo.isFailed) {
       statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
@@ -1956,10 +2000,24 @@ function renderConfiguredApps() {
     const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
     const fullReposTooltip = repos.join('\n');
 
-    const badgesHtml = verInfo.badges.map(b => {
+    let badgesHtml = verInfo.badges.map(b => {
       const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
       return `<span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}" ${clickAttr}>${escapeHtml(b.label)}</span>`;
     }).join(' ');
+
+    if (isAppRunning) {
+      badgesHtml = `<span class="status-pill-badge badge-running" title="Pipeline runner actively building this package"><span class="live-pulse-dot" aria-hidden="true"></span> Building Live</span>`;
+    }
+
+    const patchBtnHtml = isAppRunning
+      ? `<button class="btn btn-secondary btn-sm" disabled style="opacity: 0.65; cursor: wait;" title="This app is currently compiling">
+           <span class="live-pulse-dot" aria-hidden="true"></span>
+           <span>Building…</span>
+         </button>`
+      : `<button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+           <span>Patch</span>
+         </button>`;
 
     return `
       <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
@@ -2026,10 +2084,7 @@ function renderConfiguredApps() {
           </div>
 
           <div class="app-card-actions">
-            <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              <span>Patch</span>
-            </button>
+            ${patchBtnHtml}
 
             <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
@@ -3212,6 +3267,67 @@ async function toggleAppActive(pkg, isChecked) {
   }
 }
 
+async function patchAllWaitingApps() {
+  const waitingApps = (state.configuredApps || []).filter(app => {
+    const pkg = app.package || app.package_name;
+    const ver = getAppVersionInfo(app);
+    const isRunning = (state.activePackages || []).includes(pkg);
+    return !isRunning && (!ver.currentVer || ver.statusClass === 'status-awaiting');
+  });
+
+  if (waitingApps.length === 0) {
+    showToast('All configured applications are up to date or already compiling.', 'info');
+    return;
+  }
+
+  const waitingPkgs = waitingApps.map(a => a.package || a.package_name).filter(Boolean);
+  showToast(`Dispatching parallel builds for ${waitingPkgs.length} waiting apps...`, 'info');
+
+  try {
+    const res = await fetch('/api/run/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packages: waitingPkgs, source: 'batch_waiting' })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      showToast(data.message || 'Build already in progress for one or more packages.', 'warning');
+      await refreshStatus();
+      return;
+    }
+    if (!res.ok) {
+      throw new Error(data.message || `HTTP ${res.status}`);
+    }
+    showToast(`⚡ Dispatched parallel builds for ${waitingPkgs.length} apps!`, 'success');
+    await refreshStatus();
+    openTerminalAndConnect();
+  } catch (err) {
+    showToast(`Failed to dispatch parallel builds: ${err.message}`, 'error');
+  }
+}
+
+async function resetPipelineLock() {
+  try {
+    const res = await fetch('/api/run/reset', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Reset failed');
+    showToast('All pipeline execution locks have been reset.', 'success');
+    state.activePackages = [];
+    if (state.status) {
+      state.status.is_running = false;
+      state.status.active_lock = null;
+      state.status.active_run = null;
+      state.status.active_locks = [];
+      state.status.active_packages = [];
+    }
+    renderStatus(state.status || { is_running: false });
+    await refreshStatus();
+    await loadConfig();
+  } catch (err) {
+    showToast(`Failed to reset locks: ${err.message}`, 'error');
+  }
+}
+
 async function runSingleAppPatch(pkg, skipPrompt = false) {
   if (!skipPrompt) {
     const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg);
@@ -3228,27 +3344,31 @@ async function runSingleAppPatch(pkg, skipPrompt = false) {
   try {
     const res = await fetch(`/api/run/${encodeURIComponent(pkg)}`, { method: 'POST' });
     if (res.status === 409) {
-      showToast('A pipeline run is already in progress! Enabled app for future runs.', 'warning');
+      const errData = await res.json().catch(() => ({}));
+      showToast(errData.message || `A build execution for ${pkg} is already in progress!`, 'warning');
       openTerminalAndConnect();
-      await loadConfig();
+      await refreshStatus();
       return;
     }
     if (!res.ok) throw new Error(`Run trigger returned ${res.status}`);
 
     const data = await res.json().catch(() => ({}));
     const appName = getAppDisplayName(pkg);
-    if (data && data.uncommented) {
-      showToast(`Enabled ${appName || pkg} in config & initiated patching pipeline!`, 'success');
-    } else {
-      showToast(`Patching pipeline initiated for ${appName || pkg}!`, 'success');
-    }
+    showToast(`Build dispatched for ${appName || pkg}! Check pipeline logs for progress.`, 'success');
+
+    const currActive = state.activePackages || [];
+    if (!currActive.includes(pkg)) currActive.push(pkg);
+    state.activePackages = currActive;
     state.status = {
       ...state.status,
       is_running: true,
+      active_packages: currActive,
       active_run: { source: 'manual', package: pkg },
       active_lock: { source: 'manual', package: pkg },
     };
     renderStatus(state.status);
+    renderOverview();
+    renderConfiguredApps();
     openTerminalAndConnect();
     loadStatus();
     await loadConfig();

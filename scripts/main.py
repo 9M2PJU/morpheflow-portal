@@ -14,6 +14,8 @@ import logging
 import itertools
 import shutil
 import json
+import concurrent.futures
+from pyaxmlparser import APK
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +32,20 @@ def main(project_root: Path, conf: dict) -> None:
         force = False
 
         raw_target = os.getenv("TARGET_PACKAGE") or (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else None)
-        target_pkg = raw_target.strip() if raw_target and raw_target.strip() else None
-        if target_pkg:
-            force = True
+        target_pkgs = [p.strip() for p in raw_target.split(",") if p.strip()] if raw_target and raw_target.strip() else []
+        target_pkg = target_pkgs[0] if len(target_pkgs) == 1 else None
 
-            if target_pkg in detailed_app_list:
-                target_repos = detailed_app_list[target_pkg]['repos']
-                detailed_app_list = {target_pkg: detailed_app_list[target_pkg]}
-                repo_details = {r: details for r, details in repo_details.items() if r in target_repos}
+        if target_pkgs:
+            force = True
+            matched = {p: detailed_app_list[p] for p in target_pkgs if p in detailed_app_list}
+            if matched:
+                all_target_repos = set()
+                for p_info in matched.values():
+                    all_target_repos.update(p_info.get('repos', []))
+                detailed_app_list = matched
+                repo_details = {r: details for r, details in repo_details.items() if r in all_target_repos}
             else:
-                logger.warning(f"[!] Target package '{target_pkg}' not found in configured apps list.")
+                logger.warning(f"[!] None of the target packages {target_pkgs} were found in configured apps list.")
         
         morphe = Morphe(project_root, original_dir, patched_dir, architecture, detailed_app_list, repo_details, low_spec_mode, force)
         downlader = Downloader(original_dir, architecture, project_root)
@@ -53,20 +59,74 @@ def main(project_root: Path, conf: dict) -> None:
         sources = project_root / "tools" / "automorph-data" / "app_sources.yaml"
         download_list = check_patched_version(package_version_req, patched_dir, architecture, sources, force)
 
-        if target_pkg:
-            download_list = {k: v for k, v in download_list.items() if k == target_pkg}
+        if target_pkgs:
+            download_list = {k: v for k, v in download_list.items() if k in target_pkgs}
 
-        for package_name, details in download_list.items():
+        def _execute_single_package(package_name, details):
             scanned_repos = detailed_app_list[package_name]['repos']
-            result, dest, attempt_details, applied_repos, run, winning_attempt = patch_piepline(package_name, details, downlader, morphe, enabled_patches, patched_dir, striplibs, force)            
-        
-            resolved_applied = list(applied_repos) if applied_repos else list(scanned_repos)
-            if not result:
-                logger.warning(f"[✗] Skipping {package_name}: patching could not be completed.")      
-                patch_failures[package_name] = {'target_versions': details.get('target_versions', []), 'arch': architecture, 'scanned_repos': scanned_repos, 'applied_repos': resolved_applied, 'attempts': attempt_details}
-                continue       
+            try:
+                res, dest, attempt_details, applied_repos, run, winning_attempt = patch_piepline(
+                    package_name, details, downlader, morphe, enabled_patches, patched_dir, striplibs, force
+                )
+                return package_name, res, dest, attempt_details, applied_repos, run, winning_attempt, scanned_repos
+            except Exception as e:
+                logger.error(f"[!] Thread error processing {package_name}: {e}")
+                return package_name, False, None, [], None, None, None, scanned_repos
 
-            patch_success[package_name] = {'dest': dest, 'arch': architecture, 'scanned_repos': scanned_repos, 'applied_repos': resolved_applied, 'strategy': run, 'attempt': winning_attempt, 'attempts': attempt_details}
+        if len(download_list) > 1 and not low_spec_mode:
+            workers = min(3, len(download_list))
+            logger.info(f"[*] Starting parallel patching across {len(download_list)} packages with {workers} concurrent workers...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(_execute_single_package, pkg, details)
+                    for pkg, details in download_list.items()
+                ]
+                for fut in concurrent.futures.as_completed(futures):
+                    package_name, result, dest, attempt_details, applied_repos, run, winning_attempt, scanned_repos = fut.result()
+                    resolved_applied = list(applied_repos) if applied_repos else list(scanned_repos)
+                    if not result:
+                        logger.warning(f"[✗] Skipping {package_name}: patching could not be completed.")
+                        patch_failures[package_name] = {
+                            'target_versions': download_list[package_name].get('target_versions', []),
+                            'arch': architecture,
+                            'scanned_repos': scanned_repos,
+                            'applied_repos': resolved_applied,
+                            'attempts': attempt_details
+                        }
+                    else:
+                        patch_success[package_name] = {
+                            'dest': dest,
+                            'arch': architecture,
+                            'scanned_repos': scanned_repos,
+                            'applied_repos': resolved_applied,
+                            'strategy': run,
+                            'attempt': winning_attempt,
+                            'attempts': attempt_details
+                        }
+        else:
+            for package_name, details in download_list.items():
+                package_name, result, dest, attempt_details, applied_repos, run, winning_attempt, scanned_repos = _execute_single_package(package_name, details)
+                resolved_applied = list(applied_repos) if applied_repos else list(scanned_repos)
+                if not result:
+                    logger.warning(f"[✗] Skipping {package_name}: patching could not be completed.")
+                    patch_failures[package_name] = {
+                        'target_versions': details.get('target_versions', []),
+                        'arch': architecture,
+                        'scanned_repos': scanned_repos,
+                        'applied_repos': resolved_applied,
+                        'attempts': attempt_details
+                    }
+                    continue
+
+                patch_success[package_name] = {
+                    'dest': dest,
+                    'arch': architecture,
+                    'scanned_repos': scanned_repos,
+                    'applied_repos': resolved_applied,
+                    'strategy': run,
+                    'attempt': winning_attempt,
+                    'attempts': attempt_details
+                }
 
             # clear_old_packages(package_name, max_original_packages, original_dir / package_name, "unpatched", project_root)
             # clear_old_packages(package_name, max_patched_packages, patched_dir / package_name, "patched", project_root)
@@ -185,6 +245,25 @@ def check_patched_version(package_req: list, patched: Path, arch: str, sources: 
         first_it = True
 
         target_versions_set = set()
+
+        # Check for staged custom base APK in apps/original/<package_name>/
+        orig_pkg_dir = patched.parent / "original" / package_name
+        staged_custom_ver = None
+        if orig_pkg_dir.is_dir():
+            staged_apks = [f for f in orig_pkg_dir.glob("*.apk") if f.is_file() and f.parent == orig_pkg_dir]
+            for s_apk in staged_apks:
+                try:
+                    s_ver = APK(s_apk).version_name
+                    if s_ver:
+                        staged_custom_ver = s_ver
+                        logger.info(f" ├── [✓] Found staged custom base APK for {package_name}: v{s_ver} ({s_apk.name})")
+                        patched_custom_dir = patched_package_path / s_ver
+                        existing_patched = [f for f in patched_custom_dir.glob("*.apk") if f.is_file()] if patched_custom_dir.is_dir() else []
+                        if not existing_patched or force:
+                            target_versions_set.add((s_ver, True))
+                        break
+                except Exception as e:
+                    logger.debug(f"Could not read staged APK {s_apk}: {e}")
         for version in version_list:
             version_tup = version, False
 

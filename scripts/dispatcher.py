@@ -47,7 +47,11 @@ def load_config(project_root: Path | None = None) -> dict:
 
     config_path = project_root / "tools" / "automorph-data" / "config.yaml"
     if not config_path.is_file():
-        raise FileNotFoundError(f"Missing config.yaml at {config_path}")
+        fallback = project_root / "defaults" / "config.yaml"
+        if fallback.is_file():
+            config_path = fallback
+        else:
+            raise FileNotFoundError(f"Missing config.yaml at {config_path}")
 
     with config_path.open("r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}

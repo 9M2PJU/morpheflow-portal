@@ -94,6 +94,8 @@ export interface StorageStats {
 
 export interface StatusResponse {
   is_running: boolean;
+  active_locks?: Record<string, any>[];
+  active_packages?: string[];
   active_lock: Record<string, any> | null;
   active_run: Record<string, any> | null;
   next_run: {

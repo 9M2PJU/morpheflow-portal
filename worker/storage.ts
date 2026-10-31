@@ -422,33 +422,137 @@ export class StorageService {
     return { logs: lines, run_id: targetRunId };
   }
 
-  // --- State Lock ---
-  async getActiveLock(): Promise<any | null> {
-    const row = await this.db.prepare("SELECT value FROM state WHERE key = 'active_lock'").first<{ value: string }>();
-    if (!row) return null;
-    try {
-      return JSON.parse(row.value);
-    } catch {
-      return null;
+  // --- State Lock (Parallel & Per-Package Aware) ---
+  async getActiveLocks(): Promise<any[]> {
+    const now = Date.now() / 1000;
+    let locks: any[] = [];
+    
+    // Check parallel locks store
+    const multiRow = await this.db.prepare("SELECT value FROM state WHERE key = 'active_locks'").first<{ value: string }>();
+    if (multiRow?.value) {
+      try {
+        const parsed = JSON.parse(multiRow.value);
+        if (Array.isArray(parsed)) {
+          locks = parsed;
+        }
+      } catch {}
     }
+
+    // Fallback/sync with legacy single active_lock if present
+    if (locks.length === 0) {
+      const singleRow = await this.db.prepare("SELECT value FROM state WHERE key = 'active_lock'").first<{ value: string }>();
+      if (singleRow?.value) {
+        try {
+          const parsedSingle = JSON.parse(singleRow.value);
+          if (parsedSingle && typeof parsedSingle === 'object') {
+            locks = [parsedSingle];
+          }
+        } catch {}
+      }
+    }
+
+    // Purge expired locks
+    const validLocks = locks.filter((l) => !l.expires_at || l.expires_at > now);
+    if (validLocks.length !== locks.length) {
+      await this.saveActiveLocks(validLocks);
+    }
+    return validLocks;
+  }
+
+  async saveActiveLocks(locks: any[]): Promise<void> {
+    const now = Date.now() / 1000;
+    if (locks.length === 0) {
+      await this.db.prepare("DELETE FROM state WHERE key IN ('active_locks', 'active_lock')").run();
+      return;
+    }
+    const valMulti = JSON.stringify(locks);
+    const valSingle = JSON.stringify(locks[locks.length - 1]);
+    await this.db
+      .prepare("INSERT INTO state (key, value, updated_at) VALUES ('active_locks', ?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?")
+      .bind(valMulti, now, valMulti, now)
+      .run();
+    await this.db
+      .prepare("INSERT INTO state (key, value, updated_at) VALUES ('active_lock', ?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?")
+      .bind(valSingle, now, valSingle, now)
+      .run();
+  }
+
+  async getActiveLock(pkg?: string | null): Promise<any | null> {
+    const locks = await this.getActiveLocks();
+    if (locks.length === 0) return null;
+    if (pkg) {
+      return (
+        locks.find(
+          (l) => l.package === pkg || !l.package || l.package === '__all__' || l.package === 'all'
+        ) || null
+      );
+    }
+    return locks[locks.length - 1] || null;
   }
 
   async acquireLock(data: any): Promise<boolean> {
-    const existing = await this.getActiveLock();
+    const locks = await this.getActiveLocks();
     const now = Date.now() / 1000;
-    if (existing && existing.expires_at && existing.expires_at > now) {
-      return false; // Active lock held
+    const timeout = data.timeout_seconds || 2700; // 45 min default
+    const expires_at = now + timeout;
+
+    const requestedPkg = data.package || null;
+    const requestedPkgs: string[] = Array.isArray(data.packages)
+      ? data.packages
+      : requestedPkg
+      ? [requestedPkg]
+      : [];
+
+    // Check if a global lock is already active
+    const globalLockActive = locks.some((l) => !l.package || l.package === '__all__' || l.package === 'all');
+    if (globalLockActive) {
+      return false; // Global execution already in progress
     }
-    const val = JSON.stringify({ ...data, acquired_at: now, expires_at: now + 3600 });
-    await this.db
-      .prepare("INSERT INTO state (key, value, updated_at) VALUES ('active_lock', ?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?")
-      .bind(val, now, val, now)
-      .run();
+
+    if (requestedPkgs.length === 0) {
+      // Requested a global run: only permitted if no other locks are active
+      if (locks.length > 0) {
+        return false;
+      }
+      const newLock = { ...data, package: null, acquired_at: now, expires_at };
+      await this.saveActiveLocks([newLock]);
+      return true;
+    }
+
+    // Specific packages requested: verify none of them are currently locked
+    const conflicting = requestedPkgs.some((p) => locks.some((l) => l.package === p));
+    if (conflicting) {
+      return false;
+    }
+
+    // Add lock entries for all requested packages
+    const newLocks = [...locks];
+    for (const p of requestedPkgs) {
+      newLocks.push({
+        ...data,
+        package: p,
+        acquired_at: now,
+        expires_at,
+      });
+    }
+    await this.saveActiveLocks(newLocks);
     return true;
   }
 
-  async releaseLock(): Promise<void> {
-    await this.db.prepare("DELETE FROM state WHERE key = 'active_lock'").run();
+  async releaseLock(pkgOrRunId?: string | null): Promise<void> {
+    if (!pkgOrRunId) {
+      await this.resetAllLocks();
+      return;
+    }
+    const locks = await this.getActiveLocks();
+    const remaining = locks.filter(
+      (l) => l.package !== pkgOrRunId && l.run_id !== pkgOrRunId
+    );
+    await this.saveActiveLocks(remaining);
+  }
+
+  async resetAllLocks(): Promise<void> {
+    await this.db.prepare("DELETE FROM state WHERE key IN ('active_locks', 'active_lock')").run();
   }
 
   // --- Session Lifecycle & Revocation (Security Audit) ---

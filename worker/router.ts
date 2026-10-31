@@ -342,7 +342,9 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // 2. GET /api/status
   if (path === '/api/status' && method === 'GET') {
-    const activeLock = await storage.getActiveLock();
+    const activeLocks = await storage.getActiveLocks();
+    const activePackages = activeLocks.map((l) => l.package).filter(Boolean) as string[];
+    const activeLock = activeLocks[activeLocks.length - 1] || null;
     const lastRun = await storage.getLastRunInfo();
     const storageStats = await storage.getStorageStats();
     const packages = await storage.listPackages();
@@ -352,8 +354,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     const nextRun = resolveScheduleTarget(system, env);
 
     const now = Date.now() / 1000;
-    const isRunning = Boolean(activeLock && (!activeLock.expires_at || activeLock.expires_at > now));
-    const activeRun = isRunning
+    const isRunning = activeLocks.length > 0;
+    const activeRun = isRunning && activeLock
       ? {
           run_id: activeLock.run_id,
           source: activeLock.source,
@@ -364,6 +366,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const response: StatusResponse = {
       is_running: isRunning,
+      active_locks: activeLocks,
+      active_packages: activePackages,
       active_lock: activeLock,
       active_run: activeRun,
       next_run: nextRun,
@@ -935,20 +939,105 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({ status: 'success', package: pkg, owner });
   }
 
-  // 19. Run pipeline: POST /api/run or POST /api/run/:pkg
-  if ((path === '/api/run' || path.startsWith('/api/run/')) && method === 'POST' && path !== '/api/run/stop') {
+  // 19. Run pipeline: POST /api/run, POST /api/run/batch, or POST /api/run/:pkg
+  if ((path === '/api/run' || path.startsWith('/api/run/')) && method === 'POST' && path !== '/api/run/stop' && path !== '/api/run/reset') {
     let pkg: string | null = null;
+    let packages: string[] = [];
     let source = 'manual';
-    if (path.startsWith('/api/run/')) {
+
+    if (path === '/api/run/batch') {
+      try {
+        const b = await request.json<any>();
+        packages = Array.isArray(b.packages) ? b.packages.filter(Boolean) : [];
+        source = b.source || 'batch_manual';
+      } catch {}
+    } else if (path.startsWith('/api/run/') && path !== '/api/run/batch') {
       pkg = decodeURIComponent(path.replace('/api/run/', ''));
     } else {
       try {
         const b = await request.json<any>();
-        pkg = b.package || null;
+        if (Array.isArray(b.packages) && b.packages.length > 0) {
+          packages = b.packages.filter(Boolean);
+        } else {
+          pkg = b.package || null;
+        }
         source = b.source || 'manual';
       } catch {}
     }
 
+    // A) Batch Execution (Parallel Runs)
+    if (packages.length > 0) {
+      const runId = `batch-${Date.now()}`;
+      const locked = await storage.acquireLock({
+        run_id: runId,
+        source,
+        packages,
+        started_at: Date.now() / 1000,
+      });
+
+      if (!locked) {
+        return json({ message: 'One or more of the requested packages are already in progress.' }, 409);
+      }
+
+      const initialLog = `[*] AutoMorph parallel batch pipeline triggered (${source}) for ${packages.length} packages: ${packages.join(', ')} at ${new Date().toISOString()}`;
+      await storage.appendRunLogs(runId, [initialLog]);
+
+      let dispatchCount = 0;
+      const dispatchErrors: string[] = [];
+
+      if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
+        for (const targetPkg of packages) {
+          try {
+            const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
+            const ghRes = await fetch(ghUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'AutoMorph-CloudflareWorker',
+              },
+              body: JSON.stringify({
+                ref: 'main',
+                inputs: {
+                  target_package: targetPkg,
+                  runner_callback_url: url.origin,
+                },
+              }),
+            });
+            if (ghRes.ok || ghRes.status === 204) {
+              dispatchCount++;
+              await storage.appendRunLogs(runId, [`[✓] GitHub Actions build runner dispatched for ${targetPkg}`]);
+            } else {
+              const errText = await ghRes.text();
+              dispatchErrors.push(`${targetPkg} (${ghRes.status}): ${errText}`);
+              await storage.appendRunLogs(runId, [`[!] GitHub dispatch error for ${targetPkg} (${ghRes.status}): ${errText}`]);
+            }
+          } catch (err: any) {
+            dispatchErrors.push(`${targetPkg}: ${err.message}`);
+            await storage.appendRunLogs(runId, [`[!] GitHub dispatch exception for ${targetPkg}: ${err.message}`]);
+          }
+        }
+      } else {
+        await storage.appendRunLogs(runId, [
+          '[ℹ] Note: GITHUB_TOKEN & GITHUB_REPO not set in Worker environment.',
+          'Runs can be fulfilled by local runner or external hybrid agent webhook.',
+        ]);
+      }
+
+      return json({
+        status: 'started',
+        run_id: runId,
+        source,
+        packages,
+        started_at: Date.now() / 1000,
+        dispatched: dispatchCount > 0,
+        dispatched_count: dispatchCount,
+        errors: dispatchErrors.length > 0 ? dispatchErrors : undefined,
+        message: `Dispatched ${dispatchCount} of ${packages.length} parallel build runners.`,
+      });
+    }
+
+    // B) Single Package or Global Run
     const runId = `run-${Date.now()}`;
     const locked = await storage.acquireLock({
       run_id: runId,
@@ -958,7 +1047,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     });
 
     if (!locked) {
-      return json({ message: 'A build execution is already in progress.' }, 409);
+      return json(
+        { message: pkg ? `A build execution for ${pkg} is already in progress.` : 'A build execution is already in progress.' },
+        409
+      );
     }
 
     const initialLog = `[*] AutoMorph pipeline triggered (${source})${pkg ? ` for ${pkg}` : ''} at ${new Date().toISOString()}`;
@@ -1016,10 +1108,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     });
   }
 
-  // 20. Stop run: POST /api/run/stop
-  if (path === '/api/run/stop' && method === 'POST') {
-    await storage.releaseLock();
-    return json({ status: 'stopped', message: 'Execution lock released.' });
+  // 20. Stop or Force Reset run: POST /api/run/stop or POST /api/run/reset
+  if ((path === '/api/run/stop' || path === '/api/run/reset') && method === 'POST') {
+    await storage.resetAllLocks();
+    return json({ status: 'reset', message: 'All pipeline execution locks and active states have been cleared.' });
   }
 
   // 21. Run Logs: GET /api/run/logs
@@ -1194,8 +1286,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       await storage.setConfig('repo_versions', payload.repo_versions);
     }
 
-    // Release lock
-    await storage.releaseLock();
+    // Release lock (per-package or all)
+    await storage.releaseLock(payload.package || null);
 
     // Dispatch Notifications (Telegram / Discord)
     try {
