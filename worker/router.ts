@@ -315,12 +315,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     method === 'GET' &&
     isAuthorizedWebhook;
   const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
+  const isObtainiumEndpoint = path.startsWith('/api/obtainium') && method === 'GET';
 
   if (isReportWithWebhook) {
     if (!isAuthorizedWebhook) {
       return json({ error: 'Unauthorized webhook' }, 401);
     }
-  } else if (!isConfigWithWebhook) {
+  } else if (!isConfigWithWebhook && !isObtainiumEndpoint) {
     const auth = await authenticateRequest(request, env, storage);
     if (!auth.authenticated) {
       return json(
@@ -515,25 +516,36 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // 3b. Obtainium Bulk Export: GET /api/obtainium/export
   if (path === '/api/obtainium/export' && method === 'GET') {
+    const rawPackages = await storage.listPackages();
     const apps = await storage.listPatchedApps();
     const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
     const author = repo.split('/')[0] || 'AutoMorph';
 
+    // Combine both configured packages and compiled patched apps
     const appMap = new Map<string, any>();
+    for (const p of rawPackages) {
+      appMap.set(p.package, {
+        package: p.package,
+        name: (p as any).name || p.package_name || p.package.split('.').pop(),
+      });
+    }
     for (const a of apps) {
-      if (!appMap.has(a.package)) {
-        appMap.set(a.package, a);
-      }
+      appMap.set(a.package, {
+        package: a.package,
+        name: a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package),
+        version: a.version,
+        download_url: a.download_url,
+      });
     }
 
     const exportList = Array.from(appMap.values()).map((a) => {
-      const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
-      const appName = a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package);
+      const appName = a.name || a.package.split('.').pop() || a.package;
       return {
         id: a.package,
         url: `https://github.com/${repo}`,
         author: author,
         name: appName,
+        preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
           filterReleaseTitlesByRegEx: appName,
@@ -542,7 +554,56 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       };
     });
 
-    return json(exportList);
+    return json(
+      { apps: exportList },
+      200,
+      {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Access-Control-Allow-Origin': '*',
+      }
+    );
+  }
+
+  // 3c. Obtainium Single App Route: GET /api/obtainium/:pkg
+  if (path.startsWith('/api/obtainium/') && path !== '/api/obtainium/export' && method === 'GET') {
+    const pkg = path.replace(/^\/api\/obtainium\/?/, '').trim();
+    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const author = repo.split('/')[0] || 'AutoMorph';
+    const apps = await storage.listPatchedApps();
+    const patched = apps.find((a) => a.package === pkg);
+    const rawPackages = await storage.listPackages();
+    const configPkg = rawPackages.find((p) => p.package === pkg);
+
+    const appName = (configPkg as any)?.name || configPkg?.package_name || (pkg === 'com.truecaller' ? 'Truecaller' : (pkg === 'com.reddit.frontpage' ? 'Reddit' : pkg.split('.').pop() || pkg));
+
+    const additionalSettings = JSON.stringify({
+      fallbackToOlderReleases: true,
+      filterReleaseTitlesByRegEx: appName,
+      apkFilterRegEx: appName.toLowerCase(),
+    });
+
+    // If browser/direct download requested with ?download=1
+    if (url.searchParams.get('download') === '1' && patched?.download_url) {
+      return Response.redirect(patched.download_url, 302);
+    }
+
+    return json(
+      {
+        id: pkg,
+        url: `https://github.com/${repo}`,
+        author,
+        name: appName,
+        version: patched?.version || 'latest',
+        apk_url: patched?.download_url || `https://github.com/${repo}/releases`,
+        preferredApkIndex: 0,
+        additionalSettings,
+      },
+      200,
+      {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Access-Control-Allow-Origin': '*',
+      }
+    );
   }
 
   // 4. GET /api/settings

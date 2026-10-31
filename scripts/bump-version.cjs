@@ -119,6 +119,14 @@ export const APP_USER_AGENT = \`AutoMorph-EdgeWorker/\${APP_VERSION} (https://gi
       /<span class="brand-badge" id="site-version-tag"[^>]*>v[^<]*<\/span>/,
       `<span class="brand-badge" id="site-version-tag" title="Click to check for updates">v${newVersion}</span>`
     );
+    indexHtml = indexHtml.replace(
+      /css\/morphe\.css\?v=[^"'\s]+/g,
+      `css/morphe.css?v=${newVersion}`
+    );
+    indexHtml = indexHtml.replace(
+      /js\/app\.js\?v=[^"'\s]+/g,
+      `js/app.js?v=${newVersion}`
+    );
     fs.writeFileSync(INDEX_HTML, indexHtml, 'utf8');
   }
 

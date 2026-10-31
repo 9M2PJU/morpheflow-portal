@@ -3835,63 +3835,48 @@ function renderDrawerBody(app) {
   const pkg = app.package || app.package_name;
   const isEnabled = app.enabled !== false;
   const repos = Array.isArray(app.repos) ? app.repos : [];
+  const targetArch = (app.options && app.options.target_arch) || 'arm64-v8a';
+  const recVer = getRecommendedTargetVersion(pkg) || 'Community Recommended';
 
   const reposHtml = repos.length > 0
     ? repos.map((r, idx) => `
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.75rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
-          <span style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-primary);">${escapeHtml(cleanRepoSlug(r))}</span>
-          <button type="button" class="btn btn-icon" onclick="removeDrawerRepo(${idx})" title="Remove repository">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--surface-raised); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
+          <span style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(cleanRepoSlug(r))}</span>
+          <button type="button" class="btn btn-icon" onclick="removeDrawerRepo(${idx})" title="Remove repository" style="width: 24px; height: 24px; min-height: 24px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
       `).join('')
-    : `<div style="font-size: 0.8125rem; color: var(--text-muted); padding: 0.5rem 0;">No dedicated repositories configured. Inherits default Morphe repository.</div>`;
+    : `<div style="font-size: 0.75rem; color: var(--text-muted); padding: 0.375rem 0;">No dedicated repositories configured. Inherits default Morphe repository.</div>`;
 
   const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
 
   container.innerHTML = `
-    <!-- 1. Custom Base APK Source -->
-    <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
-      <label class="form-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Custom Base APK Source</label>
-      <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">
-        For modded or unlisted apps (e.g. InstaPrime), provide a direct base APK download link (Google Drive, Dropbox, Catbox, or CDN).
-      </p>
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <input type="url" id="drawer-base-apk-url" class="form-input" style="flex: 1;" placeholder="https://example.com/base.apk" value="${escapeHtml(baseApkUrl)}">
-        <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save URL</button>
+    <!-- Top 2-Column Info Deck (Architecture & Recommended Version) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.875rem;">
+      <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
+        <label class="form-label" style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">Target Architecture</label>
+        <select id="drawer-app-arch" class="form-select" style="font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.375rem; background: transparent; border: 1px solid var(--border-hairline); border-radius: var(--radius-xs); color: var(--text-primary); width: 100%;">
+          <option value="arm64-v8a" ${targetArch === 'arm64-v8a' ? 'selected' : ''}>arm64-v8a (64-bit)</option>
+          <option value="armeabi-v7a" ${targetArch === 'armeabi-v7a' ? 'selected' : ''}>armeabi-v7a (32-bit)</option>
+          <option value="universal" ${targetArch === 'universal' ? 'selected' : ''}>Universal (All ABIs)</option>
+        </select>
       </div>
-      <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()">
-        <img src="/apk-icon.png" width="32" height="32" alt="APK" style="width: 32px; height: 32px; object-fit: contain; margin-bottom: 0.25rem;" onerror="this.style.display='none'">
-        <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
-        <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
-        <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
-      </div>
-      <!-- Real-time Drawer Upload Progress Bar -->
-      <div id="drawer-apk-progress-container" class="upload-progress-container" style="display: none;">
-        <div class="upload-progress-header">
-          <span class="upload-progress-status" id="drawer-apk-progress-status-text">
-            <span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span>
-            Uploading…
-          </span>
-          <span class="upload-progress-percent" id="drawer-apk-progress-percent">0%</span>
-        </div>
-        <div class="upload-progress-track">
-          <div class="upload-progress-fill" id="drawer-apk-progress-bar"></div>
-        </div>
-        <div class="upload-progress-footer">
-          <span id="drawer-apk-progress-filename" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;"></span>
-          <span id="drawer-apk-progress-bytes">0 MB / 0 MB</span>
-        </div>
+
+      <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: center;">
+        <span style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Recommended Version</span>
+        <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-base); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(recVer)}">
+          ${escapeHtml(recVer.startsWith('v') ? recVer : `v${recVer}`)}
+        </span>
       </div>
     </div>
 
-    <!-- 2. Build Automation Status -->
-    <div class="form-group">
-      <label class="form-label">Build Automation Status</label>
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
+    <!-- Build Automation Status -->
+    <div class="form-group" style="margin-bottom: 0.875rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.875rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
         <div>
-          <div style="font-size: 0.8125rem; font-weight: 500; color: var(--text-primary);">Active in Pipeline</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);">Include this application in scheduled nightly builds</div>
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">Active in Pipeline</div>
+          <div style="font-size: 0.6875rem; color: var(--text-muted);">Include this application in scheduled nightly builds</div>
         </div>
         <label class="switch-control">
           <input type="checkbox" id="drawer-app-enabled" ${isEnabled ? 'checked' : ''}>
@@ -3900,41 +3885,48 @@ function renderDrawerBody(app) {
       </div>
     </div>
 
-    <!-- 3. Target Architecture -->
-    <div class="form-group">
-      <label class="form-label">Target Architecture</label>
-      <select id="drawer-app-arch" class="form-select">
-        <option value="arm64-v8a" ${(app.options?.target_arch || 'arm64-v8a') === 'arm64-v8a' ? 'selected' : ''}>arm64-v8a (64-bit Modern Android — Recommended)</option>
-        <option value="armeabi-v7a" ${(app.options?.target_arch) === 'armeabi-v7a' ? 'selected' : ''}>armeabi-v7a (32-bit Legacy Android)</option>
-        <option value="universal" ${(app.options?.target_arch) === 'universal' ? 'selected' : ''}>Universal (Combined All Architectures)</option>
-      </select>
-      <span class="form-helper" style="font-size: 0.6875rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">AutoMorph filters base APK downloads strictly matching this ABI.</span>
+    <!-- Connected Patch Repositories -->
+    <div class="form-group" style="margin-bottom: 0.875rem;">
+      <label class="form-label" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Connected Patch Repositories</label>
+      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem;">
+        ${reposHtml}
+      </div>
+      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
+        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">Add</button>
+      </div>
     </div>
 
-    <!-- 4. Bytecode Mutators & Patches Manager -->
-    <div class="form-group" style="padding: 1.125rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
-      <div class="section-heading-row" style="margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+    <!-- Patches & Bytecode Mutators (PRIMARY SECTION) -->
+    <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+      <div class="section-heading-row" style="margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.125rem; font-size: 0.875rem;">Patches & Bytecode Mutators</label>
-          <div style="font-size: 0.75rem; color: var(--text-secondary);">Select active patches, feature mutators, and community sources</div>
+          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.125rem; font-size: 0.875rem;">Available Patch Bundles & Mutators</label>
+          <div style="font-size: 0.6875rem; color: var(--text-secondary);">Select active patches, feature mutators, and community sources</div>
         </div>
-        <span class="badge badge-accent" id="drawer-applied-count-badge" style="font-weight: 700; font-size: 0.6875rem;">0 Active</span>
-      </div>
-
-      <!-- Active Applied Patches -->
-      <div style="margin-bottom: 1rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem;">
-          <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Active Applied Patches</span>
-          <span style="font-size: 0.6875rem; color: var(--text-secondary);">Toggle switch to enable/disable</span>
-        </div>
-        <div class="applied-active-list" id="drawer-active-list" style="max-height: 200px; overflow-y: auto; background: var(--surface-lowest); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.375rem;">
-          <!-- Dynamically populated by renderDrawerActivePatches() -->
+        <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+          <span class="badge badge-accent" id="drawer-applied-count-badge" style="font-weight: 700; font-size: 0.6875rem;">0 Active</span>
+          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(true)" title="Select all compatible patches">Select All</button>
+          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(false)" title="Clear all patches">Clear All</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(true)" title="Expand all bundles">Expand</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(false)" title="Collapse all bundles">Collapse</button>
         </div>
       </div>
 
       <!-- Search Patches Input -->
       <div style="margin-bottom: 0.75rem;">
-        <input type="text" id="drawer-patches-search" class="form-input" style="font-size: 0.75rem; padding: 0.4rem 0.625rem;" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)..." oninput="filterDrawerPatches(this.value)">
+        <input type="text" id="drawer-patches-search" class="form-input" style="font-size: 0.75rem; padding: 0.45rem 0.625rem; width: 100%;" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)..." oninput="filterDrawerPatches(this.value)">
+      </div>
+
+      <!-- Active Applied Patches -->
+      <div style="margin-bottom: 0.875rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem;">
+          <span style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Active Applied Patches</span>
+          <span style="font-size: 0.6875rem; color: var(--text-secondary);">Toggle switch to enable/disable</span>
+        </div>
+        <div class="applied-active-list" id="drawer-active-list" style="max-height: 180px; overflow-y: auto; background: var(--surface-lowest); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.375rem;">
+          <!-- Dynamically populated by renderDrawerActivePatches() -->
+        </div>
       </div>
 
       <!-- Available Bundles & Mutators Accordions -->
@@ -3942,25 +3934,52 @@ function renderDrawerBody(app) {
         <div style="font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.375rem;">
           Available Community Bundles & Mutators
         </div>
-        <div id="drawer-bundles-container" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 340px; overflow-y: auto; padding-right: 2px;">
+        <div id="drawer-bundles-container" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 380px; overflow-y: auto; padding-right: 2px;">
           <!-- Dynamically populated by renderDrawerAvailableBundles() -->
         </div>
       </div>
     </div>
 
-    <!-- 5. Connected Patch Repositories -->
-    <div class="form-group">
-      <label class="form-label">Connected Patch Repositories</label>
-      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
-        ${reposHtml}
+    <!-- Custom Base APK Source (Collapsible / Advanced) -->
+    <details style="padding: 0.75rem 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;" ${baseApkUrl ? 'open' : ''}>
+      <summary style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+        <span>Custom Base APK Source (Optional)</span>
+        <span style="font-size: 0.6875rem; color: var(--text-muted); font-weight: normal;">${baseApkUrl ? 'URL Configured' : 'Local / Direct CDN APK'}</span>
+      </summary>
+      <div style="margin-top: 0.75rem;">
+        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">
+          For modded or unlisted apps (e.g. InstaPrime), provide a direct base APK download link (Google Drive, Dropbox, Catbox, or CDN).
+        </p>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+          <input type="url" id="drawer-base-apk-url" class="form-input" style="flex: 1; font-size: 0.75rem;" placeholder="https://example.com/base.apk" value="${escapeHtml(baseApkUrl)}">
+          <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save URL</button>
+        </div>
+        <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()" style="padding: 0.875rem 1rem;">
+          <img src="/apk-icon.png" width="28" height="28" alt="APK" style="width: 28px; height: 28px; object-fit: contain; margin-bottom: 0.25rem;" onerror="this.style.display='none'">
+          <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
+          <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
+          <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
+        </div>
+        <div id="drawer-apk-progress-container" class="upload-progress-container" style="display: none; margin-top: 0.5rem;">
+          <div class="upload-progress-header">
+            <span class="upload-progress-status" id="drawer-apk-progress-status-text">
+              <span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span>
+              Uploading…
+            </span>
+            <span class="upload-progress-percent" id="drawer-apk-progress-percent">0%</span>
+          </div>
+          <div class="upload-progress-track">
+            <div class="upload-progress-fill" id="drawer-apk-progress-bar"></div>
+          </div>
+          <div class="upload-progress-footer">
+            <span id="drawer-apk-progress-filename" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;"></span>
+            <span id="drawer-apk-progress-bytes">0 MB / 0 MB</span>
+          </div>
+        </div>
       </div>
-      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo">
-        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">Add</button>
-      </div>
-    </div>
+    </details>
 
-    <!-- 6. Deterministic Keystore -->
+    <!-- Deterministic Keystore Attached -->
     <div class="crypto-seal-card">
       <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
         Deterministic Keystore Attached
@@ -4195,7 +4214,7 @@ function renderDrawerAvailableBundles() {
 
     return `
       ${bundleSeparatorHtml}
-      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''} style="border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised);">
+      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''} style="flex-shrink: 0; width: 100%; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised);">
         <summary class="prov-bundle-header" style="padding: 0.5rem 0.75rem;">
           <div class="prov-bundle-title-col">
             <span class="prov-bundle-name" style="font-size: 0.8125rem;">${escapeHtml(bundle.bundleName)}</span>
@@ -4220,6 +4239,59 @@ function renderDrawerAvailableBundles() {
       No patches found matching "${escapeHtml(currentDrawerSearchFilter)}".
     </div>
   `;
+}
+
+function toggleAllDrawerPatches(selectAll) {
+  for (const item of currentDrawerPatchesState.values()) {
+    if (currentDrawerSearchFilter) {
+      const match =
+        item.name.toLowerCase().includes(currentDrawerSearchFilter) ||
+        item.desc.toLowerCase().includes(currentDrawerSearchFilter) ||
+        item.owner.toLowerCase().includes(currentDrawerSearchFilter) ||
+        item.repo.toLowerCase().includes(currentDrawerSearchFilter);
+      if (match) {
+        item.enabled = Boolean(selectAll);
+      }
+    } else {
+      item.enabled = Boolean(selectAll);
+    }
+  }
+  renderDrawerActivePatches();
+
+  // Update DOM in-place without re-rendering accordions
+  const container = document.getElementById('drawer-bundles-container');
+  if (container) {
+    container.querySelectorAll('input[data-drawer-patch-key]').forEach(cb => {
+      const key = cb.dataset.drawerPatchKey;
+      if (key && currentDrawerPatchesState.has(key)) {
+        cb.checked = Boolean(currentDrawerPatchesState.get(key)?.enabled);
+      }
+    });
+
+    container.querySelectorAll('[data-drawer-count-repo]').forEach(countEl => {
+      const repo = countEl.dataset.drawerCountRepo;
+      if (repo) {
+        let enabledCount = 0;
+        let totalCount = 0;
+        for (const p of currentDrawerPatchesState.values()) {
+          if (cleanRepoSlug(p.repo) === cleanRepoSlug(repo)) {
+            totalCount++;
+            if (p.enabled) enabledCount++;
+          }
+        }
+        countEl.textContent = `${enabledCount}/${totalCount}`;
+      }
+    });
+  }
+}
+
+function toggleDrawerExpandAll(expandAll) {
+  const container = document.getElementById('drawer-bundles-container');
+  if (container) {
+    container.querySelectorAll('details.prov-bundle-accordion').forEach(d => {
+      d.open = Boolean(expandAll);
+    });
+  }
 }
 
 function toggleDrawerPatch(key, isChecked) {
@@ -4251,13 +4323,46 @@ function toggleDrawerPatch(key, isChecked) {
 }
 
 function toggleDrawerBundleAll(repo, isChecked) {
+  const slug = cleanRepoSlug(repo);
   for (const item of currentDrawerPatchesState.values()) {
-    if (cleanRepoSlug(item.repo) === cleanRepoSlug(repo)) {
-      item.enabled = Boolean(isChecked);
+    if (cleanRepoSlug(item.repo) === slug) {
+      if (currentDrawerSearchFilter) {
+        const match =
+          item.name.toLowerCase().includes(currentDrawerSearchFilter) ||
+          item.desc.toLowerCase().includes(currentDrawerSearchFilter);
+        if (match) item.enabled = Boolean(isChecked);
+      } else {
+        item.enabled = Boolean(isChecked);
+      }
     }
   }
   renderDrawerActivePatches();
-  renderDrawerAvailableBundles();
+
+  const container = document.getElementById('drawer-bundles-container');
+  if (container) {
+    container.querySelectorAll('input[data-drawer-patch-key]').forEach(cb => {
+      const key = cb.dataset.drawerPatchKey;
+      if (key) {
+        const item = currentDrawerPatchesState.get(key);
+        if (item && cleanRepoSlug(item.repo) === slug) {
+          cb.checked = Boolean(item.enabled);
+        }
+      }
+    });
+
+    const countEl = container.querySelector(`[data-drawer-count-repo="${CSS.escape(repo)}"]`);
+    if (countEl) {
+      let enabledCount = 0;
+      let totalCount = 0;
+      for (const p of currentDrawerPatchesState.values()) {
+        if (cleanRepoSlug(p.repo) === slug) {
+          totalCount++;
+          if (p.enabled) enabledCount++;
+        }
+      }
+      countEl.textContent = `${enabledCount}/${totalCount}`;
+    }
+  }
 }
 
 function filterDrawerPatches(keyword) {
@@ -4339,11 +4444,6 @@ async function saveAppDrawerChanges() {
     }
   }
 
-  // Also include any bundles present in currentDrawerBundles
-  for (const b of currentDrawerBundles) {
-    if (b.bundleRepo) configuredRepos.add(b.bundleRepo);
-  }
-
   app.repos = Array.from(configuredRepos).filter(Boolean);
 
   const saveBtn = document.getElementById('btn-drawer-save');
@@ -4367,29 +4467,57 @@ async function saveAppDrawerChanges() {
 }
 
 // ---------------------------------------------------------------------------
-// Obtainium Bulk Sync Modal
 // ---------------------------------------------------------------------------
+// Obtainium Group Export & Sync Modal
+// ---------------------------------------------------------------------------
+let obtainiumSelectedApps = new Set();
+let obtainiumFilterQuery = '';
+
+function getObtainiumRepoSlug() {
+  const repo = (window.__automorph_repo || 'wiwek13/AutoMorph').trim();
+  return repo.startsWith('http') ? repo.replace(/.*github\.com\//, '') : repo;
+}
+
+function buildObtainiumAppPayload(pkg) {
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg };
+  const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+  const appName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+  const repo = getObtainiumRepoSlug();
+
+  const additionalSettings = JSON.stringify({
+    fallbackToOlderReleases: true,
+    filterReleaseTitlesByRegEx: appName,
+    apkFilterRegEx: appName.toLowerCase()
+  });
+
+  return {
+    id: pkg,
+    url: `https://github.com/${repo}`,
+    author: repo.split('/')[0] || 'AutoMorph',
+    name: appName,
+    preferredApkIndex: 0,
+    additionalSettings
+  };
+}
+
+function getObtainiumDeepLink(pkg) {
+  const payload = buildObtainiumAppPayload(pkg);
+  return `obtainium://app/${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 function openObtainiumModal() {
   const modal = document.getElementById('modal-obtainium');
   if (!modal) return;
 
-  const baseUrl = window.location.origin;
-  const exportData = {
-    apps: state.configuredApps.map(app => {
-      const pkg = app.package || app.package_name;
-      const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
-      return {
-        id: pkg,
-        url: `${baseUrl}/api/obtainium/${pkg}`,
-        author: 'AutoMorph',
-        name: app.name || catalogItem?.name || pkg,
-        preferredApkIndex: 0
-      };
-    })
-  };
+  // By default, select all configured apps
+  obtainiumSelectedApps = new Set(state.configuredApps.map(a => a.package || a.package_name));
+  obtainiumFilterQuery = '';
 
-  const pre = document.getElementById('obtainium-export-pre');
-  if (pre) pre.textContent = JSON.stringify(exportData, null, 2);
+  const searchInput = document.getElementById('obtainium-search-input');
+  if (searchInput) searchInput.value = '';
+
+  renderObtainiumAppsList();
+  updateObtainiumExportJson();
   modal.classList.add('open');
 }
 
@@ -4399,15 +4527,193 @@ function closeObtainiumModal(e) {
   if (modal) modal.classList.remove('open');
 }
 
-function copyObtainiumJson() {
-  const pre = document.getElementById('obtainium-export-pre');
-  if (pre) {
-    navigator.clipboard.writeText(pre.textContent).then(() => {
-      showToast('Obtainium configuration copied to clipboard!', 'success');
-    }).catch(() => {
-      showToast('Failed to copy Obtainium configuration', 'error');
+function renderObtainiumAppsList() {
+  const container = document.getElementById('obtainium-apps-list');
+  const countBadge = document.getElementById('obtainium-selected-count');
+  if (!container) return;
+
+  const allApps = state.configuredApps || [];
+  let displayApps = allApps;
+
+  if (obtainiumFilterQuery) {
+    displayApps = allApps.filter(a => {
+      const pkg = (a.package || a.package_name || '').toLowerCase();
+      const name = (a.name || '').toLowerCase();
+      return pkg.includes(obtainiumFilterQuery) || name.includes(obtainiumFilterQuery);
     });
   }
+
+  if (countBadge) {
+    countBadge.textContent = `${obtainiumSelectedApps.size}/${allApps.length} Selected`;
+  }
+
+  if (displayApps.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+        ${allApps.length === 0 ? 'No configured apps found in AutoMorph pipeline.' : 'No apps match your search filter.'}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = displayApps.map(app => {
+    const pkg = app.package || app.package_name;
+    const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+    const appName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+    const iconUrl = catalogItem?.icon_url || null;
+    const isChecked = obtainiumSelectedApps.has(pkg);
+    const deepLink = getObtainiumDeepLink(pkg);
+
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.625rem; background: var(--surface-raised); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); gap: 0.5rem;">
+        <label style="display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1; cursor: pointer; user-select: none; margin: 0;">
+          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleObtainiumApp('${escapeHtml(pkg)}', this.checked)" style="accent-color: var(--accent-base); width: 16px; height: 16px; flex-shrink: 0;">
+          <div style="width: 28px; height: 28px; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-sunken); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            ${iconUrl
+              ? `<img src="${iconUrl}" width="28" height="28" alt="" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-size: 0.75rem; font-weight: 600; color: var(--text-muted);\\'>${escapeHtml(appName.charAt(0))}</span>'">`
+              : `<span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">${escapeHtml(appName.charAt(0))}</span>`
+            }
+          </div>
+          <div style="min-width: 0; flex: 1;">
+            <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(appName)}
+            </div>
+            <div style="font-size: 0.6875rem; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(pkg)}
+            </div>
+          </div>
+        </label>
+        <a href="${deepLink}" class="btn-micro" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; padding: 0.25rem 0.5rem;" title="Directly add ${escapeHtml(appName)} in Obtainium">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          <span>Open App</span>
+        </a>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleObtainiumApp(pkg, isChecked) {
+  if (isChecked) {
+    obtainiumSelectedApps.add(pkg);
+  } else {
+    obtainiumSelectedApps.delete(pkg);
+  }
+  const countBadge = document.getElementById('obtainium-selected-count');
+  if (countBadge) {
+    countBadge.textContent = `${obtainiumSelectedApps.size}/${state.configuredApps.length} Selected`;
+  }
+  updateObtainiumExportJson();
+}
+
+function toggleAllObtainiumApps(selectAll) {
+  const allApps = state.configuredApps || [];
+  if (selectAll) {
+    for (const app of allApps) {
+      const pkg = app.package || app.package_name;
+      if (obtainiumFilterQuery) {
+        const name = (app.name || '').toLowerCase();
+        if (pkg.toLowerCase().includes(obtainiumFilterQuery) || name.includes(obtainiumFilterQuery)) {
+          obtainiumSelectedApps.add(pkg);
+        }
+      } else {
+        obtainiumSelectedApps.add(pkg);
+      }
+    }
+  } else {
+    if (obtainiumFilterQuery) {
+      for (const app of allApps) {
+        const pkg = app.package || app.package_name;
+        const name = (app.name || '').toLowerCase();
+        if (pkg.toLowerCase().includes(obtainiumFilterQuery) || name.includes(obtainiumFilterQuery)) {
+          obtainiumSelectedApps.delete(pkg);
+        }
+      }
+    } else {
+      obtainiumSelectedApps.clear();
+    }
+  }
+  renderObtainiumAppsList();
+  updateObtainiumExportJson();
+}
+
+function filterObtainiumApps(query) {
+  obtainiumFilterQuery = (query || '').toLowerCase().trim();
+  renderObtainiumAppsList();
+}
+
+function getObtainiumExportPayload() {
+  const selected = Array.from(obtainiumSelectedApps);
+  const apps = selected.map(pkg => buildObtainiumAppPayload(pkg));
+  return { apps };
+}
+
+function updateObtainiumExportJson() {
+  const pre = document.getElementById('obtainium-export-pre');
+  const countEl = document.getElementById('obtainium-json-app-count');
+  const payload = getObtainiumExportPayload();
+  if (countEl) countEl.textContent = payload.apps.length;
+  if (pre) pre.textContent = JSON.stringify(payload, null, 2);
+}
+
+function copyObtainiumJson() {
+  const payload = getObtainiumExportPayload();
+  if (payload.apps.length === 0) {
+    showToast('Please select at least one application to export', 'error');
+    return;
+  }
+  const jsonText = JSON.stringify(payload, null, 2);
+  navigator.clipboard.writeText(jsonText).then(() => {
+    showToast(`Copied Obtainium configuration for ${payload.apps.length} apps!`, 'success');
+  }).catch(() => {
+    showToast('Failed to copy to clipboard', 'error');
+  });
+}
+
+function downloadObtainiumJson() {
+  const payload = getObtainiumExportPayload();
+  if (payload.apps.length === 0) {
+    showToast('Please select at least one application to export', 'error');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `automorph-obtainium-${payload.apps.length}-apps.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Downloaded Obtainium import file for ${payload.apps.length} apps!`, 'success');
+}
+
+function openDirectObtainiumDeepLink() {
+  const selected = Array.from(obtainiumSelectedApps);
+  if (selected.length === 0) {
+    showToast('Please select at least one app to open in Obtainium', 'error');
+    return;
+  }
+
+  if (selected.length === 1) {
+    const deepLink = getObtainiumDeepLink(selected[0]);
+    window.location.href = deepLink;
+    showToast(`Opening ${selected[0]} in Obtainium…`, 'info');
+    return;
+  }
+
+  // Multiple apps selected:
+  // Automatically copy full configuration to clipboard and open Obtainium app
+  const payload = getObtainiumExportPayload();
+  const jsonText = JSON.stringify(payload, null, 2);
+
+  navigator.clipboard.writeText(jsonText).then(() => {
+    showToast(`Copied configuration for ${selected.length} apps! Opening Obtainium…`, 'success');
+    setTimeout(() => {
+      window.location.href = 'obtainium://';
+    }, 400);
+  }).catch(() => {
+    window.location.href = 'obtainium://';
+  });
 }
 
 // Attach globally
@@ -4440,6 +4746,11 @@ window.filterAppsByRepo = filterAppsByRepo;
 window.openObtainiumModal = openObtainiumModal;
 window.closeObtainiumModal = closeObtainiumModal;
 window.copyObtainiumJson = copyObtainiumJson;
+window.downloadObtainiumJson = downloadObtainiumJson;
+window.openDirectObtainiumDeepLink = openDirectObtainiumDeepLink;
+window.toggleObtainiumApp = toggleObtainiumApp;
+window.toggleAllObtainiumApps = toggleAllObtainiumApps;
+window.filterObtainiumApps = filterObtainiumApps;
 window.runSingleAppPatch = runSingleAppPatch;
 window.deleteConfiguredApp = deleteConfigApp;
 window.openAppUpdateModal = openAppUpdateModal;

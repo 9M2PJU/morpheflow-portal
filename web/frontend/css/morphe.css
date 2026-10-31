@@ -1239,6 +1239,102 @@ a {
   margin-top: 0.125rem;
 }
 
+/* Community Bundle Accordions (Details/Summary) */
+.prov-bundle-accordion {
+  width: 100%;
+  flex-shrink: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.prov-bundle-accordion:hover {
+  border-color: var(--border-subtle);
+}
+
+.prov-bundle-accordion[open] {
+  border-color: var(--border-focus);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.prov-bundle-accordion summary.prov-bundle-header {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  background: var(--surface-raised);
+  border-bottom: 1px solid transparent;
+  transition: background var(--dur-fast) ease;
+}
+
+.prov-bundle-accordion summary.prov-bundle-header::-webkit-details-marker,
+.prov-bundle-accordion summary.prov-bundle-header::marker {
+  display: none;
+}
+
+.prov-bundle-accordion summary.prov-bundle-header:hover {
+  background: var(--surface-sunken);
+}
+
+.prov-bundle-accordion[open] summary.prov-bundle-header {
+  border-bottom-color: var(--border-hairline);
+  background: var(--surface-raised);
+}
+
+.prov-bundle-title-col {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.prov-bundle-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prov-bundle-author {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.prov-bundle-ctrls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.prov-bundle-chevron {
+  transition: transform var(--dur-fast) var(--ease-spring);
+  color: var(--text-muted);
+}
+
+.prov-bundle-accordion[open] .prov-bundle-chevron {
+  transform: rotate(180deg);
+}
+
+.prov-bundle-body {
+  padding: 0.4rem 0.5rem;
+  background: var(--surface-lowest);
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 /* Applied Patches Inspector */
 .applied-patch-row {
   display: flex;
