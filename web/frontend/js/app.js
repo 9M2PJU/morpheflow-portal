@@ -249,6 +249,15 @@ function setupEventListeners() {
   document.getElementById('btn-confirm-provision')?.addEventListener('click', () => confirmProvisionApp());
   document.getElementById('btn-drawer-save')?.addEventListener('click', () => saveAppDrawerChanges());
 
+  // Store Subtabs (Applications vs Patch Bundles)
+  document.getElementById('btn-subtab-apps')?.addEventListener('click', () => switchStoreSubtab('apps'));
+  document.getElementById('btn-subtab-bundles')?.addEventListener('click', () => switchStoreSubtab('bundles'));
+
+  // Applied Patches Search Filter
+  document.getElementById('applied-patches-search')?.addEventListener('input', (e) => {
+    filterAppliedPatches(e.target.value);
+  });
+
   // Store Catalog Live Search & Category Filtering
   let storeSearchTimeout = null;
   document.getElementById('store-search-input')?.addEventListener('input', (e) => {
@@ -1353,6 +1362,186 @@ function renderDrawerReposSection(repos) {
 }
 
 // ---------------------------------------------------------------------------
+// Hallmark Monolith: Helper Logic for Ecosystem Bundles & App Versions
+// ---------------------------------------------------------------------------
+function getRecommendedTargetVersion(pkg) {
+  if (rawCompatibilitiesData && Array.isArray(rawCompatibilitiesData)) {
+    for (const compList of rawCompatibilitiesData) {
+      if (Array.isArray(compList)) {
+        for (const item of compList) {
+          if (item && (item.packageName === pkg || item.name === pkg)) {
+            if (item.targets && item.targets.length > 0 && item.targets[0].version) {
+              return item.targets[0].version;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (typeof MORPHE_DEFAULT_APPS !== 'undefined' && MORPHE_DEFAULT_APPS[pkg]?.target_version) {
+    return MORPHE_DEFAULT_APPS[pkg].target_version;
+  }
+  return null;
+}
+
+function getCompatiblePatchesForPackage(pkg) {
+  const result = [];
+  if (!rawBundlesData || !Array.isArray(rawBundlesData)) return result;
+
+  for (const bundle of rawBundlesData) {
+    const matchingPatches = [];
+    const patchesList = bundle.patches || [];
+
+    for (const patch of patchesList) {
+      const compKey = patch.compatiblePackagesKey;
+      let isCompatible = false;
+      let targetVersion = null;
+
+      if (compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
+        const compList = rawCompatibilitiesData[compKey];
+        if (Array.isArray(compList)) {
+          for (const item of compList) {
+            if (item && (item.packageName === pkg || item.name === pkg)) {
+              isCompatible = true;
+              if (item.targets && item.targets.length > 0 && item.targets[0].version) {
+                targetVersion = item.targets[0].version;
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      if (!isCompatible && Array.isArray(bundle.targetApps)) {
+        if (bundle.targetApps.some(t => (typeof t === 'string' ? t : t.package) === pkg)) {
+          isCompatible = true;
+        }
+      }
+
+      if (isCompatible) {
+        matchingPatches.push({
+          name: patch.name,
+          description: patch.description || '',
+          default: patch.default !== false,
+          targetVersion
+        });
+      }
+    }
+
+    if (matchingPatches.length > 0) {
+      result.push({
+        bundleName: bundle.name || bundle.repo,
+        bundleRepo: bundle.repo ? (bundle.repo.startsWith('http') ? bundle.repo : `https://github.com/${bundle.repo}`) : '',
+        author: bundle.author || '',
+        stars: bundle.stars || 0,
+        patches: matchingPatches
+      });
+    }
+  }
+
+  // Supplement from local catalog if available
+  if (morpheCatalogData && morpheCatalogData[pkg]?.patches_by_repo) {
+    for (const [rUrl, pList] of Object.entries(morpheCatalogData[pkg].patches_by_repo)) {
+      const cleanSlug = cleanRepoSlug(rUrl);
+      const existing = result.find(r => cleanRepoSlug(r.bundleRepo) === cleanSlug);
+      if (!existing && Array.isArray(pList) && pList.length > 0) {
+        result.push({
+          bundleName: cleanSlug,
+          bundleRepo: rUrl,
+          author: extractRepoOwner(rUrl),
+          stars: 0,
+          patches: pList.map(p => ({
+            name: p.name,
+            description: p.description || '',
+            default: p.default !== false,
+            targetVersion: null
+          }))
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+function getAppVersionInfo(app) {
+  const pkg = app.package || app.package_name;
+  const lastRes = app.last_result || null;
+  const isSuccess = lastRes && lastRes.status === 'success';
+  const isFailed = lastRes && lastRes.status === 'failed';
+
+  let currentVer = null;
+  if (lastRes && lastRes.version && lastRes.version !== 'target') {
+    currentVer = lastRes.version.startsWith('v') ? lastRes.version : `v${lastRes.version}`;
+  } else if (app.version && app.version !== 'target') {
+    currentVer = app.version.startsWith('v') ? app.version : `v${app.version}`;
+  }
+
+  const recTarget = getRecommendedTargetVersion(pkg);
+  const targetVer = recTarget ? (recTarget.startsWith('v') ? recTarget : `v${recTarget}`) : null;
+
+  let patchBundleVer = 'v1.0.0';
+  if (lastRes && lastRes.patch_version) {
+    patchBundleVer = lastRes.patch_version.startsWith('v') ? lastRes.patch_version : `v${lastRes.patch_version}`;
+  } else if (rawBundlesData && rawBundlesData.length > 0) {
+    const defaultBundle = rawBundlesData.find(b => b.repo && b.repo.toLowerCase().includes('morphe-patches'));
+    if (defaultBundle && defaultBundle.version) {
+      patchBundleVer = defaultBundle.version.startsWith('v') ? defaultBundle.version : `v${defaultBundle.version}`;
+    }
+  }
+
+  let hasUpdate = false;
+  if (targetVer && currentVer) {
+    const cleanCur = currentVer.replace(/^v/, '');
+    const cleanTgt = targetVer.replace(/^v/, '');
+    if (cleanCur !== cleanTgt) {
+      hasUpdate = true;
+    }
+  }
+
+  const apkName = lastRes?.apk_name || app.apk_name || (isSuccess && currentVer ? `${pkg}_${currentVer.replace(/^v/, '')}_patched.apk` : null);
+  const downloadUrl = (lastRes?.download_url || app.download_url)
+    ? (lastRes?.download_url || app.download_url)
+    : (apkName ? `/files/${apkName}` : null);
+
+  const ghRepo = state.settings?.github_repo || 'wi15d0m/AutoMorph';
+  const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
+
+  let appliedPatches = [];
+  if (lastRes && Array.isArray(lastRes.applied_patches)) {
+    appliedPatches = lastRes.applied_patches;
+  } else if (Array.isArray(app.applied_patches)) {
+    appliedPatches = app.applied_patches;
+  } else if (app.options) {
+    for (const repoKey of Object.keys(app.options)) {
+      const repoPatches = app.options[repoKey]?.patches || {};
+      for (const pKey of Object.keys(repoPatches)) {
+        if (repoPatches[pKey]?.enabled) {
+          appliedPatches.push({ name: pKey, owner: repoKey });
+        }
+      }
+    }
+  }
+
+  const patchCount = lastRes?.applied_count ?? appliedPatches.length;
+
+  return {
+    pkg,
+    currentVer,
+    targetVer,
+    patchBundleVer,
+    hasUpdate,
+    isSuccess,
+    isFailed,
+    downloadUrl,
+    releaseUrl,
+    patchCount,
+    appliedPatches,
+    lastRes
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Hallmark Monolith: Overview Queue Renderer
 // ---------------------------------------------------------------------------
 function renderOverview() {
@@ -1380,45 +1569,62 @@ function renderOverview() {
     const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
+    const verInfo = getAppVersionInfo(app);
 
     const iconHtml = iconUrl
-      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
     let statusBadge = '<span class="status-pill status-pill-waiting">Waiting</span>';
-    const lastRes = app.last_result;
-    if (lastRes) {
-      if (lastRes.status === 'success') {
-        const verStr = lastRes.app_version ? ` • v${lastRes.app_version}` : '';
-        statusBadge = `<span class="status-pill status-pill-success">Success${escapeHtml(verStr)}</span>`;
-      } else if (lastRes.status === 'failed') {
-        statusBadge = `<span class="status-pill status-pill-failed">Failed</span>`;
-      }
+    if (verInfo.isSuccess) {
+      statusBadge = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
+    } else if (verInfo.isFailed) {
+      statusBadge = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
     const repos = app.repos || [];
     const reposLabel = repos.length > 0
       ? `${repos.length} Source${repos.length > 1 ? 's' : ''}`
-      : 'Default Source';
+      : 'Default Morphe';
 
     return `
       <div class="queue-row" data-pkg="${escapeHtml(pkg)}">
         <div class="queue-app-meta">
-          <div class="app-icon-slot">
+          <div class="app-avatar" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
             ${iconHtml}
           </div>
-          <div class="app-identity">
-            <span class="app-title">${escapeHtml(friendlyName)}</span>
-            <span class="app-pkg">${escapeHtml(pkg)}</span>
+          <div class="queue-app-info">
+            <div class="queue-app-header-line">
+              <span class="queue-app-title">${escapeHtml(friendlyName)}</span>
+              <span class="queue-app-pkg">${escapeHtml(pkg)}</span>
+              ${statusBadge}
+            </div>
+            <div class="queue-badges-row">
+              <span class="badge" title="Installed / Built APK version">App: ${verInfo.currentVer || 'Never Run'}</span>
+              ${verInfo.targetVer ? `<span class="badge" title="Recommended Target Version by Patch Bundle">Target: ${verInfo.targetVer}</span>` : ''}
+              <span class="badge" title="Patch Bundle Version">Patches: ${verInfo.patchBundleVer}</span>
+              <span class="badge" title="Connected Repositories">${escapeHtml(reposLabel)}</span>
+              ${verInfo.hasUpdate ? `<span class="badge" style="background: var(--status-warning); color: #000; font-weight: 600;">Update Available</span>` : ''}
+            </div>
           </div>
         </div>
-        <div class="queue-status-slot">
-          ${statusBadge}
-          <span class="queue-repos-info">${escapeHtml(reposLabel)}</span>
-        </div>
+
         <div class="queue-actions-slot">
+          ${verInfo.downloadUrl ? `
+            <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>APK</span>
+            </a>
+          ` : ''}
+          <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            <span>Release</span>
+          </a>
+          <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="Inspect Applied Patches">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>Patches (${verInfo.patchCount})</span>
+          </button>
           <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             <span>Configure</span>
           </button>
           <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
@@ -1484,23 +1690,20 @@ function renderConfiguredApps() {
     const pkg = app.package || app.package_name;
     const isEnabled = app.enabled !== false;
     const repos = app.repos || [];
-    const lastRes = app.last_result;
     const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
+    const verInfo = getAppVersionInfo(app);
 
     const iconHtml = iconUrl
-      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
     let statusPill = '<span class="status-pill status-pill-waiting">Waiting</span>';
-    if (lastRes) {
-      if (lastRes.status === 'success') {
-        const ver = lastRes.app_version ? ` • v${lastRes.app_version}` : '';
-        statusPill = `<span class="status-pill status-pill-success">Success${escapeHtml(ver)}</span>`;
-      } else if (lastRes.status === 'failed') {
-        statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
-      }
+    if (verInfo.isSuccess) {
+      statusPill = `<span class="status-pill status-pill-success">Success ${verInfo.currentVer ? verInfo.currentVer : ''}</span>`;
+    } else if (verInfo.isFailed) {
+      statusPill = `<span class="status-pill status-pill-failed">Failed</span>`;
     }
 
     const reposChips = repos.length > 0
@@ -1511,7 +1714,7 @@ function renderConfiguredApps() {
       <div class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
         <div class="app-card-top">
           <div class="app-card-meta">
-            <div class="app-card-icon">
+            <div class="app-card-icon" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
               ${iconHtml}
             </div>
             <div>
@@ -1526,8 +1729,14 @@ function renderConfiguredApps() {
         </div>
 
         <div class="app-card-body">
-          <div style="display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.75rem;">
+          <div style="display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.5rem;">
             ${reposChips}
+          </div>
+          <div class="queue-badges-row" style="margin-bottom: 0.5rem;">
+            <span class="badge">App: ${verInfo.currentVer || 'Never Run'}</span>
+            ${verInfo.targetVer ? `<span class="badge">Target: ${verInfo.targetVer}</span>` : ''}
+            <span class="badge">Patches: ${verInfo.patchBundleVer}</span>
+            ${verInfo.hasUpdate ? `<span class="badge" style="background: var(--status-warning); color: #000; font-weight: 600;">Update Available</span>` : ''}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted);">
             <span>Last Build:</span>
@@ -1538,17 +1747,22 @@ function renderConfiguredApps() {
         <div class="app-card-footer">
           <button class="btn btn-primary btn-sm" onclick="runSingleAppPatch('${escapeHtml(pkg)}')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            <span>Patch Now</span>
+            <span>Patch</span>
           </button>
-          <div style="display: flex; gap: 0.375rem;">
-            <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure Patches">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-              <span>Configure</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Remove Target" style="color: var(--status-danger);">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
-          </div>
+          <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="Applied Patches">
+            <span>Patches (${verInfo.patchCount})</span>
+          </button>
+          ${verInfo.downloadUrl ? `
+            <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </a>
+          ` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}')" title="Configure">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="deleteConfigApp('${escapeHtml(pkg)}')" title="Remove Target" style="color: var(--status-danger);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
         </div>
       </div>
     `;
@@ -1556,11 +1770,36 @@ function renderConfiguredApps() {
 }
 
 // ---------------------------------------------------------------------------
-// Hallmark Monolith: Morphe Community Catalog Store (1,342 Apps)
+// Hallmark Monolith: Community Store Subtabs & Catalog Renderer
 // ---------------------------------------------------------------------------
 let storeCurrentCategory = 'all';
 let storeSearchQuery = '';
 let storeDisplayLimit = 60;
+let currentStoreSubtab = 'apps';
+
+function switchStoreSubtab(subtab) {
+  currentStoreSubtab = subtab;
+  const btnApps = document.getElementById('btn-subtab-apps');
+  const btnBundles = document.getElementById('btn-subtab-bundles');
+  const appsGrid = document.getElementById('store-catalog-grid');
+  const bundlesGrid = document.getElementById('store-bundles-grid');
+  const catPills = document.getElementById('store-category-pills');
+
+  if (subtab === 'apps') {
+    btnApps?.classList.add('active');
+    btnBundles?.classList.remove('active');
+    if (appsGrid) appsGrid.style.display = 'grid';
+    if (bundlesGrid) bundlesGrid.style.display = 'none';
+    if (catPills) catPills.style.display = 'flex';
+  } else {
+    btnBundles?.classList.add('active');
+    btnApps?.classList.remove('active');
+    if (appsGrid) appsGrid.style.display = 'none';
+    if (bundlesGrid) bundlesGrid.style.display = 'grid';
+    if (catPills) catPills.style.display = 'none';
+    renderStoreBundles();
+  }
+}
 
 async function renderStoreCatalog(resetLimit = true) {
   const grid = document.getElementById('store-catalog-grid');
@@ -1599,7 +1838,7 @@ async function renderStoreCatalog(resetLimit = true) {
     if (q) {
       const name = (app.name || '').toLowerCase();
       const pkg = (app.package || '').toLowerCase();
-      if (!name.includes(q) && !pkg.includes(q)) return false;
+      return name.includes(q) || pkg.includes(q);
     }
     return true;
   });
@@ -1621,7 +1860,7 @@ async function renderStoreCatalog(resetLimit = true) {
     const iconUrl = app.icon_url;
 
     const iconHtml = iconUrl
-      ? `<img src="${iconUrl}" alt="" style="width: 100%; height: 100%; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1.125rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1.125rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1.125rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
     const repoCount = app.supported_repos?.length || (app.repo_details?.length || 1);
@@ -1629,7 +1868,7 @@ async function renderStoreCatalog(resetLimit = true) {
     return `
       <div class="store-card" data-pkg="${escapeHtml(app.package)}">
         <div class="store-card-header">
-          <div class="store-card-avatar">
+          <div class="store-card-avatar" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
             ${iconHtml}
           </div>
           <div class="store-card-identity">
@@ -1676,24 +1915,176 @@ async function renderStoreCatalog(resetLimit = true) {
   }
 }
 
+function renderStoreBundles() {
+  const grid = document.getElementById('store-bundles-grid');
+  if (!grid) return;
+
+  if (!rawBundlesData || rawBundlesData.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        Loading Morphe ecosystem patch repositories…
+      </div>
+    `;
+    return;
+  }
+
+  const q = storeSearchQuery.toLowerCase().trim();
+  const filtered = rawBundlesData.filter(b => {
+    if (!q) return true;
+    const name = (b.name || '').toLowerCase();
+    const repo = (b.repo || '').toLowerCase();
+    const desc = (b.repoDescription || '').toLowerCase();
+    return name.includes(q) || repo.includes(q) || desc.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        No patch bundles match "${escapeHtml(storeSearchQuery)}".
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(b => {
+    const repoUrl = b.repo ? (b.repo.startsWith('http') ? b.repo : `https://github.com/${b.repo}`) : '#';
+    const stars = b.stars || 0;
+    const patchCount = b.patchCount || (b.patches ? b.patches.length : 0);
+    const targetAppsCount = b.targetApps ? b.targetApps.length : 0;
+    const desc = b.repoDescription || 'Community curated Morphe patch repository.';
+
+    return `
+      <div class="bundle-card">
+        <div class="bundle-head">
+          <div>
+            <div class="bundle-name">${escapeHtml(b.name || b.author || 'Patch Repository')}</div>
+            <div class="bundle-repo">${escapeHtml(b.repo || 'github.com')}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: var(--status-warning);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            <span>${stars}</span>
+          </div>
+        </div>
+        <div class="bundle-desc" title="${escapeHtml(desc)}">
+          ${escapeHtml(desc)}
+        </div>
+        <div class="bundle-meta">
+          <span class="badge">${patchCount} Patches</span>
+          <span class="badge">${targetAppsCount} Target Apps</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+          <a href="${repoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="flex: 1; justify-content: center;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            <span>GitHub</span>
+          </a>
+          <button class="btn btn-secondary btn-sm" onclick="filterAppsByRepo('${escapeHtml(b.repo)}')" style="flex: 1; justify-content: center;">
+            <span>View Apps</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterAppsByRepo(repoSlug) {
+  switchStoreSubtab('apps');
+  const searchInput = document.getElementById('store-search-input');
+  if (searchInput) {
+    searchInput.value = repoSlug;
+    storeSearchQuery = repoSlug;
+    renderStoreCatalog(true);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// 1-Click Provisioning Sheet
+// 1-Click Provisioning Sheet with Grouped Patches
 // ---------------------------------------------------------------------------
 function openProvisionModal(name, pkg) {
   const modal = document.getElementById('provision-modal');
   if (!modal) return;
 
+  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const friendlyName = name || catalogItem?.name || getFallbackAppName(pkg);
+  const iconUrl = catalogItem?.icon_url;
+
   const nameInput = document.getElementById('prov-app-name');
   const pkgInput = document.getElementById('prov-app-pkg');
   const repoInput = document.getElementById('prov-app-repo');
-  if (nameInput) nameInput.value = name || pkg;
-  if (pkgInput) pkgInput.value = pkg;
+  const titleEl = document.getElementById('prov-modal-title');
+  const subtitleEl = document.getElementById('prov-modal-subtitle');
+  const iconSlot = document.getElementById('prov-app-icon-slot');
+  const recVerEl = document.getElementById('prov-app-recommended-ver');
 
-  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  if (nameInput) nameInput.value = friendlyName;
+  if (pkgInput) pkgInput.value = pkg;
+  if (titleEl) titleEl.textContent = `Provision ${friendlyName}`;
+  if (subtitleEl) subtitleEl.textContent = pkg;
+
+  if (iconSlot) {
+    iconSlot.innerHTML = iconUrl
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+  }
+
+  const recVer = getRecommendedTargetVersion(pkg);
+  if (recVerEl) {
+    recVerEl.textContent = recVer ? (recVer.startsWith('v') ? recVer : `v${recVer}`) : 'Latest Compatible';
+  }
+
   const bestRepo = (catalogItem?.supported_repos && catalogItem.supported_repos[0]) || 'https://github.com/MorpheApp/morphe-patches';
   if (repoInput) repoInput.value = bestRepo;
 
+  renderProvisionPatches(pkg, bestRepo);
   modal.classList.add('open');
+}
+
+function renderProvisionPatches(pkg, defaultRepo) {
+  const container = document.getElementById('prov-patches-container');
+  if (!container) return;
+
+  const bundleGroups = getCompatiblePatchesForPackage(pkg);
+
+  if (bundleGroups.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No specific patch metadata bundled. Default Morphe compatibility patches will be automatically applied.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = bundleGroups.map(group => {
+    const patches = group.patches || [];
+    return `
+      <div class="prov-bundle-section">
+        <div class="prov-bundle-header">
+          <div class="prov-bundle-title">
+            <span>📦 ${escapeHtml(group.bundleName)}</span>
+          </div>
+          <span class="prov-bundle-count">${patches.length} Patches Available</span>
+        </div>
+        <div class="prov-patch-list">
+          ${patches.map(p => `
+            <label class="prov-patch-item">
+              <input type="checkbox" name="prov-patch" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''}>
+              <div class="prov-patch-content">
+                <div class="prov-patch-name">
+                  <span>${escapeHtml(p.name)}</span>
+                  ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+                </div>
+                ${p.description ? `<div class="prov-patch-desc">${escapeHtml(p.description)}</div>` : ''}
+              </div>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleAllProvPatches(selectAll) {
+  const checkboxes = document.querySelectorAll('#prov-patches-container input[name="prov-patch"]');
+  checkboxes.forEach(cb => { cb.checked = Boolean(selectAll); });
 }
 
 function closeProvisionModal(e) {
@@ -1716,6 +2107,12 @@ async function confirmProvisionApp() {
     return;
   }
 
+  const selectedCheckboxes = Array.from(document.querySelectorAll('#prov-patches-container input[name="prov-patch"]:checked'));
+  const selectedPatches = selectedCheckboxes.map(cb => ({
+    name: cb.value,
+    repo: cb.dataset.repo || repo
+  }));
+
   const confirmBtn = document.getElementById('btn-confirm-provision');
   if (confirmBtn) confirmBtn.disabled = true;
 
@@ -1723,12 +2120,17 @@ async function confirmProvisionApp() {
     const res = await fetch('/api/catalog/provision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ package: pkg, name: name || pkg, repo_url: repo })
+      body: JSON.stringify({
+        package: pkg,
+        name: name || pkg,
+        repo_url: repo,
+        patches: selectedPatches
+      })
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
 
-    showToast(`Provisioned ${name || pkg} successfully!`, 'success');
+    showToast(`Provisioned ${name || pkg} with ${selectedPatches.length} patches!`, 'success');
     closeProvisionModal();
     await loadConfig();
     switchTab('overview');
@@ -1737,6 +2139,114 @@ async function confirmProvisionApp() {
   } finally {
     if (confirmBtn) confirmBtn.disabled = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Applied Patches Inspector Modal
+// ---------------------------------------------------------------------------
+let currentAppliedPatches = [];
+let currentAppliedPkg = null;
+
+function openAppliedPatchesModal(pkg) {
+  currentAppliedPkg = pkg;
+  const modal = document.getElementById('modal-applied-patches');
+  if (!modal) return;
+
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg);
+  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const friendlyName = app?.name || catalogItem?.name || getFallbackAppName(pkg);
+  const verInfo = app ? getAppVersionInfo(app) : null;
+
+  const titleEl = document.getElementById('applied-modal-title');
+  const subtitleEl = document.getElementById('applied-modal-subtitle');
+  const searchInput = document.getElementById('applied-patches-search');
+  if (searchInput) searchInput.value = '';
+
+  let patches = verInfo?.appliedPatches || [];
+  if (patches.length === 0 && app?.options) {
+    for (const repoKey of Object.keys(app.options)) {
+      const repoPatches = app.options[repoKey]?.patches || {};
+      for (const pKey of Object.keys(repoPatches)) {
+        if (repoPatches[pKey]?.enabled) {
+          patches.push({ name: pKey, owner: repoKey });
+        }
+      }
+    }
+  }
+
+  if (patches.length === 0) {
+    const groups = getCompatiblePatchesForPackage(pkg);
+    for (const g of groups) {
+      for (const p of g.patches) {
+        if (p.default) {
+          patches.push({ name: p.name, owner: g.bundleName, description: p.description });
+        }
+      }
+    }
+  }
+
+  currentAppliedPatches = patches;
+
+  if (titleEl) titleEl.textContent = `${friendlyName} - Applied Patches`;
+  if (subtitleEl) subtitleEl.textContent = `${pkg} • ${patches.length} Patches Enforced`;
+
+  renderAppliedPatchesList(patches);
+  modal.classList.add('open');
+}
+
+function closeAppliedPatchesModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-applied-patches') return;
+  const modal = document.getElementById('modal-applied-patches');
+  if (modal) modal.classList.remove('open');
+  currentAppliedPkg = null;
+  currentAppliedPatches = [];
+}
+
+function filterAppliedPatches(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) {
+    renderAppliedPatchesList(currentAppliedPatches);
+    return;
+  }
+  const filtered = currentAppliedPatches.filter(p => {
+    const name = (typeof p === 'string' ? p : p.name || '').toLowerCase();
+    const desc = (p.description || '').toLowerCase();
+    const owner = (p.owner || '').toLowerCase();
+    return name.includes(q) || desc.includes(q) || owner.includes(q);
+  });
+  renderAppliedPatchesList(filtered);
+}
+
+function renderAppliedPatchesList(patches) {
+  const container = document.getElementById('applied-patches-list');
+  if (!container) return;
+
+  if (patches.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+        No patches match criteria.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = patches.map(p => {
+    const name = typeof p === 'string' ? p : p.name;
+    const owner = p.owner ? cleanRepoSlug(p.owner) : 'Morphe Patches';
+    const desc = p.description || 'Applies bytecode mutation and security modification.';
+
+    return `
+      <div class="applied-patch-row">
+        <div style="min-width: 0; flex: 1;">
+          <div class="applied-patch-title">
+            <span>${escapeHtml(name)}</span>
+          </div>
+          <div class="applied-patch-desc">${escapeHtml(desc)}</div>
+        </div>
+        <span class="badge" style="font-size: 0.6875rem; flex-shrink: 0;">${escapeHtml(owner)}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -1818,7 +2328,7 @@ function renderDrawerBody(app) {
         Deterministic Keystore Attached
       </div>
       <div style="font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4;">
-        Signed with permanent PKCS12 keystore. SHA256: 0B:30:8B:4C:8F:C4:BA:5B:FF:8F:4A:68:B5:AB:EF:5F:DA:FB:F1:D5:7E:9F:74:80:AD:6F:9D:78:60:85:40:9F
+        Signed with your dedicated AutoMorph keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
       </div>
     </div>
   `;
@@ -1933,13 +2443,18 @@ window.saveAppDrawerChanges = saveAppDrawerChanges;
 window.openProvisionModal = openProvisionModal;
 window.closeProvisionModal = closeProvisionModal;
 window.confirmProvisionApp = confirmProvisionApp;
+window.toggleAllProvPatches = toggleAllProvPatches;
+window.openAppliedPatchesModal = openAppliedPatchesModal;
+window.closeAppliedPatchesModal = closeAppliedPatchesModal;
+window.filterAppliedPatches = filterAppliedPatches;
+window.switchStoreSubtab = switchStoreSubtab;
+window.renderStoreBundles = renderStoreBundles;
+window.filterAppsByRepo = filterAppsByRepo;
 window.openObtainiumModal = openObtainiumModal;
 window.closeObtainiumModal = closeObtainiumModal;
 window.copyObtainiumJson = copyObtainiumJson;
 window.runSingleAppPatch = runSingleAppPatch;
 window.deleteConfiguredApp = deleteConfigApp;
-
-
 
 async function toggleAppActive(pkg, isChecked) {
   try {
@@ -3351,6 +3866,8 @@ const MORPHE_DEFAULT_APPS = {
 };
 
 let morpheCatalogData = null;
+let rawBundlesData = [];
+let rawCompatibilitiesData = [];
 try {
   sessionStorage.removeItem('morphe_catalog_data_v5');
   sessionStorage.removeItem('morphe_catalog_data_v6');
@@ -3402,6 +3919,8 @@ async function fetchMorpheCatalog(force = false) {
     const store = data.store || {};
     const bundles = data.bundles || [];
     const compatibilities = data.compatibilities || [];
+    rawBundlesData = bundles;
+    rawCompatibilitiesData = compatibilities;
 
     const catalog = {};
 

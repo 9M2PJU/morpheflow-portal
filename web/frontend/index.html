@@ -135,7 +135,7 @@
           <span class="tabular-nums" id="stat-next-run" style="color: var(--text-muted);">next in 5h</span>
         </div>
 
-        <div class="keystore-seal-chip" title="Permanent AutoMorph PKCS12 Keystore Active: 0b:30:8b:4c…">
+        <div class="keystore-seal-chip" title="Dedicated AutoMorph Keystore Active and Enforced">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
           <span>Deterministic Key</span>
         </div>
@@ -203,20 +203,17 @@
         <!-- Right: Telemetry Monolith (1.1fr) -->
         <aside class="telemetry-pillar">
           
-          <!-- Permanent Keystore Cryptographic Guarantee -->
+          <!-- Dedicated AutoMorph Keystore Security Seal -->
           <div class="crypto-seal-card">
             <div class="crypto-header">
               <span class="crypto-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                 Deterministic Signing Seal
               </span>
-              <span class="keystore-pill">Active and Locked</span>
-            </div>
-            <div class="crypto-fingerprint">
-              sha256: 0b:30:8b:4c:8f:c4:ba:5b:ff:8f:4a:68:b5:ab:ef:5f:da:fb:f1:d5:7e:9f:74:80:ad:6f:9d:78:60:85:40:9f
+              <span class="keystore-pill">Active and Enforced</span>
             </div>
             <p class="crypto-notice">
-              All APK compilations are deterministically signed with the permanent AutoMorph PKCS12 keystore. Updates will install over previous releases on your Android device without signature collision errors.
+              All APK compilations are deterministically signed with your permanent dedicated keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
             </p>
           </div>
 
@@ -290,10 +287,24 @@
       </section>
     </main>
 
-    <!-- VIEW 3: COMMUNITY STORE (1,342 Apps) -->
+    <!-- VIEW 3: COMMUNITY STORE (1,342 Apps & 365 Patch Bundles) -->
     <main id="view-store" class="view-panel" style="display: none;">
       <div class="store-view-wrap">
         
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+          <div class="store-subnav">
+            <button class="store-subtab active" id="btn-subtab-apps" data-subtab="apps">
+              Applications (1,342)
+            </button>
+            <button class="store-subtab" id="btn-subtab-bundles" data-subtab="bundles">
+              Patch Bundles (365)
+            </button>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);" id="store-catalog-stats">
+            Sourced directly from Morphe Community Ecosystem
+          </div>
+        </div>
+
         <div class="store-filter-bar">
           <div class="store-search-wrap">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -310,11 +321,16 @@
           </div>
         </div>
 
+        <!-- 1. Applications Grid -->
         <div class="store-catalog-grid" id="store-catalog-grid">
-          <!-- Dynamically populated from /api/catalog -->
           <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted);">
             Connecting to Morphe Community Catalog…
           </div>
+        </div>
+
+        <!-- 2. Patch Bundles Grid (Hidden by default) -->
+        <div class="bundle-grid" id="store-bundles-grid" style="display: none;">
+          <!-- Dynamically populated from /api/catalog bundles -->
         </div>
 
       </div>
@@ -410,41 +426,91 @@
     </aside>
   </div>
 
-  <!-- MODAL: 1-Click Provisioning Sheet -->
+  <!-- MODAL: 1-Click Provisioning Sheet with Grouped Patches -->
   <div class="modal-overlay" id="provision-modal" onclick="closeProvisionModal(event)">
-    <div class="modal-container" onclick="event.stopPropagation()">
+    <div class="modal-container" style="max-width: 620px;" onclick="event.stopPropagation()">
       <div class="modal-head">
-        <h2 style="font-size: 1.0625rem; font-weight: 600;" id="prov-modal-title">Provision to AutoMorph</h2>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="app-avatar" id="prov-app-icon-slot">
+            <span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">A</span>
+          </div>
+          <div>
+            <h2 style="font-size: 1.0625rem; font-weight: 600;" id="prov-modal-title">Provision Application</h2>
+            <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);" id="prov-modal-subtitle">Package configuration</div>
+          </div>
+        </div>
         <button class="btn-icon" onclick="closeProvisionModal()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">Application Name</label>
-          <input type="text" class="form-input" id="prov-app-name" value="">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Package Identifier</label>
-          <input type="text" class="form-input tabular-nums" id="prov-app-pkg" value="">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Recommended Patch Repository</label>
-          <input type="text" class="form-input" id="prov-app-repo" value="https://github.com/MorpheApp/morphe-patches">
-          <span class="form-helper" id="prov-app-helper">Verified source with compatible patches</span>
-        </div>
-        <div class="crypto-seal-card">
-          <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
-            Deterministic Keystore Bound
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <input type="hidden" id="prov-app-name" value="">
+        <input type="hidden" id="prov-app-pkg" value="">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+          <div class="metric-box" style="padding: 0.75rem;">
+            <div class="metric-label">Target Architecture</div>
+            <div class="metric-value" style="font-size: 0.875rem;">arm64-v8a / v7a</div>
           </div>
-          <div style="font-size: 0.6875rem; color: var(--text-muted);">
-            This application will be signed with your permanent AutoMorph key, enabling direct in-place updates.
+          <div class="metric-box" style="padding: 0.75rem;">
+            <div class="metric-label">Recommended APK Version</div>
+            <div class="metric-value" style="font-size: 0.875rem; color: var(--accent-base);" id="prov-app-recommended-ver">Latest Compatible</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Primary Patch Repository</label>
+          <input type="text" class="form-input" id="prov-app-repo" value="https://github.com/MorpheApp/morphe-patches">
+          <span class="form-helper" id="prov-app-helper">Verified source with compatible community patches</span>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <label class="form-label" style="margin-bottom: 0;">Available Patch Bundles & Mutators</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <button type="button" class="btn-link" onclick="toggleAllProvPatches(true)" style="font-size: 0.75rem; color: var(--accent-base); background: none; border: none; cursor: pointer;">Select All</button>
+              <span style="color: var(--border-hairline);">|</span>
+              <button type="button" class="btn-link" onclick="toggleAllProvPatches(false)" style="font-size: 0.75rem; color: var(--text-muted); background: none; border: none; cursor: pointer;">Clear All</button>
+            </div>
+          </div>
+
+          <div class="prov-patches-wrapper" id="prov-patches-container">
+            <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.8125rem;">
+              Loading compatible patches…
+            </div>
           </div>
         </div>
       </div>
       <div class="drawer-footer" style="padding: 1rem 1.5rem; background: var(--surface-raised);">
         <button class="btn-secondary" onclick="closeProvisionModal()">Cancel</button>
         <button class="btn-primary" id="btn-confirm-provision">Confirm and Provision</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Applied Patches Inspector -->
+  <div class="modal-overlay" id="modal-applied-patches" onclick="closeAppliedPatchesModal(event)">
+    <div class="modal-container" style="max-width: 580px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div>
+          <h2 style="font-size: 1.0625rem; font-weight: 600;" id="applied-modal-title">Applied Patches</h2>
+          <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);" id="applied-modal-subtitle">Package Patches</div>
+        </div>
+        <button class="btn-icon" onclick="closeAppliedPatchesModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="search-wrap" style="margin-bottom: 0.75rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="applied-patches-search" placeholder="Filter patches by name…">
+        </div>
+        <div id="applied-patches-list" style="max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; padding-right: 4px;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="drawer-footer" style="padding: 1rem 1.5rem; background: var(--surface-raised);">
+        <button class="btn-secondary" onclick="closeAppliedPatchesModal()">Close</button>
       </div>
     </div>
   </div>
