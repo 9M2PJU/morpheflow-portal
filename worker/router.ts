@@ -126,6 +126,9 @@ function attachLastResultsToPackages(
       last_result = {
         version: lastApp.version,
         status: 'success',
+        download_url: `/api/download/${encodeURIComponent(p.package)}`,
+        release_url: lastApp.release_url,
+        apk_name: lastApp.filename,
         timestamp: Math.floor(pDate.getTime() / 1000) || 0,
         timestamp_formatted: timestampFormatted,
         applied_count: appliedCount,
@@ -1226,6 +1229,121 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       formatted_total_bytes: formatBytes(totalBytes),
       apk_count: apps.length,
     });
+  }
+
+  // 23b. Direct Authenticated Binary APK Download Proxy: GET /api/download/:pkg or GET /files/:filename
+  if ((path.startsWith('/api/download/') || path.startsWith('/files/')) && method === 'GET') {
+    const rawTarget = path.startsWith('/api/download/')
+      ? decodeURIComponent(path.replace('/api/download/', ''))
+      : decodeURIComponent(path.replace('/files/', ''));
+
+    const patchedApps = await storage.listPatchedApps();
+    let appMatch = patchedApps.find(
+      (a) => a.package === rawTarget || a.filename === rawTarget || a.filename === `${rawTarget}.apk`
+    );
+
+    if (!appMatch) {
+      // Check if rawTarget has package prefix
+      const stripped = rawTarget.split('_')[0];
+      appMatch = patchedApps.find((a) => a.package === stripped);
+    }
+
+    if (!appMatch) {
+      return json({ error: `No compiled APK binary found for ${rawTarget}` }, 404);
+    }
+
+    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const token = env.GITHUB_TOKEN;
+
+    if (!token) {
+      return Response.redirect(appMatch.download_url, 302);
+    }
+
+    try {
+      // 1. Try to find asset via GitHub Releases API
+      let tag = `app-${appMatch.package}`;
+      if (appMatch.release_url && appMatch.release_url.includes('/tag/')) {
+        tag = appMatch.release_url.split('/tag/').pop() || tag;
+      }
+
+      let assetId: number | null = null;
+
+      const relRes = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'AutoMorph-CloudflareWorker',
+        },
+      });
+
+      if (relRes.ok) {
+        const relData: any = await relRes.json();
+        const asset = (relData.assets || []).find(
+          (ast: any) => ast.name === appMatch!.filename || ast.name.endsWith('.apk')
+        );
+        if (asset && asset.id) {
+          assetId = asset.id;
+        }
+      }
+
+      // If not found in tag, search recent releases
+      if (!assetId) {
+        const listRelRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=10`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github.v3+json',
+            'User-Agent': 'AutoMorph-CloudflareWorker',
+          },
+        });
+        if (listRelRes.ok) {
+          const releases: any[] = await listRelRes.json();
+          for (const rel of releases) {
+            const asset = (rel.assets || []).find(
+              (ast: any) => ast.name === appMatch!.filename || (ast.name.endsWith('.apk') && ast.name.includes(appMatch!.package))
+            );
+            if (asset && asset.id) {
+              assetId = asset.id;
+              break;
+            }
+          }
+        }
+      }
+
+      if (assetId) {
+        const assetStreamRes = await fetch(
+          `https://api.github.com/repos/${repo}/releases/assets/${assetId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/octet-stream',
+              'User-Agent': 'AutoMorph-CloudflareWorker',
+            },
+            redirect: 'manual',
+          }
+        );
+
+        const s3Location = assetStreamRes.headers.get('Location');
+        if (s3Location) {
+          return Response.redirect(s3Location, 302);
+        }
+
+        if (assetStreamRes.ok) {
+          return new Response(assetStreamRes.body, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/vnd.android.package-archive',
+              'Content-Disposition': `attachment; filename="${appMatch.filename}"`,
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        }
+      }
+
+      // Fallback to direct download_url redirect if API asset lookup fails
+      return Response.redirect(appMatch.download_url, 302);
+    } catch (err: any) {
+      return json({ error: `Download failed: ${err.message}` }, 500);
+    }
   }
 
   // 24. Webhook Report: POST /api/webhook/report

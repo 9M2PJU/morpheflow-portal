@@ -1541,6 +1541,48 @@ function getCompatiblePatchesForPackage(pkg) {
     }
   }
 
+  // Sort bundles based on user-defined priority:
+  // 1. App-specific patches first (dedicated repo targeting this app or in app.repos)
+  // 2. Community popularity (verified source, stars, matching patch volume)
+  const appSlug = pkg.split('.').pop() || '';
+  const appCleanName = (morpheCatalogData && morpheCatalogData[pkg]?.name || '').toLowerCase();
+
+  result.sort((a, b) => {
+    const aRepoSlug = cleanRepoSlug(a.bundleRepo).toLowerCase();
+    const bRepoSlug = cleanRepoSlug(b.bundleRepo).toLowerCase();
+
+    // Check if app-specific
+    const aIsAppSpecific = aRepoSlug.includes(appSlug) || (appCleanName && aRepoSlug.includes(appCleanName)) || (a.patches && a.patches.length > 0 && Array.isArray(a.targetApps) && a.targetApps.length === 1);
+    const bIsAppSpecific = bRepoSlug.includes(appSlug) || (appCleanName && bRepoSlug.includes(appCleanName)) || (b.patches && b.patches.length > 0 && Array.isArray(b.targetApps) && b.targetApps.length === 1);
+
+    if (aIsAppSpecific && !bIsAppSpecific) return -1;
+    if (!aIsAppSpecific && bIsAppSpecific) return 1;
+
+    // Popularity score: MorpheApp verified bundle has priority
+    const aIsOfficial = aRepoSlug.startsWith('morpheapp/');
+    const bIsOfficial = bRepoSlug.startsWith('morpheapp/');
+    if (aIsOfficial && !bIsOfficial) return -1;
+    if (!aIsOfficial && bIsOfficial) return 1;
+
+    // Community popularity: stars + patch count weight
+    const aScore = (a.stars || 0) * 10 + (a.patches?.length || 0);
+    const bScore = (b.stars || 0) * 10 + (b.patches?.length || 0);
+    if (bScore !== aScore) return bScore - aScore;
+
+    return a.bundleName.localeCompare(b.bundleName);
+  });
+
+  // Inside each bundle: sort patches so default/recommended patches come first, then alphabetical
+  for (const bundle of result) {
+    if (Array.isArray(bundle.patches)) {
+      bundle.patches.sort((p1, p2) => {
+        if (p1.default && !p2.default) return -1;
+        if (!p1.default && p2.default) return 1;
+        return (p1.name || '').localeCompare(p2.name || '');
+      });
+    }
+  }
+
   return result;
 }
 
@@ -1729,9 +1771,9 @@ function getAppVersionInfo(app) {
 
   // URLs & Metadata
   const apkName = lastRes?.apk_name || app.apk_name || (isSuccess && currentVer ? `${pkg}_${currentVer.replace(/^v/, '')}_patched.apk` : null);
-  const downloadUrl = (lastRes?.download_url || app.download_url)
-    ? (lastRes?.download_url || app.download_url)
-    : (apkName ? `/files/${apkName}` : null);
+  const downloadUrl = (isSuccess || lastRes?.download_url || app.download_url)
+    ? `/api/download/${encodeURIComponent(pkg)}`
+    : (apkName ? `/files/${encodeURIComponent(apkName)}` : null);
 
   const ghRepo = 'wiwek13/AutoMorph';
   const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
@@ -2876,6 +2918,12 @@ function renderManageAvailableBundles() {
     return;
   }
 
+  // Preserve currently expanded bundle accordions
+  const openRepos = new Set();
+  container.querySelectorAll('details.prov-bundle-accordion[open]').forEach(d => {
+    if (d.dataset.bundleRepo) openRepos.add(d.dataset.bundleRepo);
+  });
+
   const html = currentAppliedBundles.map(bundle => {
     let patches = bundle.patches || [];
     if (currentManageSearchFilter) {
@@ -2904,7 +2952,7 @@ function renderManageAvailableBundles() {
 
       return `
         <label class="prov-patch-item">
-          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleManagePatch('${escapeHtml(key)}', this.checked)">
+          <input type="checkbox" data-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleManagePatch('${escapeHtml(key)}', this.checked)">
           <div class="prov-patch-info">
             <div class="prov-patch-name">${escapeHtml(p.name)}</div>
             <div class="prov-patch-desc">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
@@ -2917,15 +2965,17 @@ function renderManageAvailableBundles() {
       </div>
     `;
 
+    const isOpen = openRepos.has(bundle.bundleRepo) || Boolean(currentManageSearchFilter);
+
     return `
-      <details class="prov-bundle-accordion" ${currentManageSearchFilter ? 'open' : ''}>
+      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''}>
         <summary class="prov-bundle-header">
           <div class="prov-bundle-title-col">
             <span class="prov-bundle-name">${escapeHtml(bundle.bundleName)}</span>
             <span class="prov-bundle-author">by ${escapeHtml(bundle.bundleAuthor || 'Community')}</span>
           </div>
           <div class="prov-bundle-ctrls">
-            <span class="prov-bundle-count">${enabledInBundle}/${totalInBundle}</span>
+            <span class="prov-bundle-count" data-count-repo="${escapeHtml(bundle.bundleRepo)}">${enabledInBundle}/${totalInBundle}</span>
             <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleManageBundleAll('${escapeHtml(bundle.bundleRepo)}', true)">All</button>
             <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleManageBundleAll('${escapeHtml(bundle.bundleRepo)}', false)">None</button>
             <svg class="prov-bundle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -2951,7 +3001,27 @@ function toggleManagePatch(key, isChecked) {
     item.enabled = Boolean(isChecked);
   }
   renderActiveAppliedPatches();
-  renderManageAvailableBundles();
+
+  // In-place DOM update prevents accordion collapsing
+  const container = document.getElementById('manage-bundles-container');
+  if (container) {
+    const cb = container.querySelector(`input[data-patch-key="${CSS.escape(key)}"]`);
+    if (cb) cb.checked = Boolean(isChecked);
+
+    if (item && item.repo) {
+      let enabledCount = 0;
+      let totalCount = 0;
+      for (const p of currentManagePatchesState.values()) {
+        if (cleanRepoSlug(p.repo) === cleanRepoSlug(item.repo)) {
+          totalCount++;
+          if (p.enabled) enabledCount++;
+        }
+      }
+      const countEl = container.querySelector(`[data-count-repo="${CSS.escape(item.repo)}"]`);
+      if (countEl) countEl.textContent = `${enabledCount}/${totalCount}`;
+    }
+  }
+
   updateManageSummaryStatus();
 }
 
