@@ -992,8 +992,9 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       const dispatchErrors: string[] = [];
 
       if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
-        for (const targetPkg of packages) {
-          try {
+        const logsToAppend: string[] = [];
+        const dispatchResults = await Promise.allSettled(
+          packages.map(async (targetPkg) => {
             const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
             const ghRes = await fetch(ghUrl, {
               method: 'POST',
@@ -1011,23 +1012,49 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
               }),
             });
             if (ghRes.ok || ghRes.status === 204) {
-              dispatchCount++;
-              await storage.appendRunLogs(runId, [`[✓] GitHub Actions build runner dispatched for ${targetPkg}`]);
+              return { pkg: targetPkg, ok: true, status: ghRes.status };
             } else {
               const errText = await ghRes.text();
-              dispatchErrors.push(`${targetPkg} (${ghRes.status}): ${errText}`);
-              await storage.appendRunLogs(runId, [`[!] GitHub dispatch error for ${targetPkg} (${ghRes.status}): ${errText}`]);
+              return { pkg: targetPkg, ok: false, error: `(${ghRes.status}): ${errText}` };
             }
-          } catch (err: any) {
-            dispatchErrors.push(`${targetPkg}: ${err.message}`);
-            await storage.appendRunLogs(runId, [`[!] GitHub dispatch exception for ${targetPkg}: ${err.message}`]);
+          })
+        );
+
+        for (const res of dispatchResults) {
+          if (res.status === 'fulfilled') {
+            if (res.value.ok) {
+              dispatchCount++;
+              logsToAppend.push(`[✓] GitHub Actions build runner dispatched for ${res.value.pkg}`);
+            } else {
+              dispatchErrors.push(`${res.value.pkg} ${res.value.error}`);
+              logsToAppend.push(`[!] GitHub dispatch error for ${res.value.pkg} ${res.value.error}`);
+            }
+          } else {
+            const err = res.reason;
+            const msg = err?.message || String(err);
+            dispatchErrors.push(msg);
+            logsToAppend.push(`[!] GitHub dispatch exception: ${msg}`);
           }
+        }
+
+        if (logsToAppend.length > 0) {
+          await storage.appendRunLogs(runId, logsToAppend);
         }
       } else {
         await storage.appendRunLogs(runId, [
           '[ℹ] Note: GITHUB_TOKEN & GITHUB_REPO not set in Worker environment.',
           'Runs can be fulfilled by local runner or external hybrid agent webhook.',
         ]);
+      }
+
+      if (env.GITHUB_TOKEN && env.GITHUB_REPO && dispatchCount === 0 && packages.length > 0) {
+        await storage.releaseLock(runId);
+        return json({
+          status: 'error',
+          run_id: runId,
+          message: `Failed to dispatch parallel builds: ${dispatchErrors.join('; ')}`,
+          errors: dispatchErrors,
+        }, 502);
       }
 
       return json({
@@ -1101,6 +1128,15 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         '[ℹ] Note: GITHUB_TOKEN & GITHUB_REPO not set in Worker environment.',
         'Runs can be fulfilled by GitHub Actions runner or external hybrid agent webhook.',
       ]);
+    }
+
+    if (env.GITHUB_TOKEN && env.GITHUB_REPO && !dispatched) {
+      await storage.releaseLock(runId);
+      return json({
+        status: 'error',
+        run_id: runId,
+        message: dispatchMsg,
+      }, 502);
     }
 
     return json({

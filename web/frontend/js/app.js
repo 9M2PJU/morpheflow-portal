@@ -4608,20 +4608,49 @@ async function toggleAppActive(pkg, isChecked) {
 }
 
 async function patchAllWaitingApps() {
-  const waitingApps = (state.configuredApps || []).filter(app => {
+  const btn = document.getElementById('btn-patch-all-waiting');
+  const btnApps = document.getElementById('btn-apps-patch-all-waiting');
+
+  let waitingApps = (state.configuredApps || []).filter(app => {
     const pkg = app.package || app.package_name;
     const ver = getAppVersionInfo(app);
     const isRunning = (state.activePackages || []).includes(pkg);
     return !isRunning && (!ver.currentVer || ver.statusClass === 'status-awaiting');
   });
 
+  // If no apps are strictly awaiting compilation, check if user wishes to force rebuild all targets
   if (waitingApps.length === 0) {
-    showToast('All configured applications are up to date or already compiling.', 'info');
-    return;
+    const availableApps = (state.configuredApps || []).filter(app => {
+      const pkg = app.package || app.package_name;
+      return !(state.activePackages || []).includes(pkg);
+    });
+
+    if (availableApps.length === 0) {
+      showToast('All configured applications are currently compiling.', 'info');
+      openTerminalAndConnect();
+      return;
+    }
+
+    const confirmRebuild = confirm(`All ${availableApps.length} configured applications currently have compiled binaries up to date.\n\nDo you want to re-compile all ${availableApps.length} applications in parallel now?`);
+    if (!confirmRebuild) return;
+    waitingApps = availableApps;
   }
 
   const waitingPkgs = waitingApps.map(a => a.package || a.package_name).filter(Boolean);
-  showToast(`Dispatching parallel builds for ${waitingPkgs.length} waiting apps...`, 'info');
+
+  // Set visual button loading state to prevent double-tap on mobile touchscreens
+  const origBtnText = btn?.innerHTML;
+  const origBtnAppsText = btnApps?.innerHTML;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="live-pulse-dot" style="margin-right: 4px;"></span><span>Dispatching…</span>';
+  }
+  if (btnApps) {
+    btnApps.disabled = true;
+    btnApps.innerHTML = '<span class="live-pulse-dot" style="margin-right: 4px;"></span><span>Dispatching…</span>';
+  }
+
+  showToast(`Dispatching parallel builds for ${waitingPkgs.length} apps...`, 'info');
 
   try {
     const res = await fetch('/api/run/batch', {
@@ -4633,6 +4662,7 @@ async function patchAllWaitingApps() {
     if (res.status === 409) {
       showToast(data.message || 'Build already in progress for one or more packages.', 'warning');
       await refreshStatus();
+      openTerminalAndConnect();
       return;
     }
     if (!res.ok) {
@@ -4643,6 +4673,15 @@ async function patchAllWaitingApps() {
     openTerminalAndConnect();
   } catch (err) {
     showToast(`Failed to dispatch parallel builds: ${err.message}`, 'error');
+  } finally {
+    if (btn && origBtnText) {
+      btn.disabled = false;
+      btn.innerHTML = origBtnText;
+    }
+    if (btnApps && origBtnAppsText) {
+      btnApps.disabled = false;
+      btnApps.innerHTML = origBtnAppsText;
+    }
   }
 }
 
@@ -5563,10 +5602,8 @@ async function triggerPipelineRun() {
 }
 
 function openTerminalAndConnect() {
-  const termOutput = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
-  if (termOutput) termOutput.innerHTML = '';
   switchTab('pipeline');
-  connectSseStream();
+  loadPipelineViewLogs();
 }
 
 function openTerminalModal() {
@@ -5601,8 +5638,8 @@ function connectSseStream() {
   }
 
   const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
-  const badge = document.getElementById('term-status-badge');
-  const triggerBadge = document.getElementById('term-trigger-badge');
+  const badge = document.getElementById('pipeline-status-badge') || document.getElementById('term-status-badge');
+  const triggerBadge = document.getElementById('pipeline-target-badge') || document.getElementById('term-trigger-badge');
   const stopBtn = document.getElementById('btn-term-stop');
   setTerminalReportVisible(false);
   if (stopBtn) {
@@ -5784,42 +5821,65 @@ function appendTerminalLine(text) {
   }
 }
 
+let pipelinePollerTimer = null;
+
 async function loadPipelineViewLogs() {
-  const output = document.getElementById('terminal-stream-log');
-  const statusBadge = document.getElementById('pipeline-status-badge');
-  const targetBadge = document.getElementById('pipeline-target-badge');
-  const durBadge = document.getElementById('pipeline-duration-badge');
+  const statusBadge = document.getElementById('pipeline-status-badge') || document.getElementById('term-status-badge');
   const stopBtn = document.getElementById('btn-term-stop');
 
-  if (state.status?.is_running) {
+  const isRunning = Boolean(state.status?.is_running || (state.activePackages && state.activePackages.length > 0));
+
+  if (isRunning) {
     if (statusBadge) {
       statusBadge.className = 'badge badge-pulse badge-info';
-      statusBadge.textContent = '● Streaming Live';
+      const activeCount = (state.activePackages || []).length;
+      statusBadge.textContent = activeCount > 1 ? `● Building (${activeCount} apps in parallel)` : '● Building Live';
     }
     if (stopBtn) stopBtn.style.display = 'inline-flex';
-    connectSseStream();
-    return;
+    if (!pipelinePollerTimer) {
+      pipelinePollerTimer = setInterval(async () => {
+        if (state.currentTab !== 'pipeline') return;
+        await loadStatus();
+        if (!state.status?.is_running && (!state.activePackages || state.activePackages.length === 0)) {
+          clearInterval(pipelinePollerTimer);
+          pipelinePollerTimer = null;
+        }
+        await fetchAndRenderLogs();
+      }, 2500);
+    }
+  } else {
+    if (pipelinePollerTimer) {
+      clearInterval(pipelinePollerTimer);
+      pipelinePollerTimer = null;
+    }
+    if (stopBtn) stopBtn.style.display = 'none';
   }
 
-  if (stopBtn) stopBtn.style.display = 'none';
-  if (statusBadge) {
-    statusBadge.className = 'badge badge-pulse badge-info';
-    statusBadge.textContent = 'Loading Log...';
-  }
+  await fetchAndRenderLogs();
+}
+
+async function fetchAndRenderLogs() {
+  const output = document.getElementById('terminal-stream-log');
+  const statusBadge = document.getElementById('pipeline-status-badge') || document.getElementById('term-status-badge');
+  const targetBadge = document.getElementById('pipeline-target-badge') || document.getElementById('term-trigger-badge');
+  const durBadge = document.getElementById('pipeline-duration-badge');
 
   try {
-    const res = await fetch('/api/run/logs');
+    const res = await fetch(`/api/run/logs?_t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    if (output) output.innerHTML = '';
-
     const lastRun = data.run_info || state.status?.last_run;
-    const isSuccess = (lastRun?.status === 'success') || (data.status === 'success');
-    const isFailed = (lastRun?.status === 'failed') || (data.status === 'failed');
+    const isRunning = Boolean(data.is_running || state.status?.is_running || (state.activePackages && state.activePackages.length > 0));
+    const isSuccess = !isRunning && ((lastRun?.status === 'success') || (data.status === 'success'));
+    const isFailed = !isRunning && ((lastRun?.status === 'failed') || (data.status === 'failed'));
 
     if (statusBadge) {
-      if (isSuccess) {
+      if (isRunning) {
+        statusBadge.className = 'badge badge-pulse badge-info';
+        const activeCount = (state.activePackages || []).length;
+        statusBadge.textContent = activeCount > 1 ? `● Building (${activeCount} apps in parallel)` : '● Building Live';
+      } else if (isSuccess) {
         statusBadge.className = 'badge badge-success';
         statusBadge.textContent = '● Completed';
       } else if (isFailed) {
@@ -5831,14 +5891,21 @@ async function loadPipelineViewLogs() {
       }
     }
 
-    if (targetBadge && lastRun && (lastRun.package || lastRun.source)) {
+    if (targetBadge && (lastRun || data.active_lock)) {
       targetBadge.style.display = 'inline-flex';
-      targetBadge.textContent = lastRun.package ? `Target: ${lastRun.package}` : `Source: ${lastRun.source}`;
+      const activeCount = (state.activePackages || []).length;
+      if (isRunning && activeCount > 1) {
+        targetBadge.textContent = `${activeCount} Parallel Targets`;
+      } else {
+        const pkg = data.active_lock?.package || lastRun?.package;
+        const src = data.active_lock?.source || lastRun?.source;
+        targetBadge.textContent = pkg ? `Target: ${pkg}` : (src ? `Source: ${src}` : 'All Targets');
+      }
     } else if (targetBadge) {
       targetBadge.style.display = 'none';
     }
 
-    if (durBadge && lastRun) {
+    if (durBadge && lastRun && !isRunning) {
       durBadge.style.display = 'inline-flex';
       const dur = lastRun.duration_formatted || formatDuration(lastRun.duration_seconds || lastRun.duration);
       durBadge.textContent = `Duration: ${dur}`;
@@ -5847,12 +5914,15 @@ async function loadPipelineViewLogs() {
     }
 
     const lines = data.lines || [];
-    if (lines.length === 0) {
-      appendTerminalLine('[*] No previous pipeline execution logs found.');
-      appendTerminalLine('[*] Click "Run Pipeline" to trigger a build and stream live execution logs.');
-    } else {
-      for (const line of lines) {
-        appendTerminalLine(typeof line === 'string' ? line : (line.line || ''));
+    if (output) {
+      output.innerHTML = '';
+      if (lines.length === 0) {
+        appendTerminalLine('[*] No previous pipeline execution logs found.');
+        appendTerminalLine('[*] Click "Run Pipeline" to trigger a build and stream live execution logs.');
+      } else {
+        for (const line of lines) {
+          appendTerminalLine(typeof line === 'string' ? line : (line.line || ''));
+        }
       }
     }
   } catch (err) {

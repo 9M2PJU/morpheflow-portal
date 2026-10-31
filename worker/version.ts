@@ -4,7 +4,7 @@
  * Automatically synchronized during release and deployment.
  */
 
-export const APP_VERSION = '2.3.0';
+export const APP_VERSION = '2.3.1';
 export const APP_BRANCH = 'main';
-export const APP_COMMIT = '3388083';
+export const APP_COMMIT = 'aef019c';
 export const APP_USER_AGENT = `AutoMorph-EdgeWorker/${APP_VERSION} (https://github.com/wiwek13/AutoMorph)`;
