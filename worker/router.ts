@@ -511,6 +511,26 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({ status: 'success', result: saved });
   }
 
+  // 9b. Custom Base APK: POST /api/config/app/base-apk
+  if (path === '/api/config/app/base-apk' && method === 'POST') {
+    const body = await request.json<any>();
+    if (!body.package) {
+      return json({ error: 'package identifier is required' }, 400);
+    }
+    const pkg = await storage.getPackage(body.package);
+    if (!pkg) return json({ error: 'Package not found' }, 404);
+
+    const currentOptions = pkg.options || {};
+    currentOptions.base_apk_url = body.base_apk_url || '';
+
+    await storage.savePackage({
+      package: body.package,
+      options: currentOptions,
+    });
+
+    return json({ status: 'success', package: body.package, base_apk_url: body.base_apk_url });
+  }
+
   // 10. Packages: POST /api/config/app/toggle
   if (path === '/api/config/app/toggle' && method === 'POST') {
     const body = await request.json<any>();

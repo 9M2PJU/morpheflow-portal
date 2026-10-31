@@ -111,6 +111,24 @@ jobs:
                                   with open(opt_path, 'w', encoding='utf-8') as opt_f:
                                       json.dump(cleaned, opt_f, indent=2)
 
+                  # Download custom base APKs if configured (for unlisted/modded apps like InstaPrime)
+                  for pkg_obj in config.get('packages', []):
+                      pkg_id = pkg_obj.get('package') or pkg_obj.get('package_name')
+                      pkg_opts = pkg_obj.get('options', {}) if isinstance(pkg_obj.get('options'), dict) else {}
+                      base_apk_url = pkg_obj.get('base_apk_url') or pkg_opts.get('base_apk_url')
+                      if pkg_id and base_apk_url:
+                          print(f'[*] Custom base APK configured for {pkg_id}: {base_apk_url}')
+                          apk_dest_dir = Path('apps/original') / pkg_id
+                          apk_dest_dir.mkdir(parents=True, exist_ok=True)
+                          apk_dest_file = apk_dest_dir / f"{pkg_id}.apk"
+                          try:
+                              download_req = urllib.request.Request(base_apk_url, headers={'User-Agent': 'Mozilla/5.0 (Android; Mobile)'})
+                              with urllib.request.urlopen(download_req, timeout=90) as apk_resp, open(apk_dest_file, 'wb') as apk_f:
+                                  apk_f.write(apk_resp.read())
+                              print(f'[✓] Successfully staged custom base APK for {pkg_id} ({os.path.getsize(apk_dest_file)} bytes).')
+                          except Exception as apk_err:
+                              print(f'[!] Could not download custom base APK from {base_apk_url}: {apk_err}')
+
                   # Populate stubs for already-patched apps so main.py skips up-to-date versions
                   stub_count = 0
                   for app in patched_apps:

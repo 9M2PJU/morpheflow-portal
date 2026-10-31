@@ -297,6 +297,9 @@ export function applySecurityHeaders(res: Response): Response {
     'Content-Security-Policy',
     "default-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; connect-src 'self' https:; frame-ancestors 'none';"
   );
+  if (!newHeaders.has('Cache-Control')) {
+    newHeaders.set('Cache-Control', 'no-cache, must-revalidate');
+  }
   return new Response(res.body, {
     status: res.status,
     statusText: res.statusText,

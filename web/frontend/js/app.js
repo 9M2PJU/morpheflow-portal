@@ -1412,8 +1412,8 @@ function getCompatiblePatchesForPackage(pkg) {
         }
       }
 
-      if (!isCompatible && Array.isArray(bundle.targetApps)) {
-        if (bundle.targetApps.some(t => (typeof t === 'string' ? t : t.package) === pkg)) {
+      if (!isCompatible && Array.isArray(patch.compatiblePackages)) {
+        if (patch.compatiblePackages.some(cp => (typeof cp === 'string' ? cp : cp.name || cp.packageName) === pkg)) {
           isCompatible = true;
         }
       }
@@ -1545,74 +1545,7 @@ function getAppVersionInfo(app) {
   const repos = app.repos || [];
   const latestPatchVer = getLatestPatchBundleVersion(repos);
 
-  // 5. Update Classification
-  const badges = [];
-  let appUpdate = false;
-  let appAhead = false;
-  let patchUpdate = false;
-  let hasUpdate = false;
-
-  if (!currentVer) {
-    badges.push({
-      type: 'pending',
-      class: 'badge-pending',
-      label: '○ Awaiting Build',
-      tooltip: 'Target APK has not been compiled yet'
-    });
-  } else if (targetVer) {
-    const cmp = compareSemVer(currentVer, targetVer);
-    if (cmp < 0) {
-      appUpdate = true;
-      hasUpdate = true;
-      badges.push({
-        type: 'app_update',
-        class: 'badge-app-update',
-        label: `⬆ App Update: ${targetVer}`,
-        tooltip: `Recommended tested target ${targetVer} is newer than current ${currentVer}`
-      });
-    } else if (cmp > 0) {
-      appAhead = true;
-      badges.push({
-        type: 'ahead',
-        class: 'badge-ahead',
-        label: `⚡ Ahead (v${currentVer.replace(/^v/, '')})`,
-        tooltip: `Installed APK (${currentVer}) is newer than patch recommended target (${targetVer})`
-      });
-    }
-  }
-
-  if (latestPatchVer && patchBundleVer) {
-    const pCmp = compareSemVer(patchBundleVer, latestPatchVer);
-    if (pCmp < 0) {
-      patchUpdate = true;
-      hasUpdate = true;
-      badges.push({
-        type: 'patch_update',
-        class: 'badge-patch-update',
-        label: `⬆ Patch Update: ${latestPatchVer}`,
-        tooltip: `Newer patch bundle version ${latestPatchVer} available (currently using ${patchBundleVer})`
-      });
-    }
-  }
-
-  if (badges.length === 0) {
-    badges.push({
-      type: 'uptodate',
-      class: 'badge-uptodate',
-      label: `✓ Up to Date`,
-      tooltip: `Installed binary and patch bundle match recommended target versions`
-    });
-  }
-
-  // URLs & Metadata
-  const apkName = lastRes?.apk_name || app.apk_name || (isSuccess && currentVer ? `${pkg}_${currentVer.replace(/^v/, '')}_patched.apk` : null);
-  const downloadUrl = (lastRes?.download_url || app.download_url)
-    ? (lastRes?.download_url || app.download_url)
-    : (apkName ? `/files/${apkName}` : null);
-
-  const ghRepo = state.settings?.github_repo || 'wi15d0m/AutoMorph';
-  const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
-
+  // 5. Applied Patches & Top 1-2 Preview Chips
   let appliedPatches = [];
   if (lastRes && Array.isArray(lastRes.applied_patches)) {
     appliedPatches = lastRes.applied_patches;
@@ -1629,6 +1562,99 @@ function getAppVersionInfo(app) {
     }
   }
 
+  let previewPatchesHtml = '';
+  if (appliedPatches.length > 0) {
+    const p1 = appliedPatches[0].name.replace(/[-_]/g, ' ');
+    const p2 = appliedPatches[1] ? appliedPatches[1].name.replace(/[-_]/g, ' ') : null;
+    const remaining = appliedPatches.length - (p2 ? 2 : 1);
+
+    previewPatchesHtml = `
+      <div class="patch-preview-chips">
+        <span class="patch-chip-tag" title="${escapeHtml(appliedPatches[0].name)}">• ${escapeHtml(p1)}</span>
+        ${p2 ? `<span class="patch-chip-tag" title="${escapeHtml(appliedPatches[1].name)}">• ${escapeHtml(p2)}</span>` : ''}
+        ${remaining > 0 ? `<span class="patch-chip-more" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="View all ${appliedPatches.length} patches">+${remaining} more</span>` : ''}
+      </div>
+    `;
+  } else {
+    previewPatchesHtml = `
+      <div class="patch-preview-chips">
+        <span class="patch-chip-tag" style="color: var(--text-muted);">Default bundle patches</span>
+      </div>
+    `;
+  }
+
+  // 6. Update Classification with Clickable Action
+  const badges = [];
+  let appUpdate = false;
+  let appAhead = false;
+  let patchUpdate = false;
+  let hasUpdate = false;
+
+  if (!currentVer) {
+    badges.push({
+      type: 'pending',
+      class: 'badge-pending',
+      label: '○ Awaiting Build',
+      tooltip: 'Target APK has not been compiled yet',
+      clickable: false
+    });
+  } else if (targetVer) {
+    const cmp = compareSemVer(currentVer, targetVer);
+    if (cmp < 0) {
+      appUpdate = true;
+      hasUpdate = true;
+      badges.push({
+        type: 'app_update',
+        class: 'badge-app-update',
+        label: `⬆ App Update: ${targetVer}`,
+        tooltip: `Recommended tested target ${targetVer} is newer than current ${currentVer} — Click to update`,
+        clickable: true
+      });
+    } else if (cmp > 0) {
+      appAhead = true;
+      badges.push({
+        type: 'ahead',
+        class: 'badge-ahead',
+        label: `⚡ Ahead (v${currentVer.replace(/^v/, '')})`,
+        tooltip: `Installed APK (${currentVer}) is newer than patch recommended target (${targetVer})`,
+        clickable: false
+      });
+    }
+  }
+
+  if (latestPatchVer && patchBundleVer) {
+    const pCmp = compareSemVer(patchBundleVer, latestPatchVer);
+    if (pCmp < 0) {
+      patchUpdate = true;
+      hasUpdate = true;
+      badges.push({
+        type: 'patch_update',
+        class: 'badge-patch-update',
+        label: `⬆ Patch Update: ${latestPatchVer}`,
+        tooltip: `Newer patch bundle version ${latestPatchVer} available — Click to update`,
+        clickable: true
+      });
+    }
+  }
+
+  if (badges.length === 0) {
+    badges.push({
+      type: 'uptodate',
+      class: 'badge-uptodate',
+      label: `✓ Up to Date`,
+      tooltip: `Installed binary and patch bundle match recommended target versions`,
+      clickable: false
+    });
+  }
+
+  // URLs & Metadata
+  const apkName = lastRes?.apk_name || app.apk_name || (isSuccess && currentVer ? `${pkg}_${currentVer.replace(/^v/, '')}_patched.apk` : null);
+  const downloadUrl = (lastRes?.download_url || app.download_url)
+    ? (lastRes?.download_url || app.download_url)
+    : (apkName ? `/files/${apkName}` : null);
+
+  const ghRepo = 'wiwek13/AutoMorph';
+  const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
   const patchCount = lastRes?.applied_count ?? appliedPatches.length;
 
   return {
@@ -1642,6 +1668,7 @@ function getAppVersionInfo(app) {
     appAhead,
     patchUpdate,
     badges,
+    previewPatchesHtml,
     isSuccess,
     isFailed,
     downloadUrl,
@@ -1699,9 +1726,10 @@ function renderOverview() {
     const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
     const fullReposTooltip = repos.join('\n');
 
-    const badgesHtml = verInfo.badges.map(b => `
-      <span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}">${escapeHtml(b.label)}</span>
-    `).join(' ');
+    const badgesHtml = verInfo.badges.map(b => {
+      const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
+      return `<span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}" ${clickAttr}>${escapeHtml(b.label)}</span>`;
+    }).join(' ');
 
     return `
       <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
@@ -1741,10 +1769,8 @@ function renderOverview() {
           </div>
 
           <div class="metric-cell">
-            <span class="metric-cell-label">Patch Bundle</span>
-            <span class="metric-cell-value" title="Applied patch mutations bundle release">
-              ${escapeHtml(verInfo.patchBundleVer)}
-            </span>
+            <span class="metric-cell-label">Patch Bundle (${escapeHtml(verInfo.patchBundleVer)})</span>
+            ${verInfo.previewPatchesHtml}
           </div>
 
           <div class="metric-cell">
@@ -1868,9 +1894,10 @@ function renderConfiguredApps() {
     const extraReposCount = repos.length > 1 ? repos.length - 1 : 0;
     const fullReposTooltip = repos.join('\n');
 
-    const badgesHtml = verInfo.badges.map(b => `
-      <span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}">${escapeHtml(b.label)}</span>
-    `).join(' ');
+    const badgesHtml = verInfo.badges.map(b => {
+      const clickAttr = b.clickable ? `onclick="openAppUpdateModal('${escapeHtml(pkg)}')" style="cursor: pointer;"` : '';
+      return `<span class="status-pill-badge ${b.class}" title="${escapeHtml(b.tooltip)}" ${clickAttr}>${escapeHtml(b.label)}</span>`;
+    }).join(' ');
 
     return `
       <article class="app-card ${isEnabled ? '' : 'is-disabled'}" data-pkg="${escapeHtml(pkg)}">
@@ -1915,10 +1942,8 @@ function renderConfiguredApps() {
 
           <!-- COL 3: PATCH BUNDLE VERSION (THIRD) -->
           <div class="metric-cell">
-            <span class="metric-cell-label">Patch Bundle</span>
-            <span class="metric-cell-value" title="Applied patch mutations bundle release">
-              ${escapeHtml(verInfo.patchBundleVer)}
-            </span>
+            <span class="metric-cell-label">Patch Bundle (${escapeHtml(verInfo.patchBundleVer)})</span>
+            ${verInfo.previewPatchesHtml}
           </div>
 
           <!-- COL 4: UPDATE CLASSIFICATION (FOURTH) -->
@@ -2258,26 +2283,35 @@ function renderProvisionPatches(pkg, defaultRepo) {
     return;
   }
 
-  container.innerHTML = bundleGroups.map(group => {
+  container.innerHTML = bundleGroups.map((group, idx) => {
     const patches = group.patches || [];
+    const isExpanded = idx === 0;
+
     return `
-      <div class="prov-bundle-section">
-        <div class="prov-bundle-header">
-          <div class="prov-bundle-title">
-            <span>📦 ${escapeHtml(group.bundleName)}</span>
+      <div class="prov-bundle-section" id="prov-bundle-${idx}" style="margin-bottom: 0.75rem; border: 1px solid var(--border-hairline); border-radius: var(--radius-md); overflow: hidden;">
+        <div class="prov-bundle-header" onclick="toggleBundleAccordion(${idx})" style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-raised); border-bottom: 1px solid var(--border-hairline); cursor: pointer; user-select: none;">
+          <div class="prov-bundle-title" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="prov-accordion-arrow" id="prov-arrow-${idx}" style="font-size: 0.6875rem; color: var(--text-muted);">${isExpanded ? '▼' : '▶'}</span>
+            <span style="font-weight: 600; font-size: 0.8125rem; color: var(--text-primary);">📦 ${escapeHtml(group.bundleName)}</span>
+            ${group.author ? `<span style="font-size: 0.6875rem; color: var(--text-muted);">by ${escapeHtml(group.author)}</span>` : ''}
           </div>
-          <span class="prov-bundle-count">${patches.length} Patches Available</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="prov-bundle-count" style="font-size: 0.6875rem; color: var(--text-muted);">${patches.length} Patches</span>
+            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll(${idx}, true)">All</button>
+            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll(${idx}, false)">None</button>
+          </div>
         </div>
-        <div class="prov-patch-list">
+
+        <div class="prov-patch-list" id="prov-patch-list-${idx}" style="${isExpanded ? 'display: flex;' : 'display: none;'} flex-direction: column; padding: 0.5rem; gap: 0.25rem; background: var(--surface-lowest); max-height: 240px; overflow-y: auto;">
           ${patches.map(p => `
-            <label class="prov-patch-item">
-              <input type="checkbox" name="prov-patch" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''}>
-              <div class="prov-patch-content">
-                <div class="prov-patch-name">
+            <label class="prov-patch-item" style="display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm); cursor: pointer;">
+              <input type="checkbox" name="prov-patch" data-bundle="${idx}" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''} style="margin-top: 0.2rem; accent-color: var(--accent-base);">
+              <div class="prov-patch-content" style="flex: 1; min-width: 0;">
+                <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
                   <span>${escapeHtml(p.name)}</span>
                   ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
                 </div>
-                ${p.description ? `<div class="prov-patch-desc">${escapeHtml(p.description)}</div>` : ''}
+                ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3;">${escapeHtml(p.description)}</div>` : ''}
               </div>
             </label>
           `).join('')}
@@ -2285,6 +2319,139 @@ function renderProvisionPatches(pkg, defaultRepo) {
       </div>
     `;
   }).join('');
+}
+
+function toggleBundleAccordion(idx) {
+  const list = document.getElementById(`prov-patch-list-${idx}`);
+  const arrow = document.getElementById(`prov-arrow-${idx}`);
+  if (!list) return;
+
+  const isHidden = list.style.display === 'none';
+  list.style.display = isHidden ? 'flex' : 'none';
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+}
+
+function toggleBundleSelectAll(idx, isSelectAll) {
+  const checkboxes = document.querySelectorAll(`#prov-patch-list-${idx} input[name="prov-patch"]`);
+  checkboxes.forEach(cb => { cb.checked = Boolean(isSelectAll); });
+}
+
+// ---------------------------------------------------------------------------
+// App & Patch Update Action Modal
+// ---------------------------------------------------------------------------
+let currentUpdateModalPkg = null;
+
+function openAppUpdateModal(pkg) {
+  currentUpdateModalPkg = pkg;
+  const modal = document.getElementById('modal-app-update');
+  if (!modal) return;
+
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg);
+  if (!app) return;
+
+  const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+  const iconUrl = catalogItem?.icon_url;
+  const verInfo = getAppVersionInfo(app);
+
+  const titleEl = document.getElementById('update-modal-title');
+  const pkgEl = document.getElementById('update-modal-pkg');
+  const iconFrame = document.getElementById('update-modal-icon-frame');
+  const contentEl = document.getElementById('update-modal-content');
+
+  if (titleEl) titleEl.textContent = `Update ${friendlyName}`;
+  if (pkgEl) pkgEl.textContent = pkg;
+  if (iconFrame) {
+    iconFrame.innerHTML = iconUrl
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;">`
+      : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+  }
+
+  let diffCardsHtml = '';
+
+  if (verInfo.appUpdate) {
+    diffCardsHtml += `
+      <div style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--status-warning-border); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+        <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-warning); margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+          <span>App Base APK Update Ready</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.8125rem;">
+          <div style="font-family: var(--font-mono); color: var(--text-muted);">Current: ${escapeHtml(verInfo.currentVer || 'None')}</div>
+          <span style="color: var(--text-muted);">➔</span>
+          <div style="font-family: var(--font-mono); font-weight: 600; color: var(--status-warning);">Target: ${escapeHtml(verInfo.targetVer)}</div>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.5rem 0 0 0;">
+          The upstream patch maintainers officially tested and verified mutators against base version ${escapeHtml(verInfo.targetVer)}.
+        </p>
+      </div>
+    `;
+  }
+
+  if (verInfo.patchUpdate) {
+    diffCardsHtml += `
+      <div style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--status-cyan-border); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+        <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-cyan); margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+          <span>Patch Bundle Mutators Update</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.8125rem;">
+          <div style="font-family: var(--font-mono); color: var(--text-muted);">Current: ${escapeHtml(verInfo.patchBundleVer)}</div>
+          <span style="color: var(--text-muted);">➔</span>
+          <div style="font-family: var(--font-mono); font-weight: 600; color: var(--status-cyan);">Latest: ${escapeHtml(verInfo.latestPatchVer)}</div>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.5rem 0 0 0;">
+          A new release of the patch mutator bundle has been published to GitHub.
+        </p>
+      </div>
+    `;
+  }
+
+  if (!verInfo.appUpdate && !verInfo.patchUpdate) {
+    diffCardsHtml += `
+      <div style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+        <div style="font-size: 0.8125rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
+          ✓ Fully Up to Date
+        </div>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
+          This target already matches the latest tested versions. You can re-run a fresh compilation at any time.
+        </p>
+      </div>
+    `;
+  }
+
+  diffCardsHtml += `
+    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+      <strong>Pipeline Action:</strong> AutoMorph will automatically obtain base APK ${escapeHtml(verInfo.targetVer || verInfo.currentVer || 'latest')}, apply all ${verInfo.patchCount} configured patches, deterministically sign with your persistent keystore, and publish to GitHub Releases.
+    </div>
+  `;
+
+  if (contentEl) contentEl.innerHTML = diffCardsHtml;
+
+  const buildBtn = document.getElementById('btn-update-modal-build');
+  const configBtn = document.getElementById('btn-update-modal-configure');
+
+  if (buildBtn) {
+    buildBtn.onclick = () => {
+      closeAppUpdateModal();
+      runSingleAppPatch(pkg);
+    };
+  }
+
+  if (configBtn) {
+    configBtn.onclick = () => {
+      closeAppUpdateModal();
+      openAppDrawer(pkg);
+    };
+  }
+
+  modal.classList.add('open');
+}
+
+function closeAppUpdateModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-app-update') return;
+  const modal = document.getElementById('modal-app-update');
+  if (modal) modal.classList.remove('open');
 }
 
 function toggleAllProvPatches(selectAll) {
@@ -2488,6 +2655,7 @@ function renderDrawerBody(app) {
   const container = document.getElementById('drawer-body-content');
   if (!container) return;
 
+  const pkg = app.package || app.package_name;
   const isEnabled = app.enabled !== false;
   const repos = Array.isArray(app.repos) ? app.repos : [];
 
@@ -2502,7 +2670,26 @@ function renderDrawerBody(app) {
       `).join('')
     : `<div style="font-size: 0.8125rem; color: var(--text-muted); padding: 0.5rem 0;">No dedicated repositories configured. Inherits default Morphe repository.</div>`;
 
+  const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
+
   container.innerHTML = `
+    <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+      <label class="form-label" style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Custom Base APK Source</label>
+      <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">
+        For modded or unlisted apps (e.g. InstaPrime), provide a direct base APK download link (Google Drive, Dropbox, Catbox, or CDN).
+      </p>
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <input type="url" id="drawer-base-apk-url" class="form-input" style="flex: 1;" placeholder="https://example.com/base.apk" value="${escapeHtml(baseApkUrl)}">
+        <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save URL</button>
+      </div>
+      <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
+        <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
+        <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Build Automation Status</label>
       <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
@@ -2660,6 +2847,45 @@ window.closeObtainiumModal = closeObtainiumModal;
 window.copyObtainiumJson = copyObtainiumJson;
 window.runSingleAppPatch = runSingleAppPatch;
 window.deleteConfiguredApp = deleteConfigApp;
+window.openAppUpdateModal = openAppUpdateModal;
+window.closeAppUpdateModal = closeAppUpdateModal;
+window.toggleBundleAccordion = toggleBundleAccordion;
+window.toggleBundleSelectAll = toggleBundleSelectAll;
+window.saveCustomApkUrl = saveCustomApkUrl;
+window.handleCustomApkFileSelected = handleCustomApkFileSelected;
+window.state = state;
+window.renderOverview = renderOverview;
+window.renderConfiguredApps = renderConfiguredApps;
+
+// ---------------------------------------------------------------------------
+// Custom Base APK Handlers (for unlisted/modded apps like InstaPrime)
+// ---------------------------------------------------------------------------
+async function saveCustomApkUrl(pkg) {
+  const input = document.getElementById('drawer-base-apk-url');
+  if (!input) return;
+
+  const url = input.value.trim();
+  try {
+    const res = await fetch('/api/config/app/base-apk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package: pkg, base_apk_url: url })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showToast(`Saved base APK URL for ${pkg}!`, 'success');
+    await loadConfig();
+  } catch (err) {
+    showToast(`Failed to save base APK URL: ${err.message}`, 'error');
+  }
+}
+
+async function handleCustomApkFileSelected(pkg, file) {
+  if (!file) return;
+  const statusEl = document.getElementById('drawer-apk-upload-status');
+  if (statusEl) statusEl.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+  showToast(`Staged ${file.name}. Enter a direct download URL or upload via release.`, 'info');
+}
+
 
 async function toggleAppActive(pkg, isChecked) {
   try {
@@ -3559,9 +3785,9 @@ async function triggerPipelineRun() {
 }
 
 function openTerminalAndConnect() {
-  const termOutput = document.getElementById('terminal-output');
+  const termOutput = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   if (termOutput) termOutput.innerHTML = '';
-  openTerminalModal();
+  switchTab('pipeline');
   connectSseStream();
 }
 
@@ -3608,8 +3834,10 @@ function connectSseStream() {
     stopBtn.dataset.mode = 'stop';
     stopBtn.innerHTML = '<span class="material-symbols-rounded">stop_circle</span><span>Stop</span>';
   }
-  badge.className = 'badge badge-pulse badge-info';
-  badge.textContent = 'Streaming';
+  if (badge) {
+    badge.className = 'badge badge-pulse badge-info';
+    badge.textContent = 'Streaming';
+  }
 
   if (triggerBadge) {
     const triggerInfo = getRunTriggerInfo(state.status?.active_run || state.status?.active_lock);
@@ -3641,8 +3869,10 @@ function connectSseStream() {
       const data = JSON.parse(event.data);
       const isSuccess = data.status === 'success';
       const isCancelled = data.returncode === 130 || data.status === 'stopped';
-      badge.className = isSuccess ? 'badge badge-success' : 'badge badge-danger';
-      badge.textContent = isSuccess ? 'Completed' : (isCancelled ? 'Stopped' : 'Failed');
+      if (badge) {
+        badge.className = isSuccess ? 'badge badge-success' : 'badge badge-danger';
+        badge.textContent = isSuccess ? 'Completed' : (isCancelled ? 'Stopped' : 'Failed');
+      }
       if (triggerBadge && (data.package || data.source)) {
         const triggerInfo = getRunTriggerInfo(data);
         triggerBadge.className = 'badge badge-warning';
@@ -3663,8 +3893,10 @@ function connectSseStream() {
     // If the server completes and closes cleanly or stream ended
     loadStatus().then(() => {
       if (!state.status?.is_running) {
-        badge.className = 'badge badge-success';
-        badge.textContent = 'Finished';
+        if (badge) {
+          badge.className = 'badge badge-success';
+          badge.textContent = 'Finished';
+        }
         const stopBtn = document.getElementById('btn-term-stop');
         if (stopBtn) {
           stopBtn.style.display = 'none';

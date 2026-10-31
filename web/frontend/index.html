@@ -77,8 +77,8 @@
   <!-- Google Fonts: Geist & Geist Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="css/morphe.css?v=4.0">
-  <link rel="stylesheet" href="css/morphe.css?v=4.0">
+  <link rel="preload" as="style" href="css/morphe.css?v=4.1.0">
+  <link rel="stylesheet" href="css/morphe.css?v=4.1.0">
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
 </head>
@@ -537,10 +537,48 @@
     </div>
   </div>
 
+  <!-- Modal: App & Patch Update Action -->
+  <div class="modal-overlay" id="modal-app-update" onclick="closeAppUpdateModal(event)">
+    <div class="modal-container" style="max-width: 520px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="app-card-icon-frame" id="update-modal-icon-frame" style="width: 44px; height: 44px;">
+            <span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);" id="update-modal-icon-initial">A</span>
+          </div>
+          <div>
+            <h2 style="font-size: 1rem; font-weight: 600; margin: 0;" id="update-modal-title">Update Available</h2>
+            <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);" id="update-modal-pkg">package</div>
+          </div>
+        </div>
+        <button class="btn btn-icon" onclick="closeAppUpdateModal()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="modal-body" style="padding: 1.25rem;">
+        <div id="update-modal-content">
+          <!-- Populated dynamically with diff cards -->
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.25rem;">
+          <button class="btn btn-secondary btn-sm" onclick="closeAppUpdateModal()">Dismiss</button>
+          <button class="btn btn-secondary btn-sm" id="btn-update-modal-configure">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>Configure</span>
+          </button>
+          <button class="btn btn-primary btn-sm" id="btn-update-modal-build">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>Build & Update Now</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200;"></div>
 
   <!-- Client Application Logic -->
-  <script src="js/app.js?v=4.0"></script>
+  <script src="js/app.js?v=4.1.0"></script>
 </body>
 </html>

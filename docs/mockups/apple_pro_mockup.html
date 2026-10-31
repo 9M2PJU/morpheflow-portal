@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoMorph — Apple Pro Interface</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-canvas: #121316;
+      --bg-sidebar: #18191d;
+      --bg-surface: #1e2025;
+      --bg-surface-hover: #262830;
+      --bg-surface-active: #2e313a;
+      --bg-sunken: #0d0e11;
+      
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-normal: rgba(255, 255, 255, 0.10);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-muted: #6e6e73;
+      
+      --apple-blue: #0071e3;
+      --apple-blue-hover: #0077ed;
+      --apple-blue-subtle: rgba(0, 113, 227, 0.15);
+      --apple-green: #30d158;
+      --apple-green-subtle: rgba(48, 209, 88, 0.15);
+      --apple-amber: #ff9f0a;
+      --apple-amber-subtle: rgba(255, 159, 10, 0.15);
+      --apple-red: #ff453a;
+      --apple-red-subtle: rgba(255, 69, 58, 0.15);
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-pill: 9999px;
+
+      --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
+      --font-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-system);
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* macOS Window Shell */
+    .app-window {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      background: var(--bg-canvas);
+    }
+
+    /* macOS Unified Header Toolbar */
+    .app-toolbar {
+      height: 52px;
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border-normal);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+      user-select: none;
+      flex-shrink: 0;
+      gap: 1rem;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .window-lights {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .light-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .light-close { background: #ff5f56; }
+    .light-min { background: #ffbd2e; }
+    .light-zoom { background: #27c93f; }
+
+    .app-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-glyph {
+      width: 22px;
+      height: 22px;
+      background: linear-gradient(135deg, #0071e3, #4facfe);
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0, 113, 227, 0.4);
+    }
+
+    /* macOS Segmented Control */
+    .segmented-control {
+      display: flex;
+      background: var(--bg-sunken);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .segment-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font-system);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .segment-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .segment-btn.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    }
+
+    .toolbar-center {
+      flex: 1;
+      max-width: 380px;
+    }
+
+    .omni-search {
+      width: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .omni-search input {
+      width: 100%;
+      height: 28px;
+      background: var(--bg-sunken);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-family: var(--font-system);
+      font-size: 0.75rem;
+      padding: 0 2rem 0 1.75rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .omni-search input:focus {
+      border-color: var(--apple-blue);
+      box-shadow: 0 0 0 2px var(--apple-blue-subtle);
+    }
+
+    .omni-search svg {
+      position: absolute;
+      left: 7px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .omni-search .cmd-badge {
+      position: absolute;
+      right: 6px;
+      font-size: 0.625rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .security-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.6875rem;
+      font-weight: 500;
+      color: var(--apple-green);
+      background: var(--apple-green-subtle);
+      border: 1px solid rgba(48, 209, 88, 0.25);
+      padding: 0.25rem 0.5rem;
+      border-radius: var(--radius-pill);
+    }
+
+    .btn-action-primary {
+      background: var(--apple-blue);
+      color: #fff;
+      border: none;
+      font-family: var(--font-system);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.35rem 0.875rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-action-primary:hover {
+      background: var(--apple-blue-hover);
+    }
+
+    .btn-action-primary:active {
+      transform: scale(0.98);
+    }
+
+    /* Workspace Split Body */
+    .app-body {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 52px);
+      overflow: hidden;
+    }
+
+    /* Left Sidebar Rail */
+    .app-sidebar {
+      width: 250px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-normal);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .sidebar-section {
+      padding: 1rem 0.75rem 0.5rem;
+    }
+
+    .sidebar-section-title {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      padding: 0 0.5rem 0.375rem;
+    }
+
+    .sidebar-nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+
+    .sidebar-item:hover {
+      background: var(--bg-surface-hover);
+      color: var(--text-primary);
+    }
+
+    .sidebar-item.active {
+      background: var(--apple-blue-subtle);
+      color: var(--apple-blue);
+      font-weight: 600;
+    }
+
+    .sidebar-item-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .sidebar-count {
+      font-size: 0.6875rem;
+      font-family: var(--font-mono);
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      background: var(--bg-sunken);
+      color: var(--text-muted);
+    }
+
+    .sidebar-item.active .sidebar-count {
+      background: rgba(0, 113, 227, 0.25);
+      color: var(--apple-blue);
+    }
+
+    .sidebar-count.alert {
+      background: var(--apple-amber-subtle);
+      color: var(--apple-amber);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 0.875rem;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-sunken);
+    }
+
+    .storage-meter {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .storage-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+    }
+
+    .storage-bar {
+      height: 4px;
+      background: var(--border-normal);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .storage-bar-fill {
+      width: 12%;
+      height: 100%;
+      background: var(--apple-blue);
+      border-radius: 2px;
+    }
+
+    /* Stage / Main Workspace */
+    .app-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      background: var(--bg-canvas);
+    }
+
+    .stage-header {
+      padding: 1.25rem 1.75rem 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .stage-title-wrap h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .stage-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 0.125rem;
+    }
+
+    .stage-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-normal);
+      color: var(--text-primary);
+      font-family: var(--font-system);
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      transition: background 0.12s ease, border-color 0.12s ease;
+      text-decoration: none;
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-strong);
+    }
+
+    /* Apple Pro Data Table */
+    .stage-content {
+      padding: 1rem 1.75rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .table-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-normal);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .table-row {
+      display: grid;
+      grid-template-columns: 280px 180px 170px 140px minmax(180px, 1fr);
+      align-items: center;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.1s ease;
+      cursor: pointer;
+    }
+
+    .table-row:last-child {
+      border-bottom: none;
+    }
+
+    .table-row:hover {
+      background: var(--bg-surface-hover);
+    }
+
+    .table-row.selected {
+      background: var(--apple-blue-subtle);
+    }
+
+    .table-head {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      background: var(--bg-sunken);
+      border-bottom: 1px solid var(--border-normal);
+      cursor: default;
+    }
+
+    .table-head:hover {
+      background: var(--bg-sunken);
+    }
+
+    /* Target App Identity Cell */
+    .target-identity {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .target-icon {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      min-height: 40px;
+      max-width: 40px;
+      max-height: 40px;
+      border-radius: 9px;
+      background: var(--bg-sunken);
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .target-icon img {
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .target-names {
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+      min-width: 0;
+    }
+
+    .target-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .target-pkg {
+      font-size: 0.6875rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Version Cell */
+    .version-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .ver-installed {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .ver-pill {
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 0.1rem 0.375rem;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .ver-pill.update {
+      background: var(--apple-amber-subtle);
+      color: var(--apple-amber);
+      border: 1px solid rgba(255, 159, 10, 0.3);
+    }
+
+    .ver-pill.uptodate {
+      background: var(--apple-green-subtle);
+      color: var(--apple-green);
+      border: 1px solid rgba(48, 209, 88, 0.3);
+    }
+
+    .ver-target {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+    }
+
+    /* Status Dot */
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .status-dot.success {
+      background: var(--apple-green);
+      box-shadow: 0 0 6px rgba(48, 209, 88, 0.4);
+    }
+
+    .status-dot.waiting {
+      background: var(--text-muted);
+    }
+
+    .status-dot.failed {
+      background: var(--apple-red);
+    }
+
+    /* Row Actions */
+    .row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.375rem;
+    }
+
+    /* Apple Pro Slide-Over Inspector Drawer */
+    .inspector-panel {
+      width: 360px;
+      background: var(--bg-sidebar);
+      border-left: 1px solid var(--border-normal);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .inspector-header {
+      padding: 1.25rem 1.25rem 0.875rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .inspector-header h2 {
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    .inspector-body {
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      flex: 1;
+    }
+
+    .inspector-app-hero {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+    }
+
+    .inspector-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 11px;
+      background: var(--bg-sunken);
+      border: 1px solid var(--border-normal);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .inspector-icon img {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+    }
+
+    .group-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-normal);
+      border-radius: var(--radius-md);
+      padding: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+
+    .group-card-title {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+    }
+
+    .meta-key {
+      color: var(--text-secondary);
+    }
+
+    .meta-val {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    /* Modal Backdrop */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      display: none;
+      place-items: center;
+      z-index: 100;
+    }
+
+    .modal-backdrop.open {
+      display: grid;
+    }
+
+    .modal-dialog {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 600px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal-dialog-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-sidebar);
+    }
+
+    .modal-dialog-body {
+      padding: 1.25rem 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .modal-dialog-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      background: var(--bg-sidebar);
+    }
+
+    /* Native iOS/macOS Switch Toggle */
+    .apple-switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 22px;
+    }
+
+    .apple-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .switch-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: var(--border-strong);
+      border-radius: 22px;
+      transition: background-color 0.2s ease;
+    }
+
+    .switch-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      border-radius: 50%;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    input:checked + .switch-slider {
+      background-color: var(--apple-green);
+    }
+
+    input:checked + .switch-slider:before {
+      transform: translateX(16px);
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-window">
+  <!-- macOS Unified Header Toolbar -->
+  <header class="app-toolbar">
+    <div class="toolbar-left">
+      <div class="window-lights">
+        <div class="light-dot light-close"></div>
+        <div class="light-dot light-min"></div>
+        <div class="light-dot light-zoom"></div>
+      </div>
+      <div class="app-brand">
+        <div class="brand-glyph">A</div>
+        <span>AutoMorph</span>
+      </div>
+
+      <nav class="segmented-control">
+        <button class="segment-btn active" onclick="switchStage('registry')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span>Registry</span>
+        </button>
+        <button class="segment-btn" onclick="switchStage('store')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+          <span>Ecosystem Store</span>
+        </button>
+        <button class="segment-btn" onclick="switchStage('runner')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span>Edge Pipeline</span>
+        </button>
+        <button class="segment-btn" onclick="switchStage('settings')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Settings</span>
+        </button>
+      </nav>
+    </div>
+
+    <div class="toolbar-center">
+      <div class="omni-search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" placeholder="Search targets, bundles, patches (⌘K)...">
+        <span class="cmd-badge">⌘K</span>
+      </div>
+    </div>
+
+    <div class="toolbar-right">
+      <div class="security-chip" title="Permanent AutoMorph PKCS12 Keystore Active">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        <span>Deterministic Seal</span>
+      </div>
+
+      <button class="btn-action-primary" onclick="triggerBuildAll()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>Run Pipeline</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Body -->
+  <div class="app-body">
+    <!-- Left Navigation Rail -->
+    <aside class="app-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Workflow</div>
+        <div class="sidebar-nav-list">
+          <div class="sidebar-item active" onclick="filterRegistry('all')">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              <span>Configured Targets</span>
+            </div>
+            <span class="sidebar-count" id="count-all">2</span>
+          </div>
+
+          <div class="sidebar-item" onclick="filterRegistry('updates')">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+              <span>Updates Available</span>
+            </div>
+            <span class="sidebar-count alert">1</span>
+          </div>
+
+          <div class="sidebar-item" onclick="filterRegistry('ready')">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Compiled & Ready</span>
+            </div>
+            <span class="sidebar-count">2</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Ecosystem Catalog</div>
+        <div class="sidebar-nav-list">
+          <div class="sidebar-item" onclick="switchStage('store')">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              <span>Explore Applications</span>
+            </div>
+            <span class="sidebar-count">1,342</span>
+          </div>
+
+          <div class="sidebar-item" onclick="switchStage('bundles')">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+              <span>Patch Repositories</span>
+            </div>
+            <span class="sidebar-count">364</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Distribution</div>
+        <div class="sidebar-nav-list">
+          <div class="sidebar-item" onclick="openObtainiumModal()">
+            <div class="sidebar-item-left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+              <span>Obtainium Sync Feed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Storage Telemetry Meter (Apple Style) -->
+      <div class="sidebar-footer">
+        <div class="storage-meter">
+          <div class="storage-label-row">
+            <span>Edge Storage</span>
+            <span>324 MB of 10 GB</span>
+          </div>
+          <div class="storage-bar">
+            <div class="storage-bar-fill"></div>
+          </div>
+          <div style="font-size: 0.625rem; color: var(--text-muted); margin-top: 2px;">
+            Next Cron: In 20h 14m (03:00 UTC)
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Stage Workspace -->
+    <main class="app-stage" id="stage-main">
+      <div class="stage-header">
+        <div class="stage-title-wrap">
+          <h1 id="stage-title">Target Application Registry</h1>
+          <div class="stage-subtitle" id="stage-subtitle">Deterministic edge builds signed with permanent AutoMorph keystore</div>
+        </div>
+        <div class="stage-actions">
+          <button class="btn-secondary" onclick="switchStage('store')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Add Target</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="stage-content">
+        <!-- Target Registry Table -->
+        <div class="table-card">
+          <div class="table-row table-head">
+            <div>Target Application</div>
+            <div>Version Diff</div>
+            <div>Mutators & Source</div>
+            <div>Status</div>
+            <div style="text-align: right;">Actions</div>
+          </div>
+
+          <!-- Target Row 1: Reddit -->
+          <div class="table-row selected" onclick="selectApp('com.reddit.frontpage')">
+            <div class="target-identity">
+              <div class="target-icon">
+                <img src="https://play-lh.googleusercontent.com/8FVS0kvM60JwqZWRNzBIlwrZZxJa8vpli8IWaaTo8QXRe1PHmCNJ8UpWoXkGPV3jKEaTY2OVAeYoisOnGJXY=s128-rw" alt="Reddit">
+              </div>
+              <div class="target-names">
+                <span class="target-title">Reddit</span>
+                <span class="target-pkg">com.reddit.frontpage</span>
+              </div>
+            </div>
+
+            <div class="version-cell">
+              <div class="ver-installed">
+                <span>v2024.42.0</span>
+                <span class="ver-pill update">Update Ready</span>
+              </div>
+              <span class="ver-target">Target: v2026.41.0</span>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-weight: 500; color: var(--text-primary);">20 Patches Enforced</span>
+              <span style="font-size: 0.6875rem; color: var(--text-muted);">MorpheApp/morphe-patches</span>
+            </div>
+
+            <div class="status-indicator">
+              <span class="status-dot success"></span>
+              <span style="color: var(--apple-green);">Compiled</span>
+            </div>
+
+            <div class="row-actions" onclick="event.stopPropagation()">
+              <a href="#" class="btn-secondary" title="Download Patched APK">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>APK</span>
+              </a>
+              <a href="https://github.com/wi15d0m/AutoMorph/releases" target="_blank" class="btn-secondary" title="GitHub Release">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              </a>
+              <button class="btn-secondary" onclick="openAppliedPatchesModal('com.reddit.frontpage')">
+                <span>Patches (20)</span>
+              </button>
+              <button class="btn-secondary" onclick="openInspector('com.reddit.frontpage')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Target Row 2: Truecaller -->
+          <div class="table-row" onclick="selectApp('com.truecaller')">
+            <div class="target-identity">
+              <div class="target-icon">
+                <img src="https://play-lh.googleusercontent.com/kVMxXC3fV4cyG56MZunYS2-HYaHh3eM3YTWoDbYaN5-G9xIU2k235hHVQmRrm79tzBSzt0cZ6GsBbzGzGbbMwg=s128-rw" alt="Truecaller">
+              </div>
+              <div class="target-names">
+                <span class="target-title">Truecaller</span>
+                <span class="target-pkg">com.truecaller</span>
+              </div>
+            </div>
+
+            <div class="version-cell">
+              <div class="ver-installed">
+                <span>v26.42.5</span>
+                <span class="ver-pill uptodate">Up to date</span>
+              </div>
+              <span class="ver-target">Target: v26.42.5</span>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-weight: 500; color: var(--text-primary);">14 Patches Enforced</span>
+              <span style="font-size: 0.6875rem; color: var(--text-muted);">MorpheApp/morphe-patches</span>
+            </div>
+
+            <div class="status-indicator">
+              <span class="status-dot success"></span>
+              <span style="color: var(--apple-green);">Compiled</span>
+            </div>
+
+            <div class="row-actions" onclick="event.stopPropagation()">
+              <a href="#" class="btn-secondary" title="Download Patched APK">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>APK</span>
+              </a>
+              <a href="https://github.com/wi15d0m/AutoMorph/releases" target="_blank" class="btn-secondary" title="GitHub Release">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              </a>
+              <button class="btn-secondary" onclick="openAppliedPatchesModal('com.truecaller')">
+                <span>Patches (14)</span>
+              </button>
+              <button class="btn-secondary" onclick="openInspector('com.truecaller')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Slide-Over Inspector Drawer (Apple Style) -->
+    <aside class="inspector-panel" id="inspector-panel">
+      <div class="inspector-header">
+        <h2>Target Inspector</h2>
+        <button class="btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="closeInspector()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="inspector-body">
+        <div class="inspector-app-hero">
+          <div class="inspector-icon">
+            <img id="insp-icon" src="https://play-lh.googleusercontent.com/8FVS0kvM60JwqZWRNzBIlwrZZxJa8vpli8IWaaTo8QXRe1PHmCNJ8UpWoXkGPV3jKEaTY2OVAeYoisOnGJXY=s128-rw" alt="App">
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 1rem;" id="insp-name">Reddit</div>
+            <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);" id="insp-pkg">com.reddit.frontpage</div>
+          </div>
+        </div>
+
+        <div class="group-card">
+          <div class="group-card-title">Automation & Pipeline</div>
+          <div class="meta-row">
+            <span class="meta-key">Active in Nightly Build</span>
+            <label class="apple-switch">
+              <input type="checkbox" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Target Architecture</span>
+            <span class="meta-val">arm64-v8a</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Installed Version</span>
+            <span class="meta-val">2024.42.0</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-key">Recommended Base</span>
+            <span class="meta-val" style="color: var(--apple-amber);">2026.41.0</span>
+          </div>
+        </div>
+
+        <div class="group-card">
+          <div class="group-card-title">Security Seal</div>
+          <div style="font-size: 0.75rem; color: var(--apple-green); font-weight: 600; display: flex; align-items: center; gap: 0.375rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <span>AutoMorph PKCS12 Keystore Bound</span>
+          </div>
+          <p style="font-size: 0.6875rem; color: var(--text-secondary); line-height: 1.4;">
+            Every compiled binary is signed with your private dedicated key so upgrades install over existing apps on your phone without signature mismatch errors.
+          </p>
+        </div>
+
+        <div class="group-card">
+          <div class="group-card-title">Connected Sources</div>
+          <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-primary); padding: 0.375rem 0.5rem; background: var(--bg-sunken); border-radius: 4px; border: 1px solid var(--border-subtle);">
+            MorpheApp/morphe-patches
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto;">
+          <button class="btn-action-primary" style="justify-content: center; padding: 0.625rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>Trigger Single App Patch</span>
+          </button>
+          <button class="btn-secondary" style="justify-content: center; padding: 0.5rem;" onclick="openAppliedPatchesModal('com.reddit.frontpage')">
+            <span>Inspect All 20 Applied Patches</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Modal 1: Applied Patches Inspector -->
+<div class="modal-backdrop" id="modal-applied-patches" onclick="closeAppliedPatchesModal(event)">
+  <div class="modal-dialog" onclick="event.stopPropagation()">
+    <div class="modal-dialog-header">
+      <div>
+        <h2 style="font-size: 1rem; font-weight: 600;">Reddit — Applied Patches</h2>
+        <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);">com.reddit.frontpage • 20 Patches Enforced</div>
+      </div>
+      <button class="btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="closeAppliedPatchesModal()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-dialog-body">
+      <div style="position: relative;">
+        <input type="text" placeholder="Filter patches by name or function..." style="width: 100%; height: 32px; background: var(--bg-sunken); border: 1px solid var(--border-normal); border-radius: 6px; color: var(--text-primary); padding: 0 0.75rem; font-size: 0.8125rem; outline: none;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+        <div style="padding: 0.75rem; background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: 6px; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+          <div>
+            <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">Hide Ads</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">Removes sponsored posts, banner promotions, and recommendation carousel ad units.</div>
+          </div>
+          <span style="font-size: 0.6875rem; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">Morphe Patches</span>
+        </div>
+
+        <div style="padding: 0.75rem; background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: 6px; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+          <div>
+            <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">Sanitize Sharing Links</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">Strips tracking query parameters (?utm_source, ?si) from copied post and profile URLs.</div>
+          </div>
+          <span style="font-size: 0.6875rem; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">Morphe Patches</span>
+        </div>
+
+        <div style="padding: 0.75rem; background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: 6px; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem;">
+          <div>
+            <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">AMOLED Dark Theme</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">Forces pitch-black #000000 background for power-saving on OLED displays.</div>
+          </div>
+          <span style="font-size: 0.6875rem; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border-subtle); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">Morphe Patches</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-dialog-footer">
+      <button class="btn-secondary" onclick="closeAppliedPatchesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchStage(stage) {
+    document.querySelectorAll('.segmented-control .segment-btn').forEach(btn => btn.classList.remove('active'));
+    if (window.event?.currentTarget) window.event.currentTarget.classList.add('active');
+    
+    const titleEl = document.getElementById('stage-title');
+    const subEl = document.getElementById('stage-subtitle');
+    if (stage === 'registry') {
+      titleEl.textContent = 'Target Application Registry';
+      subEl.textContent = 'Deterministic edge builds signed with permanent AutoMorph keystore';
+    } else if (stage === 'store') {
+      titleEl.textContent = 'Community Ecosystem Store';
+      subEl.textContent = '1,342 Android applications with verified community mutator bundles';
+    } else if (stage === 'bundles') {
+      titleEl.textContent = 'Patch Repositories';
+      subEl.textContent = '364 community Morphe repositories with star ratings and changelogs';
+    } else if (stage === 'runner') {
+      titleEl.textContent = 'Cloudflare Edge Pipeline';
+      subEl.textContent = 'Automated cron schedulers, build dispatchers, and runner synchronization';
+    } else if (stage === 'settings') {
+      titleEl.textContent = 'System & Environment Settings';
+      subEl.textContent = 'Keystore security, tunnels, GitHub tokens, and notification dispatch';
+    }
+  }
+
+  function selectApp(pkg) {
+    document.querySelectorAll('.table-row').forEach(r => r.classList.remove('selected'));
+    if (window.event?.currentTarget) window.event.currentTarget.classList.add('selected');
+    openInspector(pkg);
+  }
+
+  function openInspector(pkg) {
+    const panel = document.getElementById('inspector-panel');
+    panel.style.display = 'flex';
+    if (pkg === 'com.reddit.frontpage') {
+      document.getElementById('insp-name').textContent = 'Reddit';
+      document.getElementById('insp-pkg').textContent = 'com.reddit.frontpage';
+      document.getElementById('insp-icon').src = 'https://play-lh.googleusercontent.com/8FVS0kvM60JwqZWRNzBIlwrZZxJa8vpli8IWaaTo8QXRe1PHmCNJ8UpWoXkGPV3jKEaTY2OVAeYoisOnGJXY=s128-rw';
+    } else {
+      document.getElementById('insp-name').textContent = 'Truecaller';
+      document.getElementById('insp-pkg').textContent = 'com.truecaller';
+      document.getElementById('insp-icon').src = 'https://play-lh.googleusercontent.com/kVMxXC3fV4cyG56MZunYS2-HYaHh3eM3YTWoDbYaN5-G9xIU2k235hHVQmRrm79tzBSzt0cZ6GsBbzGzGbbMwg=s128-rw';
+    }
+  }
+
+  function closeInspector() {
+    document.getElementById('inspector-panel').style.display = 'none';
+  }
+
+  function openAppliedPatchesModal(pkg) {
+    document.getElementById('modal-applied-patches').classList.add('open');
+  }
+
+  function closeAppliedPatchesModal(e) {
+    if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-applied-patches') return;
+    document.getElementById('modal-applied-patches').classList.remove('open');
+  }
+</script>
+
+</body>
+</html>
