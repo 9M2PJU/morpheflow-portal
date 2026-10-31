@@ -2382,12 +2382,57 @@ function renderConfiguredApps() {
   }).join('');
 }
 
-// // Hallmark Monolith: Community Store Subtabs & Catalog Renderer
+// Hallmark Monolith: Community Store Subtabs, Sorting, Filter & Catalog Renderer
 // ---------------------------------------------------------------------------
 let storeCurrentCategory = 'all';
 let storeSearchQuery = '';
+let storeSortOrder = 'popular';
 let storeDisplayLimit = 60;
 let currentStoreSubtab = 'apps';
+let storeObserver = null;
+
+function changeStoreSort(sortVal) {
+  storeSortOrder = sortVal || 'popular';
+  renderStoreCatalog(true);
+}
+
+function changeStoreCategory(catVal) {
+  storeCurrentCategory = catVal || 'all';
+  // Synchronize category pills active state
+  document.querySelectorAll('#store-category-pills .cat-pill').forEach(p => {
+    if (p.dataset.cat === storeCurrentCategory) {
+      p.classList.add('active');
+    } else {
+      p.classList.remove('active');
+    }
+  });
+  const select = document.getElementById('store-category-select');
+  if (select && select.value !== storeCurrentCategory) {
+    select.value = storeCurrentCategory;
+  }
+  renderStoreCatalog(true);
+}
+
+function updateStoreCategoryDropdown(allApps) {
+  const select = document.getElementById('store-category-select');
+  if (!select) return;
+
+  const catCounts = {};
+  for (const app of allApps) {
+    const c = app.category || 'Tools & Utilities';
+    catCounts[c] = (catCounts[c] || 0) + 1;
+  }
+
+  const sortedCats = Object.entries(catCounts).sort((a, b) => b[1] - a[1]);
+  const currentVal = storeCurrentCategory;
+
+  select.innerHTML = `
+    <option value="all">All Categories (${allApps.length})</option>
+    ${sortedCats.map(([cat, count]) => `
+      <option value="${escapeHtml(cat)}" ${cat === currentVal ? 'selected' : ''}>${escapeHtml(cat)} (${count})</option>
+    `).join('')}
+  `;
+}
 
 function switchStoreSubtab(subtab) {
   currentStoreSubtab = subtab;
@@ -2396,6 +2441,7 @@ function switchStoreSubtab(subtab) {
   const appsGrid = document.getElementById('store-catalog-grid');
   const bundlesGrid = document.getElementById('store-bundles-grid');
   const catPills = document.getElementById('store-category-pills');
+  const sentinel = document.getElementById('store-scroll-sentinel');
 
   if (subtab === 'apps') {
     btnApps?.classList.add('active');
@@ -2403,13 +2449,40 @@ function switchStoreSubtab(subtab) {
     if (appsGrid) appsGrid.style.display = 'grid';
     if (bundlesGrid) bundlesGrid.style.display = 'none';
     if (catPills) catPills.style.display = 'flex';
+    if (sentinel) sentinel.style.display = 'block';
   } else {
     btnBundles?.classList.add('active');
     btnApps?.classList.remove('active');
     if (appsGrid) appsGrid.style.display = 'none';
     if (bundlesGrid) bundlesGrid.style.display = 'grid';
     if (catPills) catPills.style.display = 'none';
+    if (sentinel) sentinel.style.display = 'none';
     renderStoreBundles();
+  }
+}
+
+function setupStoreInfiniteScroll() {
+  const sentinel = document.getElementById('store-scroll-sentinel');
+  if (!sentinel) return;
+
+  if (storeObserver) {
+    storeObserver.disconnect();
+  }
+
+  if ('IntersectionObserver' in window) {
+    storeObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const allApps = Object.values(morpheCatalogData || {});
+          if (storeDisplayLimit < allApps.length) {
+            storeDisplayLimit += 60;
+            renderStoreCatalog(false);
+          }
+        }
+      }
+    }, { rootMargin: '300px' });
+
+    storeObserver.observe(sentinel);
   }
 }
 
@@ -2438,6 +2511,8 @@ async function renderStoreCatalog(resetLimit = true) {
   }
 
   const allApps = Object.values(morpheCatalogData);
+  updateStoreCategoryDropdown(allApps);
+
   const q = storeSearchQuery.toLowerCase().trim();
   const cat = storeCurrentCategory;
 
@@ -2450,9 +2525,38 @@ async function renderStoreCatalog(resetLimit = true) {
     if (q) {
       const name = (app.name || '').toLowerCase();
       const pkg = (app.package || '').toLowerCase();
-      return name.includes(q) || pkg.includes(q);
+      const desc = (app.description || '').toLowerCase();
+      return name.includes(q) || pkg.includes(q) || desc.includes(q);
     }
     return true;
+  });
+
+  // Apply sorting options
+  filtered.sort((a, b) => {
+    const aName = a.name || getFallbackAppName(a.package);
+    const bName = b.name || getFallbackAppName(b.package);
+
+    if (storeSortOrder === 'name-asc') {
+      return aName.localeCompare(bName);
+    }
+    if (storeSortOrder === 'name-desc') {
+      return bName.localeCompare(aName);
+    }
+    if (storeSortOrder === 'updated-desc') {
+      const aUp = a.updated_at || a.firstSeen || 0;
+      const bUp = b.updated_at || b.firstSeen || 0;
+      return bUp - aUp;
+    }
+    if (storeSortOrder === 'updated-asc') {
+      const aUp = a.updated_at || a.firstSeen || 0;
+      const bUp = b.updated_at || b.firstSeen || 0;
+      return aUp - bUp;
+    }
+    // Default: 'popular' by number of sources/patches
+    const aSources = a.supported_repos?.length || (a.repo_details?.length || 1);
+    const bSources = b.supported_repos?.length || (b.repo_details?.length || 1);
+    if (bSources !== aSources) return bSources - aSources;
+    return aName.localeCompare(bName);
   });
 
   if (filtered.length === 0) {
@@ -2472,7 +2576,7 @@ async function renderStoreCatalog(resetLimit = true) {
     const iconUrl = app.icon_url;
 
     const iconHtml = iconUrl
-      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1.125rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight: 600; font-size: 1.125rem; color: var(--text-muted);\\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
       : `<span style="font-weight: 600; font-size: 1.125rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
 
     const repoCount = app.supported_repos?.length || (app.repo_details?.length || 1);
@@ -2480,15 +2584,15 @@ async function renderStoreCatalog(resetLimit = true) {
     return `
       <div class="store-card" data-pkg="${escapeHtml(app.package)}">
         <div class="store-card-header">
-          <div class="store-card-avatar" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px;">
+          <div class="store-card-avatar" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px; cursor: pointer;" onclick="openStoreAppDetails('${escapeHtml(app.package)}')" title="View application details for ${escapeHtml(friendlyName)}">
             ${iconHtml}
           </div>
-          <div class="store-card-identity">
+          <div class="store-card-identity" style="cursor: pointer;" onclick="openStoreAppDetails('${escapeHtml(app.package)}')" title="View application details for ${escapeHtml(friendlyName)}">
             <h3 class="store-card-name" title="${escapeHtml(friendlyName)}">${escapeHtml(friendlyName)}</h3>
             <span class="store-card-pkg" title="${escapeHtml(app.package)}">${escapeHtml(app.package)}</span>
           </div>
         </div>
-        <p class="store-card-desc">${escapeHtml(app.description || 'Verified Android ecosystem application with compatible community patch bundles.')}</p>
+        <p class="store-card-desc" style="cursor: pointer;" onclick="openStoreAppDetails('${escapeHtml(app.package)}')" title="Click to view details">${escapeHtml(app.description || 'Verified Android ecosystem application with compatible community patch bundles.')}</p>
         <div class="store-card-meta">
           <span class="store-tag">${escapeHtml(app.category || 'Tools')}</span>
           <span class="store-tag">${repoCount} Source${repoCount > 1 ? 's' : ''}</span>
@@ -2499,7 +2603,7 @@ async function renderStoreCatalog(resetLimit = true) {
                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
                  <span>Configured</span>
                </button>`
-            : `<button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;" onclick="openProvisionModal('${escapeHtml(friendlyName).replace(/'/g, "\'")}', '${escapeHtml(app.package)}')">
+            : `<button class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;" onclick="openProvisionModal('${escapeHtml(friendlyName).replace(/'/g, "\\'")}', '${escapeHtml(app.package)}')">
                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                  <span>1-Click Provision</span>
                </button>`
@@ -2513,7 +2617,7 @@ async function renderStoreCatalog(resetLimit = true) {
     const loadMoreContainer = document.createElement('div');
     loadMoreContainer.style.gridColumn = '1 / -1';
     loadMoreContainer.style.textAlign = 'center';
-    loadMoreContainer.style.padding = '2rem 1rem';
+    loadMoreContainer.style.padding = '1.5rem 1rem';
     loadMoreContainer.innerHTML = `
       <button class="btn btn-secondary" id="btn-store-load-more">
         <span>Load More (${filtered.length - storeDisplayLimit} remaining)</span>
@@ -2525,6 +2629,9 @@ async function renderStoreCatalog(resetLimit = true) {
       renderStoreCatalog(false);
     });
   }
+
+  // Set up or re-attach autoscroll
+  setupStoreInfiniteScroll();
 }
 
 function renderStoreBundles() {
@@ -2985,10 +3092,10 @@ async function confirmProvisionApp() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
 
-    showToast(`Provisioned ${name || pkg} with ${selectedPatches.length} patches!`, 'success');
+    showToast(`Provisioned ${name || pkg} with ${selectedPatches.length} patches into build queue!`, 'success');
     closeProvisionModal();
     await loadConfig();
-    switchTab('overview');
+    renderStoreCatalog(false);
   } catch (err) {
     showToast(`Provisioning failed: ${err.message}`, 'error');
   } finally {
@@ -3725,13 +3832,27 @@ let currentDrawerBundles = [];
 let currentDrawerPatchesState = new Map();
 let currentDrawerSearchFilter = '';
 
-function openAppDrawer(pkg) {
+async function openAppDrawer(pkg) {
   currentDrawerPkg = pkg;
   currentDrawerSearchFilter = '';
   currentDrawerPatchesState.clear();
 
   const drawer = document.getElementById('app-drawer-backdrop');
   if (!drawer) return;
+
+  if (!rawBundlesData || rawBundlesData.length === 0) {
+    const container = document.getElementById('drawer-body-content');
+    if (container) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+          <div class="pulse-dot" style="margin: 0 auto 0.75rem auto;"></div>
+          <div style="font-size: 0.8125rem; font-weight: 500;">Loading patch ecosystem…</div>
+        </div>
+      `;
+    }
+    drawer.classList.add('open');
+    await fetchMorpheCatalog();
+  }
 
   const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg, repos: [] };
   const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
@@ -4102,10 +4223,14 @@ function renderDrawerAvailableBundles() {
     if (d.dataset.bundleRepo) openRepos.add(d.dataset.bundleRepo);
   });
 
-  let hasRenderedUniversalBundleSeparator = false;
-  let hasAppSpecificBundlePrior = false;
+  // Filter bundles based on search query
+  let totalAppCount = 0;
+  let totalUnivCount = 0;
 
-  const html = currentDrawerBundles.map((bundle, bundleIdx) => {
+  const appBundles = [];
+  const univBundles = [];
+
+  currentDrawerBundles.forEach((bundle, bundleIdx) => {
     let patches = bundle.patches || [];
     if (currentDrawerSearchFilter) {
       patches = patches.filter(p =>
@@ -4114,131 +4239,169 @@ function renderDrawerAvailableBundles() {
       );
     }
 
-    if (currentDrawerSearchFilter && patches.length === 0) {
-      return '';
+    const appP = patches.filter(p => !p.isUniversal);
+    const univP = patches.filter(p => p.isUniversal);
+
+    totalAppCount += appP.length;
+    totalUnivCount += univP.length;
+
+    if (appP.length > 0 || (!currentDrawerSearchFilter && (bundle.patches || []).some(p => !p.isUniversal))) {
+      appBundles.push({
+        bundle,
+        bundleIdx,
+        patches: appP,
+        isUniversalSection: false
+      });
     }
 
-    const totalInBundle = (bundle.patches || []).length;
+    if (univP.length > 0 || (!currentDrawerSearchFilter && (bundle.patches || []).some(p => p.isUniversal))) {
+      univBundles.push({
+        bundle,
+        bundleIdx,
+        patches: univP,
+        isUniversalSection: true
+      });
+    }
+  });
+
+  const renderDrawerItem = (p, bundleRepo) => {
+    const key = `${p.name}@@${bundleRepo}`;
+    const isChecked = Boolean(currentDrawerPatchesState.get(key)?.enabled);
+
+    return `
+      <label class="prov-patch-item" style="padding: 0.35rem 0.5rem; display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" data-drawer-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleDrawerPatch('${escapeHtml(key)}', this.checked)" style="margin-top: 0.15rem; accent-color: var(--accent-base);">
+        <div class="prov-patch-info" style="flex: 1; min-width: 0;">
+          <div class="prov-patch-name" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+            <span>${escapeHtml(p.name)}</span>
+            ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
+            ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+          </div>
+          <div class="prov-patch-desc" style="font-size: 0.6875rem; color: var(--text-secondary); line-height: 1.3; margin-top: 0.125rem;">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
+        </div>
+      </label>
+    `;
+  };
+
+  const renderDrawerBundleAccordion = (groupItem, subIdx) => {
+    const { bundle, patches, isUniversalSection } = groupItem;
+    const bundleRepo = bundle.bundleRepo;
+    const totalInBundle = patches.length;
     let enabledInBundle = 0;
-    for (const p of (bundle.patches || [])) {
-      const key = `${p.name}@@${bundle.bundleRepo}`;
+    for (const p of patches) {
+      const key = `${p.name}@@${bundleRepo}`;
       if (currentDrawerPatchesState.get(key)?.enabled) {
         enabledInBundle++;
       }
     }
 
-    const appPatches = patches.filter(p => !p.isUniversal);
-    const univPatches = patches.filter(p => p.isUniversal);
-
-    const isPurelyUniversalBundle = (bundle.patches || []).length > 0 && (bundle.patches || []).every(p => p.isUniversal);
-    if (!isPurelyUniversalBundle && (bundle.patches || []).length > 0) {
-      hasAppSpecificBundlePrior = true;
-    }
-
-    let bundleSeparatorHtml = '';
-    if (isPurelyUniversalBundle && hasAppSpecificBundlePrior && !hasRenderedUniversalBundleSeparator) {
-      hasRenderedUniversalBundleSeparator = true;
-      bundleSeparatorHtml = `
-        <div class="patch-section-divider" style="margin: 0.75rem 0 0.5rem 0;" role="separator" aria-label="Universal Patch Sources">
-          <div class="patch-section-divider-line"></div>
-          <span class="patch-section-divider-label">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-            Universal Patch Sources · Compatible with All Apps
-          </span>
-          <div class="patch-section-divider-line"></div>
-        </div>
-      `;
-    }
-
-    const renderDrawerItem = (p) => {
-      const key = `${p.name}@@${bundle.bundleRepo}`;
-      const isChecked = Boolean(currentDrawerPatchesState.get(key)?.enabled);
-
-      return `
-        <label class="prov-patch-item" style="padding: 0.35rem 0.5rem;">
-          <input type="checkbox" data-drawer-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleDrawerPatch('${escapeHtml(key)}', this.checked)">
-          <div class="prov-patch-info">
-            <div class="prov-patch-name" style="font-size: 0.75rem;">
-              <span>${escapeHtml(p.name)}</span>
-              ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; margin-left: 0.25rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
-              ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem; margin-left: 0.25rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
-            </div>
-            <div class="prov-patch-desc" style="font-size: 0.6875rem;">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
-          </div>
-        </label>
-      `;
-    };
-
-    let patchesHtml = '';
-    if (patches.length === 0) {
-      patchesHtml = `
-        <div style="font-size: 0.6875rem; color: var(--text-muted); padding: 0.5rem 0.75rem;">
-          No patches listed in local cache for this source. Patches will be resolved during compilation.
-        </div>
-      `;
-    } else {
-      const appHtml = appPatches.map(renderDrawerItem).join('');
-      const univHtml = univPatches.map(renderDrawerItem).join('');
-
-      if (appPatches.length > 0 && univPatches.length > 0) {
-        patchesHtml = `
-          ${appHtml}
-          <div class="patch-section-divider" role="separator" aria-label="Universal Patches" style="margin: 0.5rem 0;">
-            <div class="patch-section-divider-line"></div>
-            <span class="patch-section-divider-label">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              Universal Patches (${univPatches.length}) · Compatible with All Apps
-            </span>
-            <div class="patch-section-divider-line"></div>
-          </div>
-          ${univHtml}
-        `;
-      } else if (univPatches.length > 0 && appPatches.length === 0) {
-        patchesHtml = `
-          <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Universal Patches">
-            <div class="patch-section-divider-line"></div>
-            <span class="patch-section-divider-label">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              Universal Bundle · ${univPatches.length} Patches
-            </span>
-            <div class="patch-section-divider-line"></div>
-          </div>
-          ${univHtml}
-        `;
-      } else {
-        patchesHtml = appHtml;
-      }
-    }
-
-    const isOpen = openRepos.has(bundle.bundleRepo) || Boolean(currentDrawerSearchFilter) || (openRepos.size === 0 && bundleIdx === 0);
+    const isOpen = openRepos.has(bundleRepo) || Boolean(currentDrawerSearchFilter) || (openRepos.size === 0 && subIdx === 0);
 
     return `
-      ${bundleSeparatorHtml}
-      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundle.bundleRepo)}" ${isOpen ? 'open' : ''} style="flex-shrink: 0; width: 100%; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised);">
-        <summary class="prov-bundle-header" style="padding: 0.5rem 0.75rem;">
-          <div class="prov-bundle-title-col">
-            <span class="prov-bundle-name" style="font-size: 0.8125rem;">${escapeHtml(bundle.bundleName)}</span>
-            <span class="prov-bundle-author" style="font-size: 0.6875rem;">by ${escapeHtml(bundle.bundleAuthor || 'Community')}</span>
+      <details class="prov-bundle-accordion" data-bundle-repo="${escapeHtml(bundleRepo)}" data-section="${isUniversalSection ? 'univ' : 'app'}" ${isOpen ? 'open' : ''} style="flex-shrink: 0; width: 100%; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised); margin-bottom: 0.5rem;">
+        <summary class="prov-bundle-header" style="padding: 0.5rem 0.75rem; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between;">
+          <div class="prov-bundle-title-col" style="display: flex; align-items: center; gap: 0.375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span class="prov-bundle-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">${isUniversalSection ? '🌐' : '📦'} ${escapeHtml(bundle.bundleName)}</span>
+            <span class="prov-bundle-author" style="font-size: 0.6875rem; color: var(--text-muted);">by ${escapeHtml(bundle.bundleAuthor || 'Community')}</span>
           </div>
-          <div class="prov-bundle-ctrls">
-            <span class="prov-bundle-count" data-drawer-count-repo="${escapeHtml(bundle.bundleRepo)}" style="font-size: 0.6875rem;">${enabledInBundle}/${totalInBundle}</span>
-            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleAll('${escapeHtml(bundle.bundleRepo)}', true)">All</button>
-            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleAll('${escapeHtml(bundle.bundleRepo)}', false)">None</button>
+          <div class="prov-bundle-ctrls" style="display: flex; align-items: center; gap: 0.375rem; flex-shrink: 0;">
+            <span class="prov-bundle-count" data-drawer-count-repo="${escapeHtml(bundleRepo)}" style="font-size: 0.6875rem; color: var(--text-muted); font-weight: 500;">${enabledInBundle}/${totalInBundle}</span>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleSubAll('${escapeHtml(bundleRepo)}', ${isUniversalSection}, true)">All</button>
+            <button type="button" class="btn-micro" onclick="event.preventDefault(); toggleDrawerBundleSubAll('${escapeHtml(bundleRepo)}', ${isUniversalSection}, false)">None</button>
             <svg class="prov-bundle-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </div>
         </summary>
         <div class="prov-bundle-body" style="padding: 0.375rem; background: var(--surface-lowest); max-height: 220px; overflow-y: auto;">
-          ${patchesHtml}
+          ${patches.map(p => renderDrawerItem(p, bundleRepo)).join('')}
         </div>
       </details>
     `;
-  }).join('');
+  };
+
+  let html = '';
+
+  // SECTION 1: App-Specific Patches
+  if (appBundles.length > 0) {
+    html += `
+      <div class="drawer-section-wrapper" id="drawer-section-app" style="margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-hairline);">
+          <div style="display: flex; align-items: center; gap: 0.375rem;">
+            <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">📦 App-Specific Patches</span>
+            <span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700;">${totalAppCount}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.25rem;">
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('app', true)">Select All</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('app', false)">Clear</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('app', true)">Expand</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('app', false)">Collapse</button>
+          </div>
+        </div>
+        <div id="drawer-app-bundles-sublist">
+          ${appBundles.map((g, idx) => renderDrawerBundleAccordion(g, idx)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // SECTION 2: Universal Patches & Mutators
+  if (univBundles.length > 0) {
+    html += `
+      <div class="drawer-section-wrapper" id="drawer-section-univ">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-hairline);">
+          <div style="display: flex; align-items: center; gap: 0.375rem;">
+            <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">🌐 Universal Patches & Mutators</span>
+            <span class="badge" style="font-size: 0.625rem; font-weight: 700;">${totalUnivCount}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.25rem;">
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('univ', true)">Select All</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('univ', false)">Clear</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('univ', true)">Expand</button>
+            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('univ', false)">Collapse</button>
+          </div>
+        </div>
+        <div id="drawer-univ-bundles-sublist">
+          ${univBundles.map((g, idx) => renderDrawerBundleAccordion(g, idx)).join('')}
+        </div>
+      </div>
+    `;
+  }
 
   container.innerHTML = html || `
     <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
       No patches found matching "${escapeHtml(currentDrawerSearchFilter)}".
     </div>
   `;
+}
+
+function toggleDrawerBundleSubAll(bundleRepo, isUniversal, selectAll) {
+  for (const [key, item] of currentDrawerPatchesState.entries()) {
+    if (item.repo === bundleRepo && Boolean(item.isUniversal) === isUniversal) {
+      item.enabled = Boolean(selectAll);
+    }
+  }
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+}
+
+function toggleDrawerSectionAll(sectionType, selectAll) {
+  const isUniversal = sectionType === 'univ';
+  for (const [key, item] of currentDrawerPatchesState.entries()) {
+    if (Boolean(item.isUniversal) === isUniversal) {
+      item.enabled = Boolean(selectAll);
+    }
+  }
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+}
+
+function toggleDrawerSectionExpand(sectionType, isExpand) {
+  const containerId = sectionType === 'app' ? 'drawer-app-bundles-sublist' : 'drawer-univ-bundles-sublist';
+  const sublist = document.getElementById(containerId);
+  if (!sublist) return;
+
+  sublist.querySelectorAll('details.prov-bundle-accordion').forEach(d => {
+    d.open = isExpand;
+  });
 }
 
 function toggleAllDrawerPatches(selectAll) {
@@ -4478,16 +4641,33 @@ function getObtainiumRepoSlug() {
   return repo.startsWith('http') ? repo.replace(/.*github\.com\//, '') : repo;
 }
 
+function toCaseInsensitiveRegexPattern(str) {
+  if (!str) return '';
+  return str.split('').map(c => {
+    if (/[a-zA-Z]/.test(c)) {
+      return `[${c.toLowerCase()}${c.toUpperCase()}]`;
+    }
+    return c.replace(/([.*+?^${}()|[\]\/\\])/g, '\\$1');
+  }).join('');
+}
+
 function buildObtainiumAppPayload(pkg) {
   const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg };
   const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
   const appName = app.name || catalogItem?.name || getFallbackAppName(pkg);
   const repo = getObtainiumRepoSlug();
 
+  const ciPkg = toCaseInsensitiveRegexPattern(pkg);
+  const ciName = toCaseInsensitiveRegexPattern(appName);
+
   const additionalSettings = JSON.stringify({
     fallbackToOlderReleases: true,
-    filterReleaseTitlesByRegEx: appName,
-    apkFilterRegEx: appName.toLowerCase()
+    filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
+    apkFilterRegEx: `^${ciPkg}_`,
+    releaseTitleAsVersion: true,
+    versionExtractionRegEx: 'v?([0-9][0-9a-zA-Z._-]+)$',
+    matchGroupToUse: '1',
+    sortMethodChoice: 'date'
   });
 
   return {
@@ -4721,9 +4901,9 @@ function downloadObtainiumJson() {
 }
 
 function openDirectObtainiumDeepLink(e) {
+  if (e && e.preventDefault) e.preventDefault();
   const selected = Array.from(obtainiumSelectedApps);
   if (selected.length === 0) {
-    if (e && e.preventDefault) e.preventDefault();
     showToast('Please select at least one app to open in Obtainium', 'error');
     return;
   }
@@ -4739,15 +4919,26 @@ function openDirectObtainiumDeepLink(e) {
   const deepLink = getObtainiumDirectDeepLink();
   showToast(`Opening ${selected.length} app${selected.length > 1 ? 's' : ''} in Obtainium…`, 'info');
 
-  // If clicked via a button or if event target is not an anchor tag following href:
-  if (!e || (e.target && e.target.tagName !== 'A' && !e.target.closest('a'))) {
-    window.location.href = deepLink;
-  }
+  // Trigger navigation
+  window.location.href = deepLink;
 }
 
 // Attach globally
 window.switchTab = switchTab;
 window.openAppDrawer = openAppDrawer;
+window.openStoreAppDetails = openStoreAppDetails;
+window.closeStoreDetailsModal = closeStoreDetailsModal;
+window.syncCommunityCatalogNow = syncCommunityCatalogNow;
+window.loadCatalogSyncState = loadCatalogSyncState;
+window.changeStoreSort = changeStoreSort;
+window.changeStoreCategory = changeStoreCategory;
+window.toggleProvSectionAll = toggleProvSectionAll;
+window.toggleProvSectionExpand = toggleProvSectionExpand;
+window.toggleProvBundleSectionAccordion = toggleProvBundleSectionAccordion;
+window.toggleSubBundleSelectAll = toggleSubBundleSelectAll;
+window.toggleDrawerSectionAll = toggleDrawerSectionAll;
+window.toggleDrawerSectionExpand = toggleDrawerSectionExpand;
+window.toggleDrawerBundleSubAll = toggleDrawerBundleSubAll;
 window.closeAppDrawer = closeAppDrawer;
 window.removeDrawerRepo = removeDrawerRepo;
 window.addDrawerRepo = addDrawerRepo;
@@ -6597,7 +6788,13 @@ try {
   sessionStorage.removeItem('morphe_catalog_data_v5');
   sessionStorage.removeItem('morphe_catalog_data_v6');
   const cachedCatalog = sessionStorage.getItem('morphe_catalog_data_v7');
-  if (cachedCatalog) morpheCatalogData = JSON.parse(cachedCatalog);
+  const cachedBundles = sessionStorage.getItem('morphe_bundles_data_v7');
+  const cachedCompat = sessionStorage.getItem('morphe_compat_data_v7');
+  if (cachedCatalog && cachedBundles) {
+    morpheCatalogData = JSON.parse(cachedCatalog);
+    rawBundlesData = JSON.parse(cachedBundles);
+    if (cachedCompat) rawCompatibilitiesData = JSON.parse(cachedCompat);
+  }
 } catch (_) {}
 
 let isFetchingMorpheCatalog = false;
@@ -6605,17 +6802,27 @@ let isFetchingMorpheCatalog = false;
 async function fetchMorpheCatalog(force = false) {
   if (force) {
     morpheCatalogData = null;
+    rawBundlesData = [];
+    rawCompatibilitiesData = [];
     try {
       sessionStorage.removeItem('morphe_catalog_data_v7');
+      sessionStorage.removeItem('morphe_bundles_data_v7');
+      sessionStorage.removeItem('morphe_compat_data_v7');
     } catch (_) {}
   }
-  if (morpheCatalogData) return morpheCatalogData;
+  if (!force && morpheCatalogData && rawBundlesData && rawBundlesData.length > 0) {
+    return morpheCatalogData;
+  }
 
   if (!force) {
     try {
       const cached = sessionStorage.getItem('morphe_catalog_data_v7');
-      if (cached) {
+      const cachedBundles = sessionStorage.getItem('morphe_bundles_data_v7');
+      const cachedCompat = sessionStorage.getItem('morphe_compat_data_v7');
+      if (cached && cachedBundles) {
         morpheCatalogData = JSON.parse(cached);
+        rawBundlesData = JSON.parse(cachedBundles);
+        if (cachedCompat) rawCompatibilitiesData = JSON.parse(cachedCompat);
         return morpheCatalogData;
       }
     } catch (_) {}
@@ -6818,6 +7025,8 @@ async function fetchMorpheCatalog(force = false) {
     morpheCatalogData = catalog;
     try {
       sessionStorage.setItem('morphe_catalog_data_v7', JSON.stringify(catalog));
+      sessionStorage.setItem('morphe_bundles_data_v7', JSON.stringify(bundles));
+      sessionStorage.setItem('morphe_compat_data_v7', JSON.stringify(compatibilities));
     } catch (_) {}
     return catalog;
   } catch (err) {

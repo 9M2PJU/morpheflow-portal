@@ -225,7 +225,8 @@ jobs:
               ver_dir=$(basename $(dirname "$apk"))
               pkg_dir=$(basename $(dirname $(dirname "$apk")))
               
-              app_name="$pkg_dir"
+              app_name=$(python3 -c "import os, json; cat=json.load(open('tools/automorph-data/state/morphe_catalog.json')) if os.path.exists('tools/automorph-data/state/morphe_catalog.json') else {}; print(cat.get('store',{}).get('${pkg_dir}',{}).get('name') or '${pkg_dir}')" 2>/dev/null || echo "$pkg_dir")
+              if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then app_name="$pkg_dir"; fi
               if [ "$pkg_dir" = "com.instaprime.android" ]; then app_name="InstaPrime"; fi
               if [ "$pkg_dir" = "com.reddit.frontpage" ]; then app_name="Reddit"; fi
               if [ "$pkg_dir" = "com.google.android.youtube" ]; then app_name="YouTube"; fi
@@ -234,7 +235,7 @@ jobs:
               if [ "$pkg_dir" = "com.truecaller" ]; then app_name="Truecaller"; fi
               
               PER_APP_TAG="app-${pkg_dir}"
-              OBTAINIUM_URL=$(python3 -c "import json, urllib.parse; p={'id':'${pkg_dir}','url':'https://github.com/${REPO}','author':'${REPO}'.split('/')[0],'name':'${app_name}','additionalSettings':json.dumps({'fallbackToOlderReleases':True,'filterReleaseTitlesByRegEx':'${app_name}','apkFilterRegEx':'${app_name}'.lower()})}; raw='obtainium://app/'+urllib.parse.quote(json.dumps(p)); print('https://apps.obtainium.imranr.dev/redirect?r='+urllib.parse.quote(raw))")
+              OBTAINIUM_URL=$(python3 scripts/obtainium_link.py --pkg "${pkg_dir}" --name "${app_name}" --repo "${REPO}")
 
               echo "" >> "$NOTES_FILE"
               echo "- **${app_name}** (\`${pkg_dir}\`) - \`v${ver_dir}\`" >> "$NOTES_FILE"

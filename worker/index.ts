@@ -8,6 +8,7 @@ import { Env } from './types';
 import { handleApiRequest } from './router';
 import { StorageService } from './storage';
 import { authenticateRequest, renderLoginScreen, applySecurityHeaders } from './auth';
+import { APP_USER_AGENT } from './version';
 
 const PUBLIC_STATIC_PATHS = new Set([
   '/favicon.svg',
@@ -28,7 +29,8 @@ function isApiOrSpecialPath(pathname: string): boolean {
     pathname.startsWith('/api/') ||
     pathname === '/report' ||
     pathname === '/build_report.html' ||
-    pathname === '/api'
+    pathname === '/api' ||
+    pathname.startsWith('/obtainium')
   );
 }
 
@@ -99,49 +101,78 @@ export default {
     const storage = new StorageService(env.DB);
     await storage.initializeDatabase();
 
-    const runId = `cron-${Date.now()}`;
-    const acquired = await storage.acquireLock({
-      run_id: runId,
-      source: 'scheduler',
-      started_at: Date.now() / 1000,
-    });
-
-    if (!acquired) {
-      console.log('[AutoMorph Cron Trigger] Run skipped: An active execution lock is already held.');
-      return;
+    // 1. Hourly Community Store Ecosystem Sync
+    try {
+      const resp = await fetch('https://morphe-patches.software/data/bundles.json', {
+        headers: {
+          'User-Agent': APP_USER_AGENT,
+          'Accept': 'application/json',
+        },
+      });
+      if (resp.ok) {
+        const data = await resp.json<any>();
+        const totalApps = Object.keys(data.store || {}).length;
+        const totalBundles = Array.isArray(data.bundles) ? data.bundles.length : 0;
+        await storage.setConfig('catalog_sync_state', {
+          last_synced_at: Date.now(),
+          total_apps: totalApps,
+          total_bundles: totalBundles,
+          interval: 'hourly',
+          auto_sync: true,
+        });
+        console.log(`[AutoMorph Cron] Hourly Community sync completed: ${totalApps} apps, ${totalBundles} bundles.`);
+      }
+    } catch (syncErr: any) {
+      console.warn(`[AutoMorph Cron] Community sync error: ${syncErr?.message}`);
     }
 
-    await storage.appendRunLogs(runId, [
-      `[*] AutoMorph daily scheduled run triggered via Cloudflare Cron Trigger at ${new Date().toISOString()}`,
-    ]);
+    // 2. Daily Build Dispatch (if scheduled build time)
+    const isDailyBuildTime = event.cron === '0 3 * * *' || !event.cron;
+    if (isDailyBuildTime) {
+      const runId = `cron-${Date.now()}`;
+      const acquired = await storage.acquireLock({
+        run_id: runId,
+        source: 'scheduler',
+        started_at: Date.now() / 1000,
+      });
 
-    // Dispatch to GitHub Actions if configured
-    if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
-      try {
-        const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
-        const res = await fetch(ghUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-            Accept: 'application/vnd.github.v3+json',
-            'User-Agent': 'AutoMorph-CloudflareWorker',
-          },
-          body: JSON.stringify({
-            ref: 'main',
-            inputs: {
-              target_package: '',
-              runner_callback_url: '',
+      if (!acquired) {
+        console.log('[AutoMorph Cron Trigger] Run skipped: An active execution lock is already held.');
+        return;
+      }
+
+      await storage.appendRunLogs(runId, [
+        `[*] AutoMorph daily scheduled run triggered via Cloudflare Cron Trigger at ${new Date().toISOString()}`,
+      ]);
+
+      // Dispatch to GitHub Actions if configured
+      if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
+        try {
+          const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
+          const res = await fetch(ghUrl, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+              Accept: 'application/vnd.github.v3+json',
+              'User-Agent': 'AutoMorph-CloudflareWorker',
             },
-          }),
-        });
+            body: JSON.stringify({
+              ref: 'main',
+              inputs: {
+                target_package: '',
+                runner_callback_url: '',
+              },
+            }),
+          });
 
-        if (res.ok || res.status === 204) {
-          await storage.appendRunLogs(runId, ['[✓] Dispatched build runner to GitHub Actions.']);
-        } else {
-          await storage.appendRunLogs(runId, [`[!] GitHub Actions dispatch failed with code ${res.status}`]);
+          if (res.ok || res.status === 204) {
+            await storage.appendRunLogs(runId, ['[✓] Dispatched build runner to GitHub Actions.']);
+          } else {
+            await storage.appendRunLogs(runId, [`[!] GitHub Actions dispatch failed with code ${res.status}`]);
+          }
+        } catch (err: any) {
+          await storage.appendRunLogs(runId, [`[✗] Error dispatching scheduled run: ${err.message}`]);
         }
-      } catch (err: any) {
-        await storage.appendRunLogs(runId, [`[✗] Error dispatching scheduled run: ${err.message}`]);
       }
     }
   },

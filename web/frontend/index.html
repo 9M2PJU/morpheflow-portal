@@ -77,8 +77,8 @@
   <!-- Google Fonts: Geist & Geist Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="css/morphe.css?v=2.3.4">
-  <link rel="stylesheet" href="css/morphe.css?v=2.3.4">
+  <link rel="preload" as="style" href="css/morphe.css?v=2.3.5">
+  <link rel="stylesheet" href="css/morphe.css?v=2.3.5">
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
 </head>
@@ -97,7 +97,7 @@
         </div>
         <span class="brand-title">
           AutoMorph
-          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.3.4</span>
+          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.3.5</span>
         </span>
       </div>
 
@@ -317,30 +317,64 @@
         <div class="store-header-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
           <div class="store-subnav">
             <button class="store-subtab active" id="btn-subtab-apps" data-subtab="apps">
-              Applications (1,342)
+              Applications (1,354)
             </button>
             <button class="store-subtab" id="btn-subtab-bundles" data-subtab="bundles">
               Patch Bundles (365)
             </button>
           </div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);" id="store-catalog-stats">
-            Sourced directly from Morphe Community Ecosystem
+          <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
+            <div class="badge badge-accent" id="store-sync-badge" style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.6875rem; font-weight: 600;">
+              <span class="pulse-dot" style="width: 6px; height: 6px;"></span>
+              <span id="store-sync-text">Hourly Scan Active</span>
+            </div>
+            <button class="btn-secondary btn-sm" id="btn-sync-catalog-now" onclick="syncCommunityCatalogNow()" style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.35rem 0.625rem;" title="Scan Morphe community ecosystem now">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-sync-catalog"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path></svg>
+              <span>Sync Now</span>
+            </button>
+            <div style="font-size: 0.75rem; color: var(--text-muted);" id="store-catalog-stats">
+              Sourced from Morphe Community Ecosystem
+            </div>
           </div>
         </div>
 
-        <div class="store-filter-bar">
-          <div class="store-search-wrap">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" placeholder="Search 1,342 community apps and patches…" id="store-search-input">
+        <div class="store-filter-bar" style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="store-search-wrap" style="flex: 1; min-width: 240px; margin-bottom: 0;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" placeholder="Search 1,354 community apps, packages, mutators…" id="store-search-input">
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 0.375rem;">
+                <label for="store-sort-select" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; margin: 0;">Sort:</label>
+                <select id="store-sort-select" onchange="changeStoreSort(this.value)" class="input-select" style="font-size: 0.75rem; padding: 0.4rem 0.625rem; background: var(--surface-raised); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer;">
+                  <option value="popular">Popularity / Sources</option>
+                  <option value="name-asc">Alphabetical: A → Z</option>
+                  <option value="name-desc">Alphabetical: Z → A</option>
+                  <option value="updated-desc">Date Updated: Newest First</option>
+                  <option value="updated-asc">Date Updated: Oldest First</option>
+                </select>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 0.375rem;">
+                <label for="store-category-select" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; margin: 0;">Category:</label>
+                <select id="store-category-select" onchange="changeStoreCategory(this.value)" class="input-select" style="font-size: 0.75rem; padding: 0.4rem 0.625rem; background: var(--surface-raised); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer; max-width: 190px;">
+                  <option value="all">All Categories</option>
+                </select>
+              </div>
+            </div>
           </div>
           
-          <div class="category-pills" id="store-category-pills">
-            <button class="cat-pill active" data-cat="all">All (1,345)</button>
-            <button class="cat-pill" data-cat="Social & Communication">Social</button>
-            <button class="cat-pill" data-cat="Video Players & Editors">Video</button>
-            <button class="cat-pill" data-cat="Music & Audio">Music</button>
+          <div class="category-pills" id="store-category-pills" style="margin-bottom: 0;">
+            <button class="cat-pill active" data-cat="all">All (1,354)</button>
+            <button class="cat-pill" data-cat="Tools & Utilities">Tools & Utilities</button>
             <button class="cat-pill" data-cat="Productivity">Productivity</button>
-            <button class="cat-pill" data-cat="Tools">Tools</button>
+            <button class="cat-pill" data-cat="Lifestyle, Fitness & Sports">Fitness & Sports</button>
+            <button class="cat-pill" data-cat="Video">Video</button>
+            <button class="cat-pill" data-cat="Games">Games</button>
+            <button class="cat-pill" data-cat="Social & Communication">Social</button>
+            <button class="cat-pill" data-cat="Music & Audio">Music</button>
           </div>
         </div>
 
@@ -350,6 +384,7 @@
             Connecting to Morphe Community Catalog…
           </div>
         </div>
+        <div id="store-scroll-sentinel" style="height: 20px; width: 100%;"></div>
 
         <!-- 2. Patch Bundles Grid (Hidden by default) -->
         <div class="bundle-grid" id="store-bundles-grid" style="display: none;">
@@ -552,6 +587,58 @@
       <div class="drawer-footer" style="padding: 1rem 1.5rem; background: var(--surface-raised);">
         <button class="btn-secondary" onclick="closeProvisionModal()">Cancel</button>
         <button class="btn-primary" id="btn-confirm-provision">Confirm and Provision</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Community Store App Details View -->
+  <div class="modal-overlay" id="modal-store-details" onclick="closeStoreDetailsModal(event)">
+    <div class="modal-container" style="max-width: 640px; width: 94vw;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="display: flex; align-items: center; gap: 0.875rem;">
+          <div id="store-details-icon-slot" style="width: 50px; height: 50px; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-sunken); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border-hairline);"></div>
+          <div>
+            <h2 id="store-details-title" style="font-size: 1.125rem; font-weight: 700; color: var(--text-primary); margin: 0; line-height: 1.2;">App Details</h2>
+            <div id="store-details-pkg" style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted); margin-top: 0.25rem;">com.example.app</div>
+          </div>
+        </div>
+        <button class="btn-icon" onclick="closeStoreDetailsModal()" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="modal-body" style="padding: 1.25rem; max-height: 72vh; overflow-y: auto;">
+        <!-- Metadata Pills -->
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+          <span class="badge" id="store-details-cat-badge">Tools</span>
+          <span class="badge" id="store-details-sources-badge">1 Source</span>
+          <span class="badge badge-accent" id="store-details-rec-ver-badge">Latest Compatible</span>
+          <span class="badge" id="store-details-updated-badge">Updated Recently</span>
+        </div>
+
+        <!-- Description -->
+        <div style="margin-bottom: 1.25rem;">
+          <h4 style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0 0 0.375rem 0;">About Application</h4>
+          <p id="store-details-desc" style="font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.5; margin: 0; background: var(--surface-sunken); padding: 0.75rem 0.875rem; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);"></p>
+        </div>
+
+        <!-- Compatible Patch Bundles Preview -->
+        <div style="margin-bottom: 0.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <h4 style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0;">Compatible Community Patches</h4>
+            <span id="store-details-patch-count" style="font-size: 0.6875rem; color: var(--accent-base); font-weight: 600;">0 Patches Available</span>
+          </div>
+          <div id="store-details-patches-container" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 240px; overflow-y: auto; background: var(--surface-lowest); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.625rem;">
+            <!-- Populated with App-Specific then Universal patch sections -->
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-footer" style="padding: 1rem 1.25rem; background: var(--surface-raised); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+        <button class="btn-secondary btn-sm" onclick="closeStoreDetailsModal()">Close</button>
+        <div id="store-details-actions" style="display: flex; gap: 0.5rem;">
+          <!-- Dynamically populated with 1-Click Provision / Configured button -->
+        </div>
       </div>
     </div>
   </div>
@@ -826,6 +913,6 @@
   <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200;"></div>
 
   <!-- Client Application Logic -->
-  <script src="js/app.js?v=2.3.4"></script>
+  <script src="js/app.js?v=2.3.5"></script>
 </body>
 </html>

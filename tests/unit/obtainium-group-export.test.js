@@ -12,14 +12,14 @@ test('Obtainium: Worker router allows public unauthenticated access to /api/obta
   const routerCode = fs.readFileSync(path.join(ROOT_DIR, 'worker', 'router.ts'), 'utf8');
 
   // Verify isObtainiumEndpoint bypasses authentication check
-  assert.match(routerCode, /const\s+isObtainiumEndpoint\s*=\s*path\.startsWith\('\/api\/obtainium'\)\s*&&\s*method\s*===\s*'GET'/);
+  assert.match(routerCode, /const\s+isObtainiumEndpoint[\s\S]*?path\.startsWith\('\/api\/obtainium'\)[\s\S]*?method\s*===\s*'GET'/);
   assert.match(routerCode, /!isConfigWithWebhook\s*&&\s*!isObtainiumEndpoint/);
 
   // Verify /api/obtainium/export returns 200 with Cache-Control and CORS
   assert.match(routerCode, /path\s*===\s*'\/api\/obtainium\/export'/);
 
   // Verify /api/obtainium/:pkg route returns single app release metadata
-  assert.match(routerCode, /path\.startsWith\('\/api\/obtainium\/'\)\s*&&\s*path\s*!==\s*'\/api\/obtainium\/export'/);
+  assert.match(routerCode, /path\.startsWith\('\/api\/obtainium\/'\)[\s\S]*?path\s*!==\s*'\/api\/obtainium\/export'/);
   assert.match(routerCode, /additionalSettings/);
 });
 

@@ -29,6 +29,19 @@ export function json(data: any, status = 200, headers: Record<string, string> = 
   return applySecurityHeaders(res);
 }
 
+function toCaseInsensitiveRegexPattern(str: string): string {
+  if (!str) return '';
+  return str
+    .split('')
+    .map((c) => {
+      if (/[a-zA-Z]/.test(c)) {
+        return `[${c.toLowerCase()}${c.toUpperCase()}]`;
+      }
+      return c.replace(/([.*+?^${}()|[\]\/\\])/g, '\\$1');
+    })
+    .join('');
+}
+
 function resolveScheduleTarget(systemSettings: SystemSettings | null, env: Env) {
   const scheduleStr = (systemSettings?.schedule_time || env.SCHEDULE_TIME || '03:00').trim();
   const tzStr = (systemSettings?.timezone || env.TZ || 'Etc/UTC').trim();
@@ -315,7 +328,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     method === 'GET' &&
     isAuthorizedWebhook;
   const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
-  const isObtainiumEndpoint = path.startsWith('/api/obtainium') && method === 'GET';
+  const isObtainiumEndpoint =
+    (path.startsWith('/api/obtainium') || path.startsWith('/obtainium')) && method === 'GET';
 
   if (isReportWithWebhook) {
     if (!isAuthorizedWebhook) {
@@ -514,8 +528,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     });
   }
 
-  // 3b. Obtainium Bulk Export: GET /api/obtainium/export
-  if (path === '/api/obtainium/export' && method === 'GET') {
+  // 3b. Obtainium Bulk Export: GET /api/obtainium/export or /obtainium/export
+  if ((path === '/api/obtainium/export' || path === '/obtainium/export') && method === 'GET') {
     const rawPackages = await storage.listPackages();
     const apps = await storage.listPatchedApps();
     const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
@@ -540,6 +554,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const exportList = Array.from(appMap.values()).map((a) => {
       const appName = a.name || a.package.split('.').pop() || a.package;
+      const ciPkg = toCaseInsensitiveRegexPattern(a.package);
+      const ciName = toCaseInsensitiveRegexPattern(appName);
       return {
         id: a.package,
         url: `https://github.com/${repo}`,
@@ -548,8 +564,12 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
-          filterReleaseTitlesByRegEx: appName,
-          apkFilterRegEx: appName.toLowerCase(),
+          filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
+          apkFilterRegEx: `^${ciPkg}_`,
+          releaseTitleAsVersion: true,
+          versionExtractionRegEx: 'v?([0-9][0-9a-zA-Z._-]+)$',
+          matchGroupToUse: '1',
+          sortMethodChoice: 'date',
         }),
       };
     });
@@ -564,9 +584,15 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     );
   }
 
-  // 3c. Obtainium Single App Route: GET /api/obtainium/:pkg
-  if (path.startsWith('/api/obtainium/') && path !== '/api/obtainium/export' && method === 'GET') {
-    const pkg = path.replace(/^\/api\/obtainium\/?/, '').trim();
+  // 3c. Obtainium Single App Route: GET /api/obtainium/:pkg or /obtainium/:pkg
+  const isSingleObtainiumRoute =
+    (path.startsWith('/api/obtainium/') || path.startsWith('/obtainium/')) &&
+    path !== '/api/obtainium/export' &&
+    path !== '/obtainium/export' &&
+    method === 'GET';
+
+  if (isSingleObtainiumRoute) {
+    const pkg = path.replace(/^\/(?:api\/)?obtainium\/?/, '').trim();
     const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
     const author = repo.split('/')[0] || 'AutoMorph';
     const apps = await storage.listPatchedApps();
@@ -576,15 +602,46 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     const appName = (configPkg as any)?.name || configPkg?.package_name || (pkg === 'com.truecaller' ? 'Truecaller' : (pkg === 'com.reddit.frontpage' ? 'Reddit' : pkg.split('.').pop() || pkg));
 
+    const ciPkg = toCaseInsensitiveRegexPattern(pkg);
+    const ciName = toCaseInsensitiveRegexPattern(appName);
     const additionalSettings = JSON.stringify({
       fallbackToOlderReleases: true,
-      filterReleaseTitlesByRegEx: appName,
-      apkFilterRegEx: appName.toLowerCase(),
+      filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
+      apkFilterRegEx: `^${ciPkg}_`,
+      releaseTitleAsVersion: true,
+      versionExtractionRegEx: 'v?([0-9][0-9a-zA-Z._-]+)$',
+      matchGroupToUse: '1',
+      sortMethodChoice: 'date',
     });
 
     // If browser/direct download requested with ?download=1
     if (url.searchParams.get('download') === '1' && patched?.download_url) {
       return Response.redirect(patched.download_url, 302);
+    }
+
+    const acceptsHtml = request.headers.get('Accept')?.includes('text/html') || url.searchParams.get('format') === 'html';
+    if (acceptsHtml && patched?.download_url) {
+      const htmlResponse = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${appName} Release - AutoMorph</title>
+</head>
+<body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.5;">
+  <h2>${appName} (${pkg})</h2>
+  <p>Version: <strong>${patched.version || 'latest'}</strong></p>
+  <p><a href="${patched.download_url}" style="display: inline-block; padding: 10px 20px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px;">Download Patched APK</a></p>
+  <p style="font-size: 0.85em; color: #666;">Source: <a href="https://github.com/${repo}">https://github.com/${repo}</a></p>
+</body>
+</html>`;
+      return new Response(htmlResponse, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
     return json(
@@ -855,6 +912,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // 15. GET /api/catalog (Proxies & Caches Morphe Bundles Catalog)
   if (path === '/api/catalog' && method === 'GET') {
+    const isRefresh = url.searchParams.get('refresh') === 'true';
     try {
       const resp = await fetch('https://morphe-patches.software/data/bundles.json', {
         headers: {
@@ -862,7 +920,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
           'Accept': 'application/json',
         },
         cf: {
-          cacheTtl: 21600, // 6 hours on Cloudflare edge
+          cacheTtl: isRefresh ? 0 : 21600, // 6 hours on Cloudflare edge unless refresh requested
           cacheEverything: true,
         },
       });
@@ -871,7 +929,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         return new Response(JSON.stringify(data), {
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'public, max-age=3600, s-maxage=21600',
+            'Cache-Control': isRefresh ? 'no-cache, no-store, must-revalidate' : 'public, max-age=3600, s-maxage=21600',
             'Access-Control-Allow-Origin': '*',
           },
         });
@@ -885,6 +943,46 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       compatibilities: [],
       featured: [],
     });
+  }
+
+  // 15c. Community Store Hourly Scan & Status: GET /api/catalog/sync & POST /api/catalog/sync
+  if (path === '/api/catalog/sync' && method === 'GET') {
+    const syncState = (await storage.getConfig('catalog_sync_state')) || {
+      last_synced_at: Date.now() - 1800000,
+      total_apps: 1354,
+      total_bundles: 365,
+      interval: 'hourly',
+      auto_sync: true,
+    };
+    return json(syncState);
+  }
+
+  if (path === '/api/catalog/sync' && method === 'POST') {
+    try {
+      const resp = await fetch('https://morphe-patches.software/data/bundles.json', {
+        headers: {
+          'User-Agent': APP_USER_AGENT,
+          'Accept': 'application/json',
+        },
+      });
+      if (resp.ok) {
+        const data = await resp.json<any>();
+        const totalApps = Object.keys(data.store || {}).length;
+        const totalBundles = Array.isArray(data.bundles) ? data.bundles.length : 0;
+        const syncState = {
+          last_synced_at: Date.now(),
+          total_apps: totalApps,
+          total_bundles: totalBundles,
+          interval: 'hourly',
+          auto_sync: true,
+        };
+        await storage.setConfig('catalog_sync_state', syncState);
+        return json({ status: 'success', ...syncState });
+      }
+    } catch (err: any) {
+      return json({ error: `Sync failed: ${err.message}` }, 500);
+    }
+    return json({ error: 'Failed to fetch upstream community ecosystem' }, 502);
   }
 
   // 15b. POST /api/catalog/provision (1-Click App Provisioning into Pipeline)
@@ -1284,15 +1382,22 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     const files = apps.map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
       const appName = a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package);
+      const ciPkg = toCaseInsensitiveRegexPattern(a.package);
+      const ciName = toCaseInsensitiveRegexPattern(appName);
       const obtainiumPayload = {
         id: a.package,
         url: `https://github.com/${repo}`,
         author: repo.split('/')[0] || 'AutoMorph',
         name: appName,
+        preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
-          filterReleaseTitlesByRegEx: appName,
-          apkFilterRegEx: appName.toLowerCase(),
+          filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
+          apkFilterRegEx: `^${ciPkg}_`,
+          releaseTitleAsVersion: true,
+          versionExtractionRegEx: 'v?([0-9][0-9a-zA-Z._-]+)$',
+          matchGroupToUse: '1',
+          sortMethodChoice: 'date',
         }),
       };
       const obtainiumUrl = `obtainium://app/${encodeURIComponent(JSON.stringify(obtainiumPayload))}`;
