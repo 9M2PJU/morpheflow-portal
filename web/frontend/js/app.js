@@ -869,11 +869,14 @@ function renderStatus(data) {
   // 6. Version Info
   const version = data.version;
   const versionValEl = document.getElementById('site-version-val');
-  if (version && versionValEl) {
-    versionValEl.textContent = `v${version.version || '0.01'}`;
-    const versionTagEl = document.getElementById('site-version-tag');
-    if (versionTagEl && version.branch) {
-      versionTagEl.title = `AutoMorph v${version.version} (${version.branch}) — Click to view update details`;
+  const versionTagEl = document.getElementById('site-version-tag');
+  if (version) {
+    const rawVer = version.version || '2.2.0';
+    const formattedVer = rawVer.startsWith('v') ? rawVer : `v${rawVer}`;
+    if (versionValEl) versionValEl.textContent = formattedVer;
+    if (versionTagEl) {
+      versionTagEl.textContent = formattedVer;
+      versionTagEl.title = `AutoMorph ${formattedVer} (${version.branch || 'main'}) — Click to view update details`;
     }
   }
 

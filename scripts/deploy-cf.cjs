@@ -388,6 +388,16 @@ function printSummary(secrets, workerUrl) {
 function main() {
   console.log('\n🤖 AutoMorph Automated Cloudflare Deployer\n');
   try {
+    // 0. Auto-sync version metadata across Worker and Frontend
+    try {
+      const { syncAllVersionFiles } = require('./bump-version.cjs');
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+      const verInfo = syncAllVersionFiles(pkg.version);
+      success(`Version synchronized: v${verInfo.version} (${verInfo.commit} on ${verInfo.branch})`);
+    } catch (verErr) {
+      warn(`Version synchronization notice: ${verErr.message}`);
+    }
+
     checkAuth();
     const dbId = getOrPinDatabaseId();
     ensureKv();

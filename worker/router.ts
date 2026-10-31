@@ -15,6 +15,7 @@ import {
   timingSafeEqual,
   applySecurityHeaders,
 } from './auth';
+import { APP_VERSION, APP_BRANCH, APP_COMMIT, APP_USER_AGENT } from './version';
 
 export function json(data: any, status = 200, headers: Record<string, string> = {}): Response {
   const res = new Response(JSON.stringify(data), {
@@ -336,10 +337,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   // 1. GET /api/version
   if (path === '/api/version' && method === 'GET') {
     return json({
-      version: '2.1.0',
-      branch: 'cloudflare-worker',
+      version: APP_VERSION,
+      branch: APP_BRANCH,
       run_number: 1,
-      commit: 'cf-edge',
+      commit: APP_COMMIT,
     });
   }
 
@@ -381,10 +382,10 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         connected_repos: repos.length,
       },
       version: {
-        version: '2.1.0',
-        branch: 'cloudflare-worker',
+        version: APP_VERSION,
+        branch: APP_BRANCH,
         run_number: 1,
-        commit: 'cf-edge',
+        commit: APP_COMMIT,
       },
     };
     return json(response);
@@ -419,7 +420,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     const tunnels = (await storage.getConfig('tunnels')) || {};
 
     return json({
-      version: '2.1.0',
+      version: APP_VERSION,
       exported_at: new Date().toISOString(),
       packages,
       patch_repos: repos,
@@ -659,7 +660,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+        'User-Agent': APP_USER_AGENT,
       },
     });
 
@@ -677,7 +678,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
             method: 'DELETE',
             headers: {
               Authorization: `Bearer ${token}`,
-              'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+              'User-Agent': APP_USER_AGENT,
             },
           });
         }
@@ -689,7 +690,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+          'User-Agent': APP_USER_AGENT,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -719,7 +720,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'AutoMorph-EdgeWorker/2.1.0',
+        'User-Agent': APP_USER_AGENT,
         'Content-Type': 'application/vnd.android.package-archive',
       },
       body: fileBuffer,
@@ -796,7 +797,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     try {
       const resp = await fetch('https://morphe-patches.software/data/bundles.json', {
         headers: {
-          'User-Agent': 'AutoMorph-EdgeWorker/2.1.0 (https://github.com/wiwek13/AutoMorph)',
+          'User-Agent': APP_USER_AGENT,
           'Accept': 'application/json',
         },
         cf: {
@@ -1486,15 +1487,15 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({
       update_available: false,
       status: 'up_to_date',
-      branch: 'cloudflare-worker',
-      current_version: '2.1.0',
-      current_tag: 'v2.1.0',
-      current_commit: 'cf-edge',
-      latest_version: '2.1.0',
-      latest_tag: 'v2.1.0',
+      branch: APP_BRANCH,
+      current_version: APP_VERSION,
+      current_tag: `v${APP_VERSION}`,
+      current_commit: APP_COMMIT,
+      latest_version: APP_VERSION,
+      latest_tag: `v${APP_VERSION}`,
       release_name: 'AutoMorph Cloudflare Edge',
       release_notes: 'Running on Cloudflare Workers Free Tier.',
-      release_url: 'https://github.com/holjab/automorph',
+      release_url: 'https://github.com/wiwek13/AutoMorph',
       checked_at: new Date().toISOString(),
       cached: false,
       cooldown: false,

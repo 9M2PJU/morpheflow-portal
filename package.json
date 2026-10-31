@@ -1,6 +1,6 @@
 {
   "name": "automorph",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "AutoMorph edge management portal and build distribution on Cloudflare Workers",
   "type": "module",
   "scripts": {
@@ -10,6 +10,11 @@
     "deploy": "node scripts/deploy-cf.cjs",
     "deploy:kv": "node scripts/deploy-cf.cjs --kv",
     "deploy:raw": "wrangler deploy",
+    "bump": "node scripts/bump-version.cjs",
+    "bump:patch": "node scripts/bump-version.cjs patch",
+    "bump:minor": "node scripts/bump-version.cjs minor",
+    "bump:major": "node scripts/bump-version.cjs major",
+    "version:sync": "node scripts/bump-version.cjs sync",
     "types:check": "tsc --noEmit",
     "test": "node --test 'tests/**/*.test.js'"
   },
