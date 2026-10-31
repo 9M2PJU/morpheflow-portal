@@ -15,6 +15,7 @@ const PUBLIC_STATIC_PATHS = new Set([
   '/favicon.ico',
   '/logo.png',
   '/trim-logo.png',
+  '/apk-icon.png',
   '/css/morphe.css',
 ]);
 
