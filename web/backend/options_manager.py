@@ -452,8 +452,19 @@ def generate_options_via_cli(mpp_path: Path, package: str, target_file: Path, lo
 
     target_file.parent.mkdir(parents=True, exist_ok=True)
 
+    java_bin = "java"
+    if shutil.which("/opt/homebrew/opt/openjdk/bin/java"):
+        java_bin = "/opt/homebrew/opt/openjdk/bin/java"
+    elif os.environ.get("JAVA_HOME"):
+        cand = Path(os.environ["JAVA_HOME"]) / "bin" / "java"
+        if cand.is_file():
+            java_bin = str(cand)
+
     cmd = [
-        "java",
+        java_bin,
+        "-Xms256m",
+        "-Xmx1024m",
+        "-Djava.awt.headless=true",
         "-jar",
         str(jar_path),
         "options-create",

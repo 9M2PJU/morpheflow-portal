@@ -1454,6 +1454,177 @@ function getRecommendedTargetVersion(pkg) {
   return null;
 }
 
+const KNOWN_UNIVERSAL_PATCH_NAMES = new Set([
+  'clone app',
+  'clone',
+  'change package name',
+  'hide app icon',
+  'remove app icon',
+  'change app icon',
+  'change app name',
+  'rename app',
+  'enable debug',
+  'enable debug mode',
+  'enable android debugging',
+  'enable webview debugging',
+  'make app debuggable',
+  'spoof signature',
+  'spoof app signature',
+  'spoof signature verification',
+  'spoof signature match',
+  'spoof install source',
+  'spoof play store install source',
+  'change installer source',
+  'spoof device model',
+  'spoof build fingerprint',
+  'spoof wi-fi connection',
+  'spoof sim provider',
+  'spoof telephony ids',
+  'spoof advertising id',
+  'spoof play integrity',
+  'disable play integrity',
+  'disable play store updates',
+  'provide original app certificate',
+  'fix firebase after re-signing',
+  'microg integration',
+  'gmscore support',
+  'gmscore support (microg)',
+  'disable pairip license check',
+  'disable pairip protection',
+  'bypass pairip license check',
+  'pairip bypass',
+  'custom branding',
+  'predictive back gesture',
+  'hex',
+  'remove screenshot restriction',
+  'remove screenshot detection',
+  'allow screenshots',
+  'disable secure flag',
+  'bypass root check',
+  'disable root checks',
+  'bypass adb/developer options detection',
+  'bypass emulator detection',
+  'bypass forced updates',
+  'bypass vpn detection',
+  'bypass license verification',
+  'bypass okhttp pinning',
+  'trust user certificates',
+  'override certificate pinning',
+  'disable sentry telemetry',
+  'disable firebase(google) analytics',
+  'deactivate firebase analytics',
+  'deactivate firebase performance monitoring',
+  'disable analytics',
+  'disable analytics & ad tracking',
+  'disable crash reporters',
+  'disable telemetry',
+  'block ads, trackers, and analytics',
+  'always enable copy',
+  'spoof client',
+  'disable dynamic app icon',
+  'widevine l3 fallback',
+  'spoof wifi connection',
+  'disable splash screen',
+  'skip splash screen',
+  'apk junk cleanup',
+  'png optimizer',
+  'remove debug info',
+  'remove duplicate graphics',
+  'remove languages',
+  'strip translations',
+  'export all activities',
+  'allow background activity',
+  'keep screen on',
+  'force resizable activity',
+  'immersive fullscreen',
+  'transparent system bars',
+  'unlock rotation',
+  'allow cleartext traffic',
+  'allow mixed content',
+  'ensure internet permission',
+  'ensure notification permission',
+  'ensure storage permissions',
+  'unlock revenuecat',
+  'revenuecat',
+  'free in-app purchases',
+  'unlock premium',
+  'no ads',
+  'ads free rewards'
+]);
+
+function determinePatchScope(patchName, patchObj) {
+  if (patchObj?.isUniversal === true || patchObj?.scope === 'universal') return 'universal';
+  if (patchObj?.isUniversal === false && patchObj?.scope === 'app') return 'app';
+  if (Array.isArray(patchObj?.targets) && patchObj.targets.length === 0) return 'universal';
+  if (Array.isArray(patchObj?.compatiblePackages) && patchObj.compatiblePackages.length === 0) return 'universal';
+
+  const norm = (patchName || '').toLowerCase().trim();
+  if (!norm) return 'app';
+  if (KNOWN_UNIVERSAL_PATCH_NAMES.has(norm)) return 'universal';
+
+  // Pattern matching heuristics for universal patches
+  if (
+    norm.startsWith('clone') ||
+    norm.startsWith('change package name') ||
+    norm.startsWith('spoof ') ||
+    norm.includes('pairip') ||
+    norm.includes('microg') ||
+    norm.includes('gmscore') ||
+    norm.includes('screenshot') ||
+    norm.includes('license verification') ||
+    norm.includes('root check') ||
+    norm.includes('debuggable') ||
+    norm.includes('user certificate') ||
+    norm.includes('certificate pinning') ||
+    norm.includes('revenuecat')
+  ) {
+    return 'universal';
+  }
+  return 'app';
+}
+
+function isUniversalPatch(patch, bundle, rawCompatibilitiesData) {
+  if (!patch) return false;
+  if (patch.universal === true || patch.isUniversal === true || patch.scope === 'universal') return true;
+
+  // If patch explicitly specifies target packages, it is app-specific, NOT universal
+  if (Array.isArray(patch.compatiblePackages) && patch.compatiblePackages.length > 0) return false;
+
+  const compKey = patch.compatiblePackagesKey ?? patch.compatibilityKey;
+  if (compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
+    const entry = rawCompatibilitiesData[compKey];
+    if (Array.isArray(entry) && entry.length > 0) {
+      const hasWildcard = entry.some(item => !item || !item.packageName || item.packageName === '*' || item.packageName === 'universal' || item.packageName === 'all');
+      if (!hasWildcard) return false;
+    }
+  }
+
+  if (Array.isArray(patch.compatiblePackages) && patch.compatiblePackages.length === 0) return true;
+  if (Array.isArray(patch.targets) && patch.targets.length === 0) return true;
+
+  if (compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
+    const entry = rawCompatibilitiesData[compKey];
+    if (Array.isArray(entry)) {
+      if (entry.length === 0) return true;
+      if (entry.some(item => !item || !item.packageName || item.packageName === '*' || item.packageName === 'universal' || item.packageName === 'all')) return true;
+    }
+  }
+
+  // If bundle has universal designation or explicit empty targetApps
+  if (compKey === undefined) {
+    const bRepo = (bundle?.repo || bundle?.bundleRepo || '').toLowerCase();
+    const bName = (bundle?.name || bundle?.bundleName || '').toLowerCase();
+    if (bRepo.includes('universal') || bName.includes('universal')) return true;
+    if (Array.isArray(bundle?.targetApps) && (bundle.targetApps.length === 0 || bundle.targetApps.includes('*') || bundle.targetApps.includes('universal'))) {
+      return true;
+    }
+  }
+
+  if (determinePatchScope(patch.name, patch) === 'universal') return true;
+
+  return false;
+}
+
 function getCompatiblePatchesForPackage(pkg) {
   const result = [];
   if (!rawBundlesData || !Array.isArray(rawBundlesData)) return result;
@@ -1467,7 +1638,14 @@ function getCompatiblePatchesForPackage(pkg) {
       let isCompatible = false;
       let targetVersion = null;
 
-      if (compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
+      // 1. Universal patches match ALL apps by default
+      const isUniversal = isUniversalPatch(patch, bundle, rawCompatibilitiesData);
+      if (isUniversal) {
+        isCompatible = true;
+      }
+
+      // 2. App-specific package match via rawCompatibilitiesData
+      if (!isCompatible && compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
         const entry = rawCompatibilitiesData[compKey];
         if (Array.isArray(entry)) {
           for (const item of entry) {
@@ -1488,12 +1666,14 @@ function getCompatiblePatchesForPackage(pkg) {
         }
       }
 
+      // 3. Direct compatiblePackages array match
       if (!isCompatible && Array.isArray(patch.compatiblePackages)) {
         if (patch.compatiblePackages.some(cp => (typeof cp === 'string' ? cp : cp.name || cp.packageName) === pkg)) {
           isCompatible = true;
         }
       }
 
+      // 4. Bundle targetApps match
       if (!isCompatible && compKey === undefined && Array.isArray(bundle.targetApps) && bundle.targetApps.includes(pkg)) {
         isCompatible = true;
       }
@@ -1502,8 +1682,9 @@ function getCompatiblePatchesForPackage(pkg) {
         matchingPatches.push({
           name: patch.name,
           description: patch.description || '',
-          default: patch.default !== false,
-          targetVersion
+          default: isUniversal ? (patch.default === true || patch.use === true) : (patch.default !== false && patch.use !== false),
+          targetVersion,
+          isUniversal: Boolean(isUniversal)
         });
       }
     }
@@ -1534,7 +1715,8 @@ function getCompatiblePatchesForPackage(pkg) {
             name: p.name,
             description: p.description || '',
             default: p.default !== false,
-            targetVersion: null
+            targetVersion: null,
+            isUniversal: false
           }))
         });
       }
@@ -1543,7 +1725,8 @@ function getCompatiblePatchesForPackage(pkg) {
 
   // Sort bundles based on user-defined priority:
   // 1. App-specific patches first (dedicated repo targeting this app or in app.repos)
-  // 2. Community popularity (verified source, stars, matching patch volume)
+  // 2. Official verified bundles (MorpheApp/morphe-patches)
+  // 3. Community popularity (stars + matching patch volume)
   const appSlug = pkg.split('.').pop() || '';
   const appCleanName = (morpheCatalogData && morpheCatalogData[pkg]?.name || '').toLowerCase();
 
@@ -1558,7 +1741,13 @@ function getCompatiblePatchesForPackage(pkg) {
     if (aIsAppSpecific && !bIsAppSpecific) return -1;
     if (!aIsAppSpecific && bIsAppSpecific) return 1;
 
-    // Popularity score: MorpheApp verified bundle has priority
+    // Has app-specific patches vs only universal patches
+    const aHasAppPatches = a.patches?.some(p => !p.isUniversal);
+    const bHasAppPatches = b.patches?.some(p => !p.isUniversal);
+    if (aHasAppPatches && !bHasAppPatches) return -1;
+    if (!aHasAppPatches && bHasAppPatches) return 1;
+
+    // Official MorpheApp verified bundle has priority
     const aIsOfficial = aRepoSlug.startsWith('morpheapp/');
     const bIsOfficial = bRepoSlug.startsWith('morpheapp/');
     if (aIsOfficial && !bIsOfficial) return -1;
@@ -1572,10 +1761,14 @@ function getCompatiblePatchesForPackage(pkg) {
     return a.bundleName.localeCompare(b.bundleName);
   });
 
-  // Inside each bundle: sort patches so default/recommended patches come first, then alphabetical
+  // Inside each bundle: sort patches so app-specific default come first, then app-specific, then universal, then alphabetical
   for (const bundle of result) {
     if (Array.isArray(bundle.patches)) {
       bundle.patches.sort((p1, p2) => {
+        // App-specific before universal
+        if (!p1.isUniversal && p2.isUniversal) return -1;
+        if (p1.isUniversal && !p2.isUniversal) return 1;
+        // Default before non-default
         if (p1.default && !p2.default) return -1;
         if (!p1.default && p2.default) return 1;
         return (p1.name || '').localeCompare(p2.name || '');
@@ -2495,6 +2688,7 @@ function renderProvisionPatches(pkg, defaultRepo) {
               <div class="prov-patch-content" style="flex: 1; min-width: 0;">
                 <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
                   <span>${escapeHtml(p.name)}</span>
+                  ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
                   ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
                 </div>
                 ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3;">${escapeHtml(p.description)}</div>` : ''}
@@ -2811,7 +3005,8 @@ function openAppliedPatchesModal(pkg) {
         repo: bundleRepo,
         owner: bundle.bundleName || bundle.bundleAuthor,
         desc: p.description || 'Applies bytecode mutation and feature modification.',
-        enabled: isEnabled
+        enabled: isEnabled,
+        isUniversal: Boolean(p.isUniversal)
       });
     }
   }
@@ -2828,7 +3023,8 @@ function openAppliedPatchesModal(pkg) {
           repo: repoKey,
           owner: cleanRepoSlug(repoKey),
           desc: 'Custom configured bytecode mutation.',
-          enabled: true
+          enabled: true,
+          isUniversal: determinePatchScope(pName, pCfg) === 'universal'
         });
       }
     }
@@ -2897,6 +3093,7 @@ function renderActiveAppliedPatches() {
       <div style="min-width: 0; flex: 1;">
         <div class="applied-patch-title">
           <span>${escapeHtml(p.name)}</span>
+          ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; margin-left: 0.375rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
         </div>
         <div class="applied-patch-desc">${escapeHtml(p.desc)}</div>
       </div>
@@ -2954,7 +3151,10 @@ function renderManageAvailableBundles() {
         <label class="prov-patch-item">
           <input type="checkbox" data-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleManagePatch('${escapeHtml(key)}', this.checked)">
           <div class="prov-patch-info">
-            <div class="prov-patch-name">${escapeHtml(p.name)}</div>
+            <div class="prov-patch-name">
+              <span>${escapeHtml(p.name)}</span>
+              ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; margin-left: 0.375rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
+            </div>
             <div class="prov-patch-desc">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
           </div>
         </label>
@@ -6034,127 +6234,6 @@ const PATCH_KNOWN_OPTIONS = {
     ]
   }
 };
-
-const KNOWN_UNIVERSAL_PATCH_NAMES = new Set([
-  'clone app',
-  'clone',
-  'change package name',
-  'hide app icon',
-  'remove app icon',
-  'change app icon',
-  'change app name',
-  'rename app',
-  'enable debug',
-  'enable debug mode',
-  'enable android debugging',
-  'enable webview debugging',
-  'make app debuggable',
-  'spoof signature',
-  'spoof app signature',
-  'spoof signature verification',
-  'spoof signature match',
-  'spoof install source',
-  'spoof play store install source',
-  'spoof device model',
-  'spoof build fingerprint',
-  'spoof wi-fi connection',
-  'spoof sim provider',
-  'spoof telephony ids',
-  'spoof advertising id',
-  'spoof play integrity',
-  'provide original app certificate',
-  'fix firebase after re-signing',
-  'microg integration',
-  'gmscore support',
-  'gmscore support (microg)',
-  'disable pairip license check',
-  'disable pairip protection',
-  'bypass pairip license check',
-  'custom branding',
-  'predictive back gesture',
-  'hex',
-  'remove screenshot restriction',
-  'remove screenshot detection',
-  'allow screenshots',
-  'disable secure flag',
-  'bypass root check',
-  'disable root checks',
-  'bypass adb/developer options detection',
-  'bypass emulator detection',
-  'bypass forced updates',
-  'bypass vpn detection',
-  'bypass license verification',
-  'bypass okhttp pinning',
-  'trust user certificates',
-  'override certificate pinning',
-  'disable sentry telemetry',
-  'disable firebase(google) analytics',
-  'deactivate firebase analytics',
-  'deactivate firebase performance monitoring',
-  'disable analytics',
-  'disable analytics & ad tracking',
-  'disable crash reporters',
-  'disable telemetry',
-  'block ads, trackers, and analytics',
-  'always enable copy',
-  'spoof client',
-  'disable dynamic app icon',
-  'widevine l3 fallback',
-  'spoof wifi connection',
-  'disable splash screen',
-  'skip splash screen',
-  'apk junk cleanup',
-  'png optimizer',
-  'remove debug info',
-  'remove duplicate graphics',
-  'remove languages',
-  'strip translations',
-  'export all activities',
-  'allow background activity',
-  'keep screen on',
-  'force resizable activity',
-  'immersive fullscreen',
-  'transparent system bars',
-  'unlock rotation',
-  'allow cleartext traffic',
-  'allow mixed content',
-  'ensure internet permission',
-  'ensure notification permission',
-  'ensure storage permissions',
-  'unlock revenuecat',
-  'revenuecat',
-]);
-
-function determinePatchScope(patchName, patchObj) {
-  if (patchObj?.isUniversal === true || patchObj?.scope === 'universal') return 'universal';
-  if (patchObj?.isUniversal === false && patchObj?.scope === 'app') return 'app';
-  if (Array.isArray(patchObj?.targets) && patchObj.targets.length === 0) return 'universal';
-  if (Array.isArray(patchObj?.compatiblePackages) && patchObj.compatiblePackages.length === 0) return 'universal';
-
-  const norm = (patchName || '').toLowerCase().trim();
-  if (!norm) return 'app';
-  if (KNOWN_UNIVERSAL_PATCH_NAMES.has(norm)) return 'universal';
-
-  // Pattern matching heuristics for universal patches
-  if (
-    norm.startsWith('clone') ||
-    norm.startsWith('change package name') ||
-    norm.startsWith('spoof ') ||
-    norm.includes('pairip') ||
-    norm.includes('microg') ||
-    norm.includes('gmscore') ||
-    norm.includes('screenshot') ||
-    norm.includes('license verification') ||
-    norm.includes('root check') ||
-    norm.includes('debuggable') ||
-    norm.includes('user certificate') ||
-    norm.includes('certificate pinning') ||
-    norm.includes('revenuecat')
-  ) {
-    return 'universal';
-  }
-  return 'app';
-}
 
 function getPatchOptionDefinitions(patch) {
   const result = [];

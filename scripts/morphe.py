@@ -602,19 +602,22 @@ class Morphe:
                     repo_options_locations.append(repo_options)
                     continue
 
+                opt_cmd = [self.java_bin]
+                if not self.low_spec_mode:
+                    opt_cmd += ["-Xms256m", "-Xmx1024m", "-Djava.awt.headless=true"]
+                opt_cmd += [
+                    "-jar",
+                    str(self.morphe_location),
+                    "options-create",
+                    "-p",
+                    str(cached_repo),
+                    "-o",
+                    str(repo_options),
+                    "-f",
+                    package_name,
+                ]
                 result = subprocess.run(
-                    [
-                        self.java_bin,
-                        "-jar",
-                        str(self.morphe_location),
-                        "options-create",
-                        "-p",
-                        str(cached_repo),
-                        "-o",
-                        str(repo_options),
-                        "-f",
-                        package_name,
-                    ],
+                    opt_cmd,
                     capture_output=True,
                     text=True,
                     check=False,
@@ -859,17 +862,21 @@ class Morphe:
             if not cached_repo:
                 continue
 
+            list_cmd = [self.java_bin]
+            if not self.low_spec_mode:
+                list_cmd += ["-Xms256m", "-Xmx1024m", "-Djava.awt.headless=true"]
+            list_cmd += [
+                "-jar",
+                str(self.morphe_location),
+                "list-patches",
+                "-u",
+                "--patches",
+                str(cached_repo),
+                "--with-packages",
+                "--with-versions",
+            ]
             result = subprocess.run(
-                [
-                    self.java_bin,
-                    "-jar",
-                    str(self.morphe_location),
-                    "list-patches",
-                    "--patches",
-                    cached_repo,
-                    "--with-packages",
-                    "--with-versions",
-                ],
+                list_cmd,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -998,10 +1005,22 @@ class Morphe:
 
         cmd = [self.java_bin]
 
+        tmp_dir = self.project_root / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
         if self.low_spec_mode:
-            tmp_dir = self.project_root / "tmp"
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            cmd += ["-Xms128m", "-Xmx1536m", f"-Djava.io.tmpdir={tmp_dir}"]
+            cmd += ["-Xms256m", "-Xmx1536m", f"-Djava.io.tmpdir={tmp_dir}"]
+        else:
+            # High-throughput JVM tuning for rapid Dalvik/dex bytecode manipulation & resource rebuilds
+            cmd += [
+                "-Xms1g",
+                "-Xmx4g",
+                "-XX:+UseG1GC",
+                "-XX:+ParallelRefProcEnabled",
+                "-XX:+AlwaysPreTouch",
+                "-Djava.awt.headless=true",
+                f"-Djava.io.tmpdir={tmp_dir}",
+            ]
 
         cmd += ["-jar", str(self.morphe_location), "patch"]
 
@@ -1023,8 +1042,16 @@ class Morphe:
 
             cmd += ["--patches", str(mpp_path)]
 
-        if striplibs:
+        if striplibs and self.arch:
             cmd += ["--striplibs", self.arch]
+
+        # Dedicated isolated temporary directory for scratch files (prevents I/O locks during parallel patch runs)
+        patch_scratch_dir = tmp_dir / f"scratch_{package_name}_{version_name}"
+        patch_scratch_dir.mkdir(parents=True, exist_ok=True)
+        cmd += ["-t", str(patch_scratch_dir)]
+
+        # Morphe Patcher 2.0+ optimized bytecode mode
+        cmd += ["--bytecode-mode=STRIP_FAST"]
 
         patch_id = self.get_patch_version_identifier(repos)
         if patch_id:

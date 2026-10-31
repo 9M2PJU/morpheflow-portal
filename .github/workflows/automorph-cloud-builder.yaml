@@ -50,9 +50,14 @@ jobs:
       - name: Download Morphe Desktop JAR
         run: |
           mkdir -p tools
-          MORPHE_VERSION="1.19.0"
+          # Dynamically resolve latest Morphe Desktop release with fallback to 1.20.0 (Morphe Patcher 2.0+ engine)
+          LATEST_TAG=$(curl -s "https://api.github.com/repos/MorpheApp/morphe-desktop/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//')
+          MORPHE_VERSION="${LATEST_TAG:-1.20.0}"
+          echo "[*] Downloading Morphe Desktop v${MORPHE_VERSION} with high-speed Morphe Patcher 2.0+ engine..."
           wget -q -O "tools/morphe.jar" \
-            "https://github.com/MorpheApp/morphe-desktop/releases/download/v${MORPHE_VERSION}/morphe-desktop-${MORPHE_VERSION}-all.jar"
+            "https://github.com/MorpheApp/morphe-desktop/releases/download/v${MORPHE_VERSION}/morphe-desktop-${MORPHE_VERSION}-all.jar" || \
+          wget -q -O "tools/morphe.jar" \
+            "https://github.com/MorpheApp/morphe-desktop/releases/download/v1.20.0/morphe-desktop-1.20.0-all.jar"
           ls -lh tools/morphe.jar
           java -jar tools/morphe.jar -v || true
 
