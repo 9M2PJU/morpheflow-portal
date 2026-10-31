@@ -71,22 +71,45 @@ class Downloader:
         if custom_base_url:
             logger.info(f" └── [*] Downloading custom base APK from {custom_base_url}...")
             dest_apk = outer_dir / f"{package_name}.apk"
-            try:
-                dl_headers = {"User-Agent": "curl/8.0.1"}
-                with requests.get(custom_base_url, headers=dl_headers, stream=True, timeout=120, allow_redirects=True) as r:
-                    r.raise_for_status()
-                    with open(dest_apk, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=128 * 1024):
-                            if chunk:
-                                f.write(chunk)
+            downloaded = False
+            if "github.com" in custom_base_url and "/releases/download/" in custom_base_url:
+                try:
+                    parts = custom_base_url.split("/releases/download/")
+                    repo_part = parts[0].replace("https://github.com/", "").replace("http://github.com/", "").strip("/")
+                    tag_and_asset = parts[1].split("/")
+                    tag = tag_and_asset[0]
+                    asset_pattern = tag_and_asset[1] if len(tag_and_asset) > 1 else "*.apk"
+                    cmd = ["gh", "release", "download", tag, "-R", repo_part, "-D", str(outer_dir), "--pattern", asset_pattern, "--clobber"]
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                    downloaded_files = [f for f in outer_dir.glob("*.apk") if f.is_file() and f.stat().st_size > 1000]
+                    if downloaded_files:
+                        if not dest_apk.exists() and downloaded_files[0] != dest_apk:
+                            shutil.copy2(downloaded_files[0], dest_apk)
+                        downloaded = True
+                        logger.info(f" └── [✓] Custom base APK downloaded via gh CLI from release '{tag}'.")
+                except Exception as gh_e:
+                    logger.warning(f" └── [!] Note during gh release download: {gh_e}")
+
+            if not downloaded:
+                try:
+                    dl_headers = {"User-Agent": "curl/8.0.1"}
+                    with requests.get(custom_base_url, headers=dl_headers, stream=True, timeout=120, allow_redirects=True) as r:
+                        r.raise_for_status()
+                        with open(dest_apk, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=128 * 1024):
+                                if chunk:
+                                    f.write(chunk)
+                    downloaded = True
+                except Exception as e:
+                    logger.error(f" └── [✗] Failed downloading custom base APK from {custom_base_url}: {e}")
+
+            if downloaded and dest_apk.is_file():
                 try:
                     detected_ver = APK(dest_apk).version_name
                 except Exception:
                     detected_ver = target_version
-                logger.info(f" └── [✓] Custom base APK downloaded successfully: {dest_apk.name} ({dest_apk.stat().st_size} bytes, v{detected_ver})")
+                logger.info(f" └── [✓] Custom base APK ready: {dest_apk.name} ({dest_apk.stat().st_size} bytes, v{detected_ver})")
                 return {"package_name": package_name, "version_name": target_version or detected_ver or "custom", "arch": self.architecture, 'patch_attempt': 0}, "custom_base_apk_downloaded"
-            except Exception as e:
-                logger.error(f" └── [✗] Failed downloading custom base APK from {custom_base_url}: {e}")
 
         result = apkpure_fetcher.process_package(package_name, target_version, self.architecture, self.sources_file)
         patch_list, reason = self.download_package(result, outer_dir, split_dir)

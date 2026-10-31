@@ -60,6 +60,8 @@ jobs:
         env:
           CF_WORKER_URL: ${{ inputs.runner_callback_url || secrets.CLOUDFLARE_WORKER_URL }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "$CF_WORKER_URL" ]; then
             echo "[*] Fetching configuration and build state from Cloudflare Worker: $CF_WORKER_URL"
@@ -171,6 +173,7 @@ jobs:
           GOOPDL_ACCOUNT_EMAIL: ${{ secrets.GOOPDL_ACCOUNT_EMAIL }}
           GOOPDL_AAS_TOKEN: ${{ secrets.GOOPDL_AAS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AUTOMORPH_KEYSTORE_BASE64: ${{ secrets.AUTOMORPH_KEYSTORE_BASE64 }}
           AUTOMORPH_KEYSTORE_PASSWORD: ${{ secrets.AUTOMORPH_KEYSTORE_PASSWORD }}
         run: |
@@ -195,6 +198,7 @@ jobs:
         if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Find newly compiled APKs (> 1MB)
           APK_FILES=$(find apps/patched -name "*.apk" -size +1M 2>/dev/null || true)
@@ -217,6 +221,7 @@ jobs:
               pkg_dir=$(basename $(dirname $(dirname "$apk")))
               
               app_name="$pkg_dir"
+              if [ "$pkg_dir" = "com.instaprime.android" ]; then app_name="InstaPrime"; fi
               if [ "$pkg_dir" = "com.reddit.frontpage" ]; then app_name="Reddit"; fi
               if [ "$pkg_dir" = "com.google.android.youtube" ]; then app_name="YouTube"; fi
               if [ "$pkg_dir" = "com.google.android.apps.youtube.music" ]; then app_name="YouTube Music"; fi
