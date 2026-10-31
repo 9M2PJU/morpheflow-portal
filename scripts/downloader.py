@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class Downloader:
     def __init__(self, org_path: Path, architecture: str, project_root: Path) -> None:
+        self.project_root = project_root
         self.org_path = org_path
         self.architecture = architecture
         self.sources_file = (project_root / "tools" / "automorph-data" / "app_sources.yaml") if (project_root / "tools" / "automorph-data" / "app_sources.yaml").is_file() else (project_root / "tools" / "app_sources.yaml")
@@ -34,8 +35,44 @@ class Downloader:
             logger.info(f" └── [✓] {package_name} v{target_version} already exists with correct arch.")
             return patch_details, f"{package_name} already exists"
 
+        # Check for custom base_apk_url configured in tools/automorph-data/config.yaml or defaults/config.yaml
+        config_path = self.project_root / "tools" / "automorph-data" / "config.yaml"
+        if not config_path.is_file():
+            config_path = self.project_root / "defaults" / "config.yaml"
+        custom_base_url = None
+        if config_path.is_file():
+            try:
+                import yaml
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cdata = yaml.safe_load(f) or {}
+                    for pkg_item in cdata.get("packages", []):
+                        if (pkg_item.get("package") == package_name or pkg_item.get("package_name") == package_name):
+                            custom_base_url = pkg_item.get("base_apk_url") or (pkg_item.get("options") or {}).get("base_apk_url")
+                            if custom_base_url:
+                                break
+            except Exception as e:
+                logger.warning(f" └── [!] Error checking custom base_apk_url in config: {e}")
+
+        if custom_base_url:
+            logger.info(f" └── [*] Downloading custom base APK from {custom_base_url}...")
+            dest_apk = outer_dir / f"{package_name}.apk"
+            try:
+                dl_headers = {"User-Agent": "curl/8.0.1"}
+                with requests.get(custom_base_url, headers=dl_headers, stream=True, timeout=120, allow_redirects=True) as r:
+                    r.raise_for_status()
+                    with open(dest_apk, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=128 * 1024):
+                            if chunk:
+                                f.write(chunk)
+                logger.info(f" └── [✓] Custom base APK downloaded successfully: {dest_apk.name} ({dest_apk.stat().st_size} bytes)")
+                return {"package_name": package_name, "version_name": target_version or "custom", "arch": self.architecture, 'patch_attempt': 0}, "custom_base_apk_downloaded"
+            except Exception as e:
+                logger.error(f" └── [✗] Failed downloading custom base APK from {custom_base_url}: {e}")
+
         result = apkpure_fetcher.process_package(package_name, target_version, self.architecture, self.sources_file)
         patch_list, reason = self.download_package(result, outer_dir, split_dir)
+        if not patch_list and not custom_base_url:
+            logger.warning(f" └── [!] Base APK could not be scraped for {package_name}. Please provide a custom base APK via AutoMorph dashboard.")
         return patch_list, reason
 
     def download_package(self, result: dict, outer_dir: Path, split_dir: Path) -> tuple[dict | None, str | None]: 

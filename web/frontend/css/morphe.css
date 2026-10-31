@@ -37,6 +37,7 @@
   --accent-border:           oklch(58% 0.190 255 / 0.32);
   --accent-ink:              oklch(97% 0.005 252);
   --metric-recommended:      oklch(76% 0.140 220);
+  --metric-recommended-bg:   oklch(76% 0.140 220 / 0.08);
 
 
   /* Additional Status & Tint Tokens */
@@ -103,6 +104,7 @@
   --accent-border:           oklch(48% 0.200 255 / 0.28);
   --accent-ink:              oklch(98% 0.005 252);
   --metric-recommended:      oklch(42% 0.200 255);
+  --metric-recommended-bg:   oklch(42% 0.200 255 / 0.08);
 
   --status-cyan:             oklch(44% 0.150 220);
   --status-cyan-subtle:      oklch(44% 0.150 220 / 0.10);
@@ -736,7 +738,8 @@ a {
 .store-view-wrap {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
 }
 
 .store-filter-bar {
@@ -1024,24 +1027,30 @@ a {
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-pill);
   gap: 4px;
+  box-shadow: var(--shadow-sm);
 }
 
 .store-subtab {
   font-size: 0.8125rem;
-  font-weight: 500;
-  padding: 0.35rem 0.875rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
   background: transparent;
   color: var(--text-muted);
   border: none;
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .store-subtab.active {
-  background: var(--surface-overlay);
-  color: var(--text-primary);
+  background: var(--accent-base);
+  color: var(--accent-ink);
   box-shadow: var(--shadow-sm);
+}
+
+.store-subtab:hover:not(.active) {
+  background: var(--surface-hover-overlay);
+  color: var(--text-primary);
 }
 
 .store-subtab:hover:not(.active) {
@@ -1637,6 +1646,11 @@ a {
 
 .metric-cell-value.highlight-recommended {
   color: var(--metric-recommended);
+  font-weight: 700;
+}
+
+.metric-cell-recommended {
+  background: var(--metric-recommended-bg);
 }
 
 .metric-cell-value.highlight-installed {

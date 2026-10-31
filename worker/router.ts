@@ -154,8 +154,10 @@ function attachLastResultsToPackages(
       };
     }
 
+    const base_apk_url = p.options?.base_apk_url || (p as any).base_apk_url || undefined;
     return {
       ...p,
+      base_apk_url,
       last_result,
     };
   });

@@ -191,6 +191,19 @@ class Morphe:
 
             try:
                 response = requests.get(api_url, headers=headers, timeout=10)
+                if response.status_code == 404 and repo_type == 'github':
+                    # Fallback for repositories where the release is tagged as a prerelease (e.g. drappula/morphe-patches-instaprime)
+                    releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
+                    rel_resp = requests.get(releases_url, headers=headers, timeout=10)
+                    if rel_resp.status_code == 200 and len(rel_resp.json()) > 0:
+                        first_rel = rel_resp.json()[0]
+                        tag = first_rel.get("tag_name")
+                        if tag:
+                            self.repo_details[repo]['tag_name'] = tag
+                        repo_version[repo] = re.findall(r"\d+", tag) if tag else []
+                        self.repo_details[repo]['release_payload'] = first_rel
+                        continue
+
                 if response.status_code == 200:
                     tag = response.json().get("tag_name")
                     if tag:
@@ -202,7 +215,7 @@ class Morphe:
                 response.raise_for_status()
 
             except requests.exceptions.RequestException as e:
-                logger.error(f" └── [!] Failed checking release for {owner}/{repo}: {e}")
+                logger.error(f" └── [!] Failed checking release for {owner}/{repo_name}: {e}")
 
         return repo_version
 
@@ -254,9 +267,20 @@ class Morphe:
             headers = self.repo_details[repo]['headers']
 
             try:
-                res = (requests.get(api_url, headers=headers, timeout=15))
-                res.raise_for_status()
-                response = res.json()
+                if 'release_payload' in self.repo_details[repo]:
+                    response = self.repo_details[repo]['release_payload']
+                else:
+                    res = requests.get(api_url, headers=headers, timeout=15)
+                    if res.status_code == 404 and repo_type == 'github':
+                        releases_url = f"https://api.github.com/repos/{owner}/{repo_name}/releases"
+                        rel_res = requests.get(releases_url, headers=headers, timeout=15)
+                        if rel_res.status_code == 200 and len(rel_res.json()) > 0:
+                            response = rel_res.json()[0]
+                        else:
+                            res.raise_for_status()
+                    else:
+                        res.raise_for_status()
+                        response = res.json()
             except requests.exceptions.RequestException as e:
                 status = getattr(getattr(e, "response", None), "status_code", None)
                 if status == 404:

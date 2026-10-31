@@ -279,6 +279,46 @@ function setupEventListeners() {
     });
   });
 
+  // Base APK Dropzone & File Input Listeners
+  const dropzone = document.getElementById('prompt-apk-dropzone');
+  const fileInput = document.getElementById('prompt-apk-file-input');
+  const statusEl = document.getElementById('prompt-apk-file-status');
+  if (dropzone && fileInput) {
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--accent-base)';
+        dropzone.style.backgroundColor = 'var(--surface-overlay)';
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--border-medium)';
+        dropzone.style.backgroundColor = 'var(--surface-sunken)';
+      });
+    });
+    dropzone.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        fileInput.files = e.dataTransfer.files;
+        const f = fileInput.files[0];
+        if (statusEl) {
+          statusEl.style.color = 'var(--accent-base)';
+          statusEl.textContent = `✓ Selected: ${f.name} (${formatBytes(f.size)})`;
+        }
+      }
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        const f = fileInput.files[0];
+        if (statusEl) {
+          statusEl.style.color = 'var(--accent-base)';
+          statusEl.textContent = `✓ Selected: ${f.name} (${formatBytes(f.size)})`;
+        }
+      }
+    });
+  }
+
   // Settings Open Downloads Button
   document.getElementById('btn-open-files')?.addEventListener('click', () => {
     switchTab('files', '');
@@ -728,6 +768,11 @@ async function loadConfig() {
     });
     state.globalRepos = Array.from(discoveredRepos);
 
+    const statApps = document.getElementById('stat-apps-count');
+    if (statApps) statApps.textContent = `${packages.length} Apps`;
+    const statRepos = document.getElementById('stat-repos-count');
+    if (statRepos) statRepos.textContent = `${state.globalRepos.length} Repositories`;
+
     renderConfiguredApps();
     renderGlobalRepos();
   } catch (err) {
@@ -791,10 +836,12 @@ function renderStatus(data) {
 
   // 5. Config totals
   const stats = data.stats;
-  if (stats) {
-    document.getElementById('stat-apps-count').textContent = `${stats.configured_apps} Configured`;
-    document.getElementById('stat-repos-count').textContent = `${stats.connected_repos} Active Repos`;
-  }
+  const count = (stats && stats.configured_apps !== undefined) ? stats.configured_apps : state.configuredApps.length;
+  const reposCount = (stats && stats.connected_repos !== undefined) ? stats.connected_repos : state.globalRepos.length;
+  const statApps = document.getElementById('stat-apps-count');
+  if (statApps) statApps.textContent = `${count} Apps`;
+  const statRepos = document.getElementById('stat-repos-count');
+  if (statRepos) statRepos.textContent = `${reposCount} Repositories`;
 
   // 6. Version Info
   const version = data.version;
@@ -1393,14 +1440,14 @@ function getCompatiblePatchesForPackage(pkg) {
     const patchesList = bundle.patches || [];
 
     for (const patch of patchesList) {
-      const compKey = patch.compatiblePackagesKey;
+      const compKey = patch.compatiblePackagesKey ?? patch.compatibilityKey;
       let isCompatible = false;
       let targetVersion = null;
 
       if (compKey !== undefined && compKey !== null && rawCompatibilitiesData && rawCompatibilitiesData[compKey]) {
-        const compList = rawCompatibilitiesData[compKey];
-        if (Array.isArray(compList)) {
-          for (const item of compList) {
+        const entry = rawCompatibilitiesData[compKey];
+        if (Array.isArray(entry)) {
+          for (const item of entry) {
             if (item && (item.packageName === pkg || item.name === pkg)) {
               isCompatible = true;
               if (item.targets && item.targets.length > 0 && item.targets[0].version) {
@@ -1409,6 +1456,12 @@ function getCompatiblePatchesForPackage(pkg) {
               break;
             }
           }
+        } else if (typeof entry === 'object' && entry !== null) {
+          if (entry[pkg]) {
+            isCompatible = true;
+            const verList = entry[pkg];
+            targetVersion = Array.isArray(verList) && verList.length > 0 ? verList[0] : null;
+          }
         }
       }
 
@@ -1416,6 +1469,10 @@ function getCompatiblePatchesForPackage(pkg) {
         if (patch.compatiblePackages.some(cp => (typeof cp === 'string' ? cp : cp.name || cp.packageName) === pkg)) {
           isCompatible = true;
         }
+      }
+
+      if (!isCompatible && compKey === undefined && Array.isArray(bundle.targetApps) && bundle.targetApps.includes(pkg)) {
+        isCompatible = true;
       }
 
       if (isCompatible) {
@@ -1799,6 +1856,11 @@ function renderOverview() {
               <span>Patches (${verInfo.patchCount})</span>
             </button>
 
+            <button class="btn btn-secondary btn-sm" onclick="openBaseApkPromptModal('${escapeHtml(pkg)}')" title="Upload custom base APK or provide direct URL">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Upload APK</span>
+            </button>
+
             ${verInfo.downloadUrl ? `
               <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1806,7 +1868,7 @@ function renderOverview() {
               </a>
             ` : ''}
 
-            <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
+            <a href="https://github.com/wiwek13/AutoMorph/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
               <span>Release</span>
             </a>
@@ -1974,6 +2036,11 @@ function renderConfiguredApps() {
               <span>Patches (${verInfo.patchCount})</span>
             </button>
 
+            <button class="btn btn-secondary btn-sm" onclick="openBaseApkPromptModal('${escapeHtml(pkg)}')" title="Upload custom base APK or provide direct URL">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Upload APK</span>
+            </button>
+
             ${verInfo.downloadUrl ? `
               <a href="${verInfo.downloadUrl}" class="btn btn-secondary btn-sm" download title="Download Patched APK">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -1981,7 +2048,7 @@ function renderConfiguredApps() {
               </a>
             ` : ''}
 
-            <a href="${verInfo.releaseUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Release">
+            <a href="https://github.com/wiwek13/AutoMorph/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
               <span>Release</span>
             </a>
@@ -2652,6 +2719,118 @@ function renderAppliedPatchesList(patches) {
 }
 
 // ---------------------------------------------------------------------------
+// Custom Base APK Upload Prompt Modal
+// ---------------------------------------------------------------------------
+let currentPromptBaseApkPkg = null;
+
+function openBaseApkPromptModal(pkg) {
+  currentPromptBaseApkPkg = pkg;
+  const modal = document.getElementById('modal-upload-base-apk');
+  if (!modal) return;
+
+  const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
+  const friendlyName = catalogItem?.name || getFallbackAppName(pkg);
+  const iconUrl = catalogItem?.icon_url;
+
+  const titleEl = document.getElementById('prompt-apk-title');
+  const pkgEl = document.getElementById('prompt-apk-pkg');
+  const iconFrame = document.getElementById('prompt-apk-icon-frame');
+  const fileInput = document.getElementById('prompt-apk-file-input');
+  const urlInput = document.getElementById('prompt-apk-url-input');
+  const statusEl = document.getElementById('prompt-apk-file-status');
+
+  if (titleEl) titleEl.textContent = `Base APK for ${friendlyName}`;
+  if (pkgEl) pkgEl.textContent = pkg;
+  if (fileInput) fileInput.value = '';
+  if (urlInput) urlInput.value = '';
+  if (statusEl) statusEl.textContent = '';
+
+  if (iconFrame) {
+    iconFrame.innerHTML = iconUrl
+      ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+  }
+
+  modal.classList.add('open');
+}
+
+function closeBaseApkModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-upload-base-apk') return;
+  const modal = document.getElementById('modal-upload-base-apk');
+  if (modal) modal.classList.remove('open');
+  currentPromptBaseApkPkg = null;
+}
+
+async function submitBaseApkAndBuild() {
+  if (!currentPromptBaseApkPkg) return;
+  const pkg = currentPromptBaseApkPkg;
+  const fileInput = document.getElementById('prompt-apk-file-input');
+  const urlInput = document.getElementById('prompt-apk-url-input');
+  const statusEl = document.getElementById('prompt-apk-file-status');
+  const btn = document.getElementById('btn-prompt-upload-and-build');
+
+  const file = fileInput?.files?.[0];
+  const directUrl = urlInput?.value?.trim();
+
+  if (!file && !directUrl) {
+    showToast('Please choose an .apk file or enter a direct download URL', 'warning');
+    return;
+  }
+
+  try {
+    if (btn) btn.disabled = true;
+    if (statusEl) {
+      statusEl.style.color = 'var(--text-secondary)';
+      statusEl.textContent = file ? `Uploading ${file.name} to persistent storage…` : 'Saving direct download link…';
+    }
+
+    if (file) {
+      const formData = new FormData();
+      formData.append('apk', file);
+      formData.append('package', pkg);
+
+      const res = await fetch(`/api/upload/apk?package=${encodeURIComponent(pkg)}`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Upload failed');
+      }
+      showToast(`Base APK uploaded for ${pkg}!`, 'success');
+    } else if (directUrl) {
+      const res = await fetch('/api/config/app/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package: pkg,
+          base_apk_url: directUrl
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed saving direct URL');
+      }
+      showToast(`Base APK download link set for ${pkg}!`, 'success');
+    }
+
+    closeBaseApkModal();
+    await loadConfig();
+    // Dispatch build immediately
+    await runSingleAppPatch(pkg, true);
+  } catch (err) {
+    console.error('Base APK submission error:', err);
+    if (statusEl) {
+      statusEl.style.color = 'var(--status-danger)';
+      statusEl.textContent = `Error: ${err.message}`;
+    }
+    showToast(`Failed: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Slide-Over Drawer: App Configurator
 // ---------------------------------------------------------------------------
 let currentDrawerPkg = null;
@@ -2882,6 +3061,9 @@ window.openProvisionModal = openProvisionModal;
 window.closeProvisionModal = closeProvisionModal;
 window.confirmProvisionApp = confirmProvisionApp;
 window.toggleAllProvPatches = toggleAllProvPatches;
+window.openBaseApkPromptModal = openBaseApkPromptModal;
+window.closeBaseApkModal = closeBaseApkModal;
+window.submitBaseApkAndBuild = submitBaseApkAndBuild;
 window.openAppliedPatchesModal = openAppliedPatchesModal;
 window.closeAppliedPatchesModal = closeAppliedPatchesModal;
 window.filterAppliedPatches = filterAppliedPatches;
@@ -3030,7 +3212,19 @@ async function toggleAppActive(pkg, isChecked) {
   }
 }
 
-async function runSingleAppPatch(pkg) {
+async function runSingleAppPatch(pkg, skipPrompt = false) {
+  if (!skipPrompt) {
+    const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg);
+    const hasBaseApk = Boolean(app && (app.base_apk_url || (app.options && app.options.base_apk_url)));
+    const verInfo = app ? getAppVersionInfo(app) : null;
+    const isUnlisted = pkg.includes('instaprime') || pkg.includes('mod') || (verInfo && !verInfo.targetVer && !verInfo.currentVer);
+
+    if (isUnlisted && !hasBaseApk) {
+      openBaseApkPromptModal(pkg);
+      return;
+    }
+  }
+
   try {
     const res = await fetch(`/api/run/${encodeURIComponent(pkg)}`, { method: 'POST' });
     if (res.status === 409) {
@@ -4069,6 +4263,7 @@ async function stopRunningPipeline() {
   }
 }
 
+let lastTerminalAppendedLine = '';
 function appendTerminalLine(text) {
   const output = document.getElementById('terminal-stream-log') || document.getElementById('terminal-output');
   if (!output) return;
@@ -4079,6 +4274,14 @@ function appendTerminalLine(text) {
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
     .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
     .replace(/\^\[\[[0-9;]*m/g, '');
+
+  const trimmed = cleanText.trim();
+  if (trimmed && trimmed === lastTerminalAppendedLine && !trimmed.startsWith('─') && !trimmed.startsWith('├')) {
+    return;
+  }
+  if (trimmed) {
+    lastTerminalAppendedLine = trimmed;
+  }
 
   const div = document.createElement('div');
   div.className = 'terminal-line';
