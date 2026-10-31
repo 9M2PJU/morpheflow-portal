@@ -1,6 +1,6 @@
 {
   "name": "automorph",
-  "version": "2.3.2",
+  "version": "2.3.4",
   "description": "AutoMorph edge management portal and build distribution on Cloudflare Workers",
   "type": "module",
   "scripts": {

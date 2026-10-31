@@ -77,8 +77,8 @@
   <!-- Google Fonts: Geist & Geist Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="css/morphe.css?v=2.3.2">
-  <link rel="stylesheet" href="css/morphe.css?v=2.3.2">
+  <link rel="preload" as="style" href="css/morphe.css?v=2.3.4">
+  <link rel="stylesheet" href="css/morphe.css?v=2.3.4">
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
 </head>
@@ -97,7 +97,7 @@
         </div>
         <span class="brand-title">
           AutoMorph
-          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.3.2</span>
+          <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.3.4</span>
         </span>
       </div>
 
@@ -683,21 +683,27 @@
         </details>
       </div>
 
-      <div class="drawer-footer" style="padding: 1rem 1.25rem; background: var(--surface-raised); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-        <button class="btn-secondary btn-sm" onclick="closeObtainiumModal()">Close</button>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button class="btn btn-secondary btn-sm" onclick="downloadObtainiumJson()" id="btn-download-obtainium-json">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            <span>Download .json File</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="copyObtainiumJson()" id="btn-copy-obtainium-json">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span>Copy JSON</span>
-          </button>
-          <button class="btn btn-primary btn-sm" onclick="openDirectObtainiumDeepLink()" id="btn-open-obtainium-direct">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-            <span>Open in Obtainium</span>
-          </button>
+      <div class="drawer-footer" style="padding: 1rem 1.25rem; background: var(--surface-raised); display: flex; flex-direction: column; gap: 0.625rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
+          <button class="btn-secondary btn-sm" onclick="closeObtainiumModal()">Close</button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <button class="btn btn-secondary btn-sm" onclick="downloadObtainiumJson()" id="btn-download-obtainium-json" title="Download backup file to import via Obtainium > Import from File">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Download .json File</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="copyObtainiumJson()" id="btn-copy-obtainium-json" title="Copy configuration to clipboard">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Copy JSON</span>
+            </button>
+            <a class="btn btn-primary btn-sm" href="#" onclick="openDirectObtainiumDeepLink(event)" id="btn-open-obtainium-direct" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.375rem;" title="Directly launch Obtainium and import selected applications">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              <span>Open in Obtainium</span>
+            </a>
+          </div>
+        </div>
+        <div id="obtainium-helper-bar" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.375rem; font-size: 0.6875rem; color: var(--text-muted); width: 100%;">
+          <span>If your browser restricts direct app opening:</span>
+          <a id="btn-open-obtainium-redirect" href="#" target="_blank" rel="noopener" style="color: var(--accent-base); text-decoration: underline; font-weight: 600;">Open via Web Redirect Helper</a>
         </div>
       </div>
     </div>
@@ -820,6 +826,6 @@
   <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200;"></div>
 
   <!-- Client Application Logic -->
-  <script src="js/app.js?v=2.3.2"></script>
+  <script src="js/app.js?v=2.3.4"></script>
 </body>
 </html>

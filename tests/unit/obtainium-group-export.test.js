@@ -37,10 +37,11 @@ test('Obtainium: Modal contains multi-app selection checklist, select all, clear
   // Verify action buttons
   assert.match(indexHtml, /id="btn-download-obtainium-json"/);
   assert.match(indexHtml, /id="btn-copy-obtainium-json"/);
-  assert.match(indexHtml, /id="btn-open-obtainium-direct"/);
+  assert.match(indexHtml, /<a[^>]+id="btn-open-obtainium-direct"/);
+  assert.match(indexHtml, /id="btn-open-obtainium-redirect"/);
 });
 
-test('Obtainium: Frontend app.js builds valid Obtainium payload with GitHub Releases source', () => {
+test('Obtainium: Frontend app.js builds valid Obtainium payload with GitHub Releases source and bulk deep links', () => {
   const appJs = fs.readFileSync(path.join(ROOT_DIR, 'web', 'frontend', 'js', 'app.js'), 'utf8');
 
   assert.match(appJs, /function\s+buildObtainiumAppPayload/);
@@ -48,6 +49,10 @@ test('Obtainium: Frontend app.js builds valid Obtainium payload with GitHub Rele
   assert.match(appJs, /filterReleaseTitlesByRegEx/);
   assert.match(appJs, /apkFilterRegEx/);
   assert.match(appJs, /obtainium:\/\/app\//);
+  assert.match(appJs, /obtainium:\/\/apps\//);
+  assert.match(appJs, /function\s+getObtainiumDirectDeepLink/);
+  assert.match(appJs, /function\s+getObtainiumRedirectUrl/);
+  assert.match(appJs, /https:\/\/apps\.obtainium\.imranr\.dev\/redirect\?r=/);
   assert.match(appJs, /function\s+downloadObtainiumJson/);
   assert.match(appJs, /function\s+openDirectObtainiumDeepLink/);
 });

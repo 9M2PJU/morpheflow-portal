@@ -1527,6 +1527,9 @@ a {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
   transform: scale(0.96);
   transition: transform var(--dur-normal) var(--ease-spring);
 }
@@ -1541,6 +1544,7 @@ a {
   justify-content: space-between;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
 }
 
 .modal-body {
@@ -2474,6 +2478,8 @@ a {
     max-height: 92dvh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
     margin: 0;
+    display: flex;
+    flex-direction: column;
     transform: translateY(100%);
     transition: transform var(--dur-normal) var(--ease-spring);
   }
@@ -2484,18 +2490,22 @@ a {
 
   .modal-head {
     padding: 0.875rem 1rem;
+    flex-shrink: 0;
   }
 
   .modal-body {
     padding: 1rem 0.875rem;
-    max-height: calc(92dvh - 120px) !important;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .modal-foot,
-  .modal-footer {
+  .modal-footer,
+  .modal-container .drawer-footer {
     padding: 0.75rem 1rem;
+    flex-shrink: 0;
   }
 
   /* Patch Manager inside Modal & Drawer on Phone */

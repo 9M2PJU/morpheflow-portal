@@ -4583,7 +4583,7 @@ function renderObtainiumAppsList() {
             </div>
           </div>
         </label>
-        <a href="${deepLink}" class="btn-micro" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; padding: 0.25rem 0.5rem;" title="Directly add ${escapeHtml(appName)} in Obtainium">
+        <a href="${deepLink}" onclick="showToast('Opening ${escapeHtml(appName)} in Obtainium…', 'info')" class="btn-micro" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; padding: 0.25rem 0.5rem;" title="Directly add ${escapeHtml(appName)} in Obtainium">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
           <span>Open App</span>
         </a>
@@ -4647,12 +4647,45 @@ function getObtainiumExportPayload() {
   return { apps };
 }
 
+function getObtainiumDirectDeepLink() {
+  const selected = Array.from(obtainiumSelectedApps);
+  if (selected.length === 0) return '#';
+  if (selected.length === 1) {
+    return getObtainiumDeepLink(selected[0]);
+  }
+  const appsArray = selected.map(pkg => buildObtainiumAppPayload(pkg));
+  return `obtainium://apps/${encodeURIComponent(JSON.stringify(appsArray))}`;
+}
+
+function getObtainiumRedirectUrl() {
+  const direct = getObtainiumDirectDeepLink();
+  if (!direct || direct === '#') return '#';
+  return `https://apps.obtainium.imranr.dev/redirect?r=${encodeURIComponent(direct)}`;
+}
+
 function updateObtainiumExportJson() {
   const pre = document.getElementById('obtainium-export-pre');
   const countEl = document.getElementById('obtainium-json-app-count');
   const payload = getObtainiumExportPayload();
   if (countEl) countEl.textContent = payload.apps.length;
   if (pre) pre.textContent = JSON.stringify(payload, null, 2);
+
+  const directLink = getObtainiumDirectDeepLink();
+  const redirectUrl = getObtainiumRedirectUrl();
+
+  const openBtn = document.getElementById('btn-open-obtainium-direct');
+  if (openBtn) {
+    openBtn.setAttribute('href', directLink);
+    openBtn.setAttribute('data-link', directLink);
+    openBtn.title = obtainiumSelectedApps.size === 1
+      ? 'Directly launch Obtainium and add this application'
+      : `Directly launch Obtainium and import ${obtainiumSelectedApps.size} applications`;
+  }
+
+  const redirectLinkEl = document.getElementById('btn-open-obtainium-redirect');
+  if (redirectLinkEl) {
+    redirectLinkEl.setAttribute('href', redirectUrl);
+  }
 }
 
 function copyObtainiumJson() {
@@ -4687,33 +4720,29 @@ function downloadObtainiumJson() {
   showToast(`Downloaded Obtainium import file for ${payload.apps.length} apps!`, 'success');
 }
 
-function openDirectObtainiumDeepLink() {
+function openDirectObtainiumDeepLink(e) {
   const selected = Array.from(obtainiumSelectedApps);
   if (selected.length === 0) {
+    if (e && e.preventDefault) e.preventDefault();
     showToast('Please select at least one app to open in Obtainium', 'error');
     return;
   }
 
-  if (selected.length === 1) {
-    const deepLink = getObtainiumDeepLink(selected[0]);
+  // Backup: Copy configuration to clipboard silently in background
+  try {
+    const payload = getObtainiumExportPayload();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).catch(() => {});
+    }
+  } catch (_) {}
+
+  const deepLink = getObtainiumDirectDeepLink();
+  showToast(`Opening ${selected.length} app${selected.length > 1 ? 's' : ''} in Obtainium…`, 'info');
+
+  // If clicked via a button or if event target is not an anchor tag following href:
+  if (!e || (e.target && e.target.tagName !== 'A' && !e.target.closest('a'))) {
     window.location.href = deepLink;
-    showToast(`Opening ${selected[0]} in Obtainium…`, 'info');
-    return;
   }
-
-  // Multiple apps selected:
-  // Automatically copy full configuration to clipboard and open Obtainium app
-  const payload = getObtainiumExportPayload();
-  const jsonText = JSON.stringify(payload, null, 2);
-
-  navigator.clipboard.writeText(jsonText).then(() => {
-    showToast(`Copied configuration for ${selected.length} apps! Opening Obtainium…`, 'success');
-    setTimeout(() => {
-      window.location.href = 'obtainium://';
-    }, 400);
-  }).catch(() => {
-    window.location.href = 'obtainium://';
-  });
 }
 
 // Attach globally
