@@ -3373,12 +3373,14 @@ function openBaseApkPromptModal(pkg) {
   const fileInput = document.getElementById('prompt-apk-file-input');
   const urlInput = document.getElementById('prompt-apk-url-input');
   const statusEl = document.getElementById('prompt-apk-file-status');
+  const progressContainer = document.getElementById('prompt-apk-progress-container');
 
   if (titleEl) titleEl.textContent = `Base APK for ${friendlyName}`;
   if (pkgEl) pkgEl.textContent = pkg;
   if (fileInput) fileInput.value = '';
   if (urlInput) urlInput.value = '';
   if (statusEl) statusEl.textContent = '';
+  if (progressContainer) progressContainer.style.display = 'none';
 
   if (iconFrame) {
     iconFrame.innerHTML = iconUrl
@@ -3393,7 +3395,63 @@ function closeBaseApkModal(e) {
   if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-upload-base-apk') return;
   const modal = document.getElementById('modal-upload-base-apk');
   if (modal) modal.classList.remove('open');
+  const progressContainer = document.getElementById('prompt-apk-progress-container');
+  if (progressContainer) progressContainer.style.display = 'none';
   currentPromptBaseApkPkg = null;
+}
+
+/**
+ * Uploads an APK binary with precise real-time progress feedback using XMLHttpRequest
+ */
+function uploadApkWithProgress(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+
+    if (xhr.upload && typeof onProgress === 'function') {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          const percent = Math.min(100, Math.round((e.loaded / e.total) * 100));
+          const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+          const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+          onProgress({
+            loaded: e.loaded,
+            total: e.total,
+            percent,
+            loadedMb,
+            totalMb
+          });
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText || '{}');
+        if (xhr.status >= 200 && xhr.status < 300 && !data.error) {
+          resolve(data);
+        } else {
+          reject(new Error(data.error || `Upload failed with status HTTP ${xhr.status}`));
+        }
+      } catch (err) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({});
+        } else {
+          reject(new Error(`Server returned HTTP ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during file upload. Check your connection.'));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new Error('Upload timed out. The APK file may be too large.'));
+    };
+
+    xhr.send(formData);
+  });
 }
 
 async function submitBaseApkAndBuild() {
@@ -3414,26 +3472,57 @@ async function submitBaseApkAndBuild() {
 
   try {
     if (btn) btn.disabled = true;
-    if (statusEl) {
-      statusEl.style.color = 'var(--text-secondary)';
-      statusEl.textContent = file ? `Uploading ${file.name} to persistent storage…` : 'Saving direct download link…';
-    }
 
     if (file) {
+      const progressContainer = document.getElementById('prompt-apk-progress-container');
+      const progressBar = document.getElementById('prompt-apk-progress-bar');
+      const progressPercent = document.getElementById('prompt-apk-progress-percent');
+      const progressBytes = document.getElementById('prompt-apk-progress-bytes');
+      const progressStatus = document.getElementById('prompt-apk-progress-status');
+      const progressFilename = document.getElementById('prompt-apk-progress-filename');
+
+      if (progressContainer) {
+        progressContainer.style.display = 'block';
+        if (progressBar) {
+          progressBar.style.width = '0%';
+          progressBar.classList.remove('complete');
+        }
+        if (progressPercent) progressPercent.textContent = '0%';
+        if (progressBytes) progressBytes.textContent = `0 MB / ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+        if (progressFilename) progressFilename.textContent = file.name;
+        if (progressStatus) progressStatus.innerHTML = '<span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span> Uploading…';
+      }
+
+      if (statusEl) {
+        statusEl.style.color = 'var(--text-secondary)';
+        statusEl.textContent = `Uploading ${file.name} to persistent storage…`;
+      }
+
       const formData = new FormData();
       formData.append('apk', file);
       formData.append('package', pkg);
 
-      const res = await fetch(`/api/upload/apk?package=${encodeURIComponent(pkg)}`, {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Upload failed');
-      }
+      const data = await uploadApkWithProgress(
+        `/api/upload/apk?package=${encodeURIComponent(pkg)}`,
+        formData,
+        (progress) => {
+          if (progressBar) progressBar.style.width = `${progress.percent}%`;
+          if (progressPercent) progressPercent.textContent = `${progress.percent}%`;
+          if (progressBytes) progressBytes.textContent = `${progress.loadedMb} MB / ${progress.totalMb} MB`;
+          if (progress.percent >= 100) {
+            if (progressBar) progressBar.classList.add('complete');
+            if (progressStatus) progressStatus.innerHTML = '<span style="color: var(--status-success); font-weight: 600;">✓ Verifying & Storing…</span>';
+          }
+        }
+      );
+
       showToast(`Base APK uploaded for ${pkg}!`, 'success');
     } else if (directUrl) {
+      if (statusEl) {
+        statusEl.style.color = 'var(--text-secondary)';
+        statusEl.textContent = 'Saving direct download link…';
+      }
+
       const res = await fetch('/api/config/app/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3531,6 +3620,23 @@ function renderDrawerBody(app) {
         <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
         <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
         <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
+      </div>
+      <!-- Real-time Drawer Upload Progress Bar -->
+      <div id="drawer-apk-progress-container" class="upload-progress-container" style="display: none;">
+        <div class="upload-progress-header">
+          <span class="upload-progress-status" id="drawer-apk-progress-status-text">
+            <span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span>
+            Uploading…
+          </span>
+          <span class="upload-progress-percent" id="drawer-apk-progress-percent">0%</span>
+        </div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="drawer-apk-progress-bar"></div>
+        </div>
+        <div class="upload-progress-footer">
+          <span id="drawer-apk-progress-filename" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;"></span>
+          <span id="drawer-apk-progress-bytes">0 MB / 0 MB</span>
+        </div>
       </div>
     </div>
 
@@ -3800,6 +3906,25 @@ async function saveCustomApkUrl(pkg) {
 async function handleCustomApkFileSelected(pkg, file) {
   if (!file) return;
   const statusEl = document.getElementById('drawer-apk-upload-status');
+  const progressContainer = document.getElementById('drawer-apk-progress-container');
+  const progressBar = document.getElementById('drawer-apk-progress-bar');
+  const progressPercent = document.getElementById('drawer-apk-progress-percent');
+  const progressBytes = document.getElementById('drawer-apk-progress-bytes');
+  const progressStatus = document.getElementById('drawer-apk-progress-status-text');
+  const progressFilename = document.getElementById('drawer-apk-progress-filename');
+
+  if (progressContainer) {
+    progressContainer.style.display = 'block';
+    if (progressBar) {
+      progressBar.style.width = '0%';
+      progressBar.classList.remove('complete');
+    }
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressBytes) progressBytes.textContent = `0 MB / ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+    if (progressFilename) progressFilename.textContent = file.name;
+    if (progressStatus) progressStatus.innerHTML = '<span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span> Uploading…';
+  }
+
   if (statusEl) {
     statusEl.innerHTML = `<span class="badge badge-pulse badge-info">Uploading ${escapeHtml(file.name)} (${(file.size / 1024 / 1024).toFixed(1)} MB)...</span>`;
   }
@@ -3810,12 +3935,19 @@ async function handleCustomApkFileSelected(pkg, file) {
   formData.append('apk', file);
 
   try {
-    const res = await fetch('/api/upload/apk', {
-      method: 'POST',
-      body: formData
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+    const result = await uploadApkWithProgress(
+      '/api/upload/apk',
+      formData,
+      (progress) => {
+        if (progressBar) progressBar.style.width = `${progress.percent}%`;
+        if (progressPercent) progressPercent.textContent = `${progress.percent}%`;
+        if (progressBytes) progressBytes.textContent = `${progress.loadedMb} MB / ${progress.totalMb} MB`;
+        if (progress.percent >= 100) {
+          if (progressBar) progressBar.classList.add('complete');
+          if (progressStatus) progressStatus.innerHTML = '<span style="color: var(--status-success); font-weight: 600;">✓ Processing & Storing…</span>';
+        }
+      }
+    );
 
     if (statusEl) {
       statusEl.innerHTML = `<span class="badge badge-success">✓ Uploaded & Linked: ${escapeHtml(file.name)}</span>`;
@@ -3827,6 +3959,8 @@ async function handleCustomApkFileSelected(pkg, file) {
     showToast(`Successfully uploaded custom base APK for ${pkg}!`, 'success');
     await loadConfig();
   } catch (err) {
+    if (progressBar) progressBar.style.background = 'var(--status-danger)';
+    if (progressStatus) progressStatus.innerHTML = `<span style="color: var(--status-danger); font-weight: 600;">✗ Failed</span>`;
     if (statusEl) {
       statusEl.innerHTML = `<span class="badge badge-danger">Upload failed: ${escapeHtml(err.message)}</span>`;
     }

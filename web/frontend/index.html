@@ -718,6 +718,24 @@
           <div id="prompt-apk-file-status" style="margin-top: 0.625rem; font-size: 0.8125rem; font-weight: 500;"></div>
         </div>
 
+        <!-- Real-time Upload Progress Bar -->
+        <div id="prompt-apk-progress-container" class="upload-progress-container" style="display: none;">
+          <div class="upload-progress-header">
+            <span class="upload-progress-status" id="prompt-apk-progress-status">
+              <span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span>
+              Uploading…
+            </span>
+            <span class="upload-progress-percent" id="prompt-apk-progress-percent">0%</span>
+          </div>
+          <div class="upload-progress-track">
+            <div class="upload-progress-fill" id="prompt-apk-progress-bar"></div>
+          </div>
+          <div class="upload-progress-footer">
+            <span id="prompt-apk-progress-filename" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;"></span>
+            <span id="prompt-apk-progress-bytes">0 MB / 0 MB</span>
+          </div>
+        </div>
+
         <div style="display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0;">
           <hr style="flex: 1; border: none; border-top: 1px solid var(--border-hairline);">
           <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">or direct download link</span>
