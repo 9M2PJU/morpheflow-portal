@@ -1,6 +1,6 @@
 /**
- * AutoMorph Cloudflare Worker API Router
- * Implements the full REST and SSE API contract for AutoMorph Web Portal.
+ * MorpheFlow Cloudflare Worker API Router
+ * Implements the full REST and SSE API contract for MorpheFlow Web Portal.
  */
 
 import { EmailSettings, Env, PackageRecord, PatchedAppRecord, RunHistoryRecord, StatusResponse, SystemSettings } from './types';
@@ -573,8 +573,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   if ((path === '/api/obtainium/export' || path === '/obtainium/export') && method === 'GET') {
     const rawPackages = await storage.listPackages();
     const apps = await storage.listPatchedApps();
-    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
-    const author = repo.split('/')[0] || 'AutoMorph';
+    const repo = env.GITHUB_REPO || 'wiwek13/MorpheFlow';
+    const author = repo.split('/')[0] || 'MorpheFlow';
 
     // Combine both configured packages and compiled patched apps
     const appMap = new Map<string, any>();
@@ -637,8 +637,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   if (isSingleObtainiumRoute) {
     const pkg = path.replace(/^\/(?:api\/)?obtainium\/?/, '').trim();
-    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
-    const author = repo.split('/')[0] || 'AutoMorph';
+    const repo = env.GITHUB_REPO || 'wiwek13/MorpheFlow';
+    const author = repo.split('/')[0] || 'MorpheFlow';
     const apps = await storage.listPatchedApps();
     const patched = apps.find((a) => a.package === pkg);
     const rawPackages = await storage.listPackages();
@@ -671,7 +671,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${appName} Release - AutoMorph</title>
+  <title>${appName} Release - MorpheFlow</title>
 </head>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.5;">
   <h2>${appName} (${pkg})</h2>
@@ -809,7 +809,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       return json({ error: 'Uploaded APK file is empty' }, 400);
     }
 
-    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const repo = env.GITHUB_REPO || 'wiwek13/MorpheFlow';
     const token = env.GITHUB_TOKEN;
 
     if (!token) {
@@ -859,7 +859,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         body: JSON.stringify({
           tag_name: 'base-apks',
           target_commitish: 'main',
-          name: 'AutoMorph Custom Base APKs',
+          name: 'MorpheFlow Custom Base APKs',
           body: 'Persistent cloud storage for user-uploaded custom base APKs.',
           draft: false,
           prerelease: false,
@@ -980,7 +980,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         });
       }
     } catch (err: any) {
-      console.warn('[AutoMorph Worker] Failed to fetch remote catalog:', err?.message || err);
+      console.warn('[MorpheFlow Worker] Failed to fetch remote catalog:', err?.message || err);
     }
     return json({
       store: {},
@@ -1107,7 +1107,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
     return json({
       status: 'success',
-      message: `Successfully provisioned ${saved.package_name || saved.package} into AutoMorph pipeline.`,
+      message: `Successfully provisioned ${saved.package_name || saved.package} into MorpheFlow pipeline.`,
       result: saved,
     });
   }
@@ -1189,7 +1189,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         return json({ message: 'One or more of the requested packages are already in progress.' }, 409);
       }
 
-      const initialLog = `[*] AutoMorph parallel batch pipeline triggered (${source}) for ${packages.length} packages: ${packages.join(', ')} at ${new Date().toISOString()}`;
+      const initialLog = `[*] MorpheFlow parallel batch pipeline triggered (${source}) for ${packages.length} packages: ${packages.join(', ')} at ${new Date().toISOString()}`;
       await storage.appendRunLogs(runId, [initialLog]);
 
       let dispatchCount = 0;
@@ -1199,13 +1199,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         const logsToAppend: string[] = [];
         const dispatchResults = await Promise.allSettled(
           packages.map(async (targetPkg) => {
-            const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
+            const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/morpheflow-cloud-builder.yaml/dispatches`;
             const ghRes = await fetch(ghUrl, {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${env.GITHUB_TOKEN}`,
                 Accept: 'application/vnd.github.v3+json',
-                'User-Agent': 'AutoMorph-CloudflareWorker',
+                'User-Agent': 'MorpheFlow-CloudflareWorker',
               },
               body: JSON.stringify({
                 ref: 'main',
@@ -1290,7 +1290,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       );
     }
 
-    const initialLog = `[*] AutoMorph pipeline triggered (${source})${pkg ? ` for ${pkg}` : ''} at ${new Date().toISOString()}`;
+    const initialLog = `[*] MorpheFlow pipeline triggered (${source})${pkg ? ` for ${pkg}` : ''} at ${new Date().toISOString()}`;
     await storage.appendRunLogs(runId, [initialLog]);
 
     // Dispatch to GitHub Actions if configured
@@ -1298,13 +1298,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     let dispatchMsg = 'Local/manual mode';
     if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
       try {
-        const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
+        const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/morpheflow-cloud-builder.yaml/dispatches`;
         const ghRes = await fetch(ghUrl, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${env.GITHUB_TOKEN}`,
             Accept: 'application/vnd.github.v3+json',
-            'User-Agent': 'AutoMorph-CloudflareWorker',
+            'User-Agent': 'MorpheFlow-CloudflareWorker',
           },
           body: JSON.stringify({
             ref: 'main',
@@ -1422,7 +1422,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   if (path === '/api/files' && method === 'GET') {
     const subpath = url.searchParams.get('path') || '';
     const apps = await storage.listPatchedApps();
-    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const repo = env.GITHUB_REPO || 'wiwek13/MorpheFlow';
 
     const files = apps.map((a) => {
       const perAppTagUrl = `https://github.com/${repo}/releases/tag/app-${a.package}`;
@@ -1432,7 +1432,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       const obtainiumPayload = {
         id: a.package,
         url: `https://github.com/${repo}`,
-        author: repo.split('/')[0] || 'AutoMorph',
+        author: repo.split('/')[0] || 'MorpheFlow',
         name: appName,
         preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
@@ -1501,7 +1501,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       return json({ error: `No compiled APK binary found for ${rawTarget}` }, 404);
     }
 
-    const repo = env.GITHUB_REPO || 'wiwek13/AutoMorph';
+    const repo = env.GITHUB_REPO || 'wiwek13/MorpheFlow';
     const token = env.GITHUB_TOKEN;
 
     if (!token) {
@@ -1521,7 +1521,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'AutoMorph-CloudflareWorker',
+          'User-Agent': 'MorpheFlow-CloudflareWorker',
         },
       });
 
@@ -1541,7 +1541,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github.v3+json',
-            'User-Agent': 'AutoMorph-CloudflareWorker',
+            'User-Agent': 'MorpheFlow-CloudflareWorker',
           },
         });
         if (listRelRes.ok) {
@@ -1565,7 +1565,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
             headers: {
               Authorization: `Bearer ${token}`,
               Accept: 'application/octet-stream',
-              'User-Agent': 'AutoMorph-CloudflareWorker',
+              'User-Agent': 'MorpheFlow-CloudflareWorker',
             },
             redirect: 'manual',
           }
@@ -1666,7 +1666,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
       // 1. Telegram
       if (notifConfig.telegram_bot_token && notifConfig.telegram_chat_id) {
-        const text = `${statusEmoji} *AutoMorph Build ${status.toUpperCase()}*\n\n` +
+        const text = `${statusEmoji} *MorpheFlow Build ${status.toUpperCase()}*\n\n` +
           `• *Duration:* ${payload.duration_formatted || `${duration}s`}\n` +
           `• *Target:* ${payload.package || 'All Targets'}\n` +
           `• *Binaries Compiled:* ${patchedCount}\n` +
@@ -1690,7 +1690,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
       // 2. Discord Webhook
       if (notifConfig.discord_webhook_url) {
-        const content = `${statusEmoji} **AutoMorph Build ${status.toUpperCase()}** (${payload.duration_formatted || `${duration}s`})\n` +
+        const content = `${statusEmoji} **MorpheFlow Build ${status.toUpperCase()}** (${payload.duration_formatted || `${duration}s`})\n` +
           `Target: \`${payload.package || 'All Targets'}\` | Binaries: ${patchedCount}\n` +
           (payload.patched_apps && payload.patched_apps.length > 0
             ? payload.patched_apps.map((a: any) => `> **${a.package}** (${a.version}) - [Download / Release](${a.release_url || a.download_url})`).join('\n')
@@ -1741,9 +1741,9 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       current_commit: APP_COMMIT,
       latest_version: APP_VERSION,
       latest_tag: `v${APP_VERSION}`,
-      release_name: 'AutoMorph Cloudflare Edge',
+      release_name: 'MorpheFlow Cloudflare Edge',
       release_notes: 'Running on Cloudflare Workers Free Tier.',
-      release_url: 'https://github.com/wiwek13/AutoMorph',
+      release_url: 'https://github.com/wiwek13/MorpheFlow',
       checked_at: new Date().toISOString(),
       cached: false,
       cooldown: false,

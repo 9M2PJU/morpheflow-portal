@@ -1,7 +1,7 @@
 {
-  "name": "automorph",
+  "name": "morpheflow",
   "version": "2.4.0",
-  "description": "AutoMorph edge management portal and build distribution on Cloudflare Workers",
+  "description": "MorpheFlow edge management portal and build distribution on Cloudflare Workers",
   "type": "module",
   "scripts": {
     "build": "echo 'Static assets ready in web/frontend'",
@@ -19,7 +19,7 @@
     "test": "node --test 'tests/**/*.test.js'"
   },
   "keywords": [
-    "automorph",
+    "morpheflow",
     "morphe",
     "revanced",
     "android",

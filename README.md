@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="images/logo.png" alt="AutoMorph Logo" width="340">
-  <p><br>A self-hosted tool for automatically patching and distributing Android packages, built on Morphe Desktop.</p>
+  <img src="images/logo.png" alt="MorpheFlow Logo" width="340">
+  <p><br>A self-hosted edge control plane for automatically patching, deterministically signing, and distributing Android packages, built on Morphe Desktop.</p>
 </div>
 
 ## Key Features
@@ -20,7 +20,7 @@
 
 ### Control Center & Dashboard
 <!-- Screenshot placeholder: Save a screenshot of the main dashboard to images/dashboard.png -->
-![AutoMorph Dashboard](images/dashboard.png)
+![MorpheFlow Dashboard](images/dashboard.png)
 
 ### Add Package Wizard
 ![Add Package Wizard](images/add_package.png)
@@ -32,7 +32,7 @@
 
 For full step-by-step guides, visit our **[Documentation Hub](docs/README.md)**:
 
-* ⚡ **[Cloudflare Workers Free Tier Guide (Serverless)](docs/cloudflare-workers-setup.md)**: Deploy AutoMorph to Cloudflare Workers with D1, KV, and GitHub Actions (zero VPS, zero credit card required).
+* ⚡ **[Cloudflare Workers Free Tier Guide (Serverless)](docs/cloudflare-workers-setup.md)**: Deploy MorpheFlow to Cloudflare Workers with D1, KV, and GitHub Actions (zero VPS, zero credit card required).
 * ☁️ **[Oracle Free Tier Setup Guide (Optional)](docs/oracle-setup.md)**: Optional guide to launch a free VPS on Oracle Cloud (skip if you already have your own server!).
 * 🚇 **[Remote Access & Tunnels Guide](docs/tunnels.md)**: Expose your portal securely with free HTTPS via Pangolin, Tailscale Funnel, or Cloudflare Tunnels.
 * 📖 **[User Guide & Web Interface](docs/user-guide.md)**: Managing packages, customizing patch options, daily schedules, and email notifications.
@@ -71,7 +71,7 @@ Deploy with **1-Click** from your terminal or directly via GitHub in Cloudflare 
   1. Fork this repository.
   2. In [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** > **Create** > **Continue with GitHub**.
   3. Select your fork (Build command: `npm run build`, Deploy command: `npm run deploy`).
-  4. Bind an `automorph-db` D1 database and set `GITHUB_TOKEN` & `GITHUB_REPO` in Worker secrets.
+  4. Bind a `morpheflow-db` D1 database and set `GITHUB_TOKEN` & `GITHUB_REPO` in Worker secrets.
 
 See the full **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md)** for detailed instructions.
 
@@ -91,14 +91,14 @@ See the full **[Cloudflare Workers Setup Guide](docs/cloudflare-workers-setup.md
 
 ### Android Auto-Updates with Obtainium
 
-AutoMorph publishes dedicated per-app releases (`app-<package_name>`) for each tracked app:
-1. Open your AutoMorph Dashboard and click **Obtainium Sync** in the top navigation bar.
+MorpheFlow publishes dedicated per-app releases (`app-<package_name>`) for each tracked app:
+1. Open your MorpheFlow Dashboard and click **Obtainium Sync** in the top navigation bar.
 2. Tap **Add All to Obtainium** to bulk-import all your patched apps in one click (or copy individual app URLs).
 3. If using a private GitHub repository, enter a GitHub Personal Access Token (PAT) with `read-only` contents permission once in **Obtainium Settings > GitHub**.
 
 ## A Note on AI
 
-AutoMorph started as a personal project to practise and improve my Python skills. I wrote the vast majority of the backend and core logic myself. The web interface was mostly written with AI assistance, with me guiding the development.
+MorpheFlow started as a personal project to practise and improve my Python skills. I wrote the vast majority of the backend and core logic myself. The web interface was mostly written with AI assistance, with me guiding the development.
 
 ## Acknowledgements
 

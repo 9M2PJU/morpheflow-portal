@@ -16,7 +16,9 @@ logging.basicConfig(
 
 def _load_config_values() -> tuple[str, bool]:
     project_root = Path(__file__).resolve().parent.parent
-    config_path = project_root / "tools" / "automorph-data" / "config.yaml"
+    config_path = project_root / "tools" / "morpheflow-data" / "config.yaml"
+    if not config_path.is_file():
+        config_path = project_root / "tools" / "automorph-data" / "config.yaml"
     sched_time = os.getenv("SCHEDULE_TIME", "03:00")
     run_startup = os.getenv("RUN_ON_STARTUP", "false").lower() in ("true", "1", "yes")
     
@@ -47,7 +49,10 @@ RUN_TIME, RUN_ON_STARTUP = _load_config_values()
 def get_lock_file() -> Path:
   apps_dir = Path("apps")
   apps_dir.mkdir(parents=True, exist_ok=True)
-  return apps_dir / ".automorph.lock"
+  lock_file = apps_dir / ".morpheflow.lock"
+  if not lock_file.exists() and (apps_dir / ".automorph.lock").exists():
+    return apps_dir / ".automorph.lock"
+  return lock_file
 
 
 def check_and_acquire_lock() -> bool:

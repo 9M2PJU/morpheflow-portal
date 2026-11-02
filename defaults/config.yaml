@@ -42,11 +42,11 @@ email:
   smtp_port:
   use_tls: true                  # STARTTLS (typically port 587)
   use_ssl: false                 # Direct SSL/TLS (typically port 465)
-  sender_name: "AutoMorph"
+  sender_name: "MorpheFlow"
   sender_email:
   recipients:
 
-  subject_prefix: "[AutoMorph]"
+  subject_prefix: "[MorpheFlow]"
   attach_result_json: false      # Optional attachment of result.json to email
   layout_mode: "auto"            # "auto" (compact if > threshold), "compact", or "cards"
   compact_threshold: 15          # App count above which email switches to compact view

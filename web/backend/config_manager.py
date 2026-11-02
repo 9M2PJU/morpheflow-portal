@@ -20,16 +20,20 @@ from dotenv import load_dotenv
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-logger = logging.getLogger("automorph.config")
+logger = logging.getLogger("morpheflow.config")
 
-PROJECT_ROOT = Path(os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
+PROJECT_ROOT = Path(os.getenv("MORPHEFLOW_ROOT") or os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
 if (PROJECT_ROOT / ".env").is_file():
     load_dotenv(PROJECT_ROOT / ".env")
 
-CONFIG_PATH = PROJECT_ROOT / "tools" / "automorph-data" / "config.yaml"
+DATA_DIR = PROJECT_ROOT / "tools" / "morpheflow-data"
+if not DATA_DIR.exists() and (PROJECT_ROOT / "tools" / "automorph-data").exists():
+    DATA_DIR = PROJECT_ROOT / "tools" / "automorph-data"
+
+CONFIG_PATH = DATA_DIR / "config.yaml"
 BACKUP_PATH = CONFIG_PATH.parent / "config.yaml.bak"
 PATCHED_DIR = PROJECT_ROOT / "apps" / "patched"
-STATE_DIR = PROJECT_ROOT / "tools" / "automorph-data" / "state"
+STATE_DIR = DATA_DIR / "state"
 PATCHED_JSON_PATH = STATE_DIR / "patched.json"
 
 DEFAULTS_DIR = PROJECT_ROOT / "defaults"
@@ -243,8 +247,8 @@ def get_last_patch_result(package: str, patched_registry: dict[str, Any] | None 
     for failure diagnostics or unindexed legacy builds.
     """
     # 1. Check for run report: package-specific report first, then last_run_report.json
-    pkg_run_file = PROJECT_ROOT / "tools" / "automorph-data" / "state" / "package_runs" / f"{package}.json"
-    last_report_file = PROJECT_ROOT / "tools" / "automorph-data" / "state" / "logs" / "last_run_report.json"
+    pkg_run_file = STATE_DIR / "package_runs" / f"{package}.json"
+    last_report_file = STATE_DIR / "logs" / "last_run_report.json"
 
     report_timestamp = 0.0
     report_attempts: list[dict[str, Any]] = []
@@ -416,7 +420,7 @@ def get_last_patch_result(package: str, patched_registry: dict[str, Any] | None 
 
     # 3. Fallback Path: Build patch -> repo owner map from options/<package>/*.json
     patch_owners: dict[str, str] = {}
-    options_app_dir = PROJECT_ROOT / "tools" / "automorph-data" / "options" / package
+    options_app_dir = DATA_DIR / "options" / package
     if options_app_dir.is_dir():
         for opt_file in options_app_dir.glob("*_options.json"):
             owner = opt_file.name.replace("_options.json", "")
@@ -1188,10 +1192,10 @@ def get_all_settings() -> dict[str, Any]:
             "smtp_port": int(email_data.get("smtp_port") or 587),
             "use_tls": bool(email_data.get("use_tls", True)),
             "use_ssl": bool(email_data.get("use_ssl")),
-            "sender_name": str(email_data.get("sender_name") or "AutoMorph"),
+            "sender_name": str(email_data.get("sender_name") or "MorpheFlow"),
             "sender_email": str(email_data.get("sender_email") or ""),
             "recipients": [str(r).strip() for r in (email_data.get("recipients") or []) if str(r).strip()],
-            "subject_prefix": str(email_data.get("subject_prefix") or "[AutoMorph]"),
+            "subject_prefix": str(email_data.get("subject_prefix") or "[MorpheFlow]"),
             "attach_result_json": bool(email_data.get("attach_result_json")),
             "layout_mode": str(email_data.get("layout_mode") or "auto"),
             "compact_threshold": int(email_data.get("compact_threshold") or 15),
@@ -1331,7 +1335,7 @@ def send_test_email(override: dict[str, Any] | None = None, recipient: str | Non
     smtp_port = int(email_conf.get("smtp_port") or 587)
     use_tls = bool(email_conf.get("use_tls", True))
     use_ssl = bool(email_conf.get("use_ssl", False))
-    sender_name = str(email_conf.get("sender_name") or "AutoMorph").strip()
+    sender_name = str(email_conf.get("sender_name") or "MorpheFlow").strip()
     sender_email = str(email_conf.get("sender_email") or "").strip()
     username = str(
         email_conf.get("username")
@@ -1369,7 +1373,7 @@ def send_test_email(override: dict[str, Any] | None = None, recipient: str | Non
     tz = get_current_timezone()
     now_dt = datetime.now(tz=tz) if tz else datetime.now()
     now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"{email_conf.get('subject_prefix', '[AutoMorph]').strip()} 🧪 SMTP Test Notification ({now_str})"
+    subject = f"{email_conf.get('subject_prefix', '[MorpheFlow]').strip()} 🧪 SMTP Test Notification ({now_str})"
 
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -1392,11 +1396,11 @@ def send_test_email(override: dict[str, Any] | None = None, recipient: str | Non
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">⚡ AutoMorph SMTP Test</div>
+      <div class="title">⚡ MorpheFlow SMTP Test</div>
     </div>
     <div class="body">
       <div class="badge">✓ SMTP Connection Successful</div>
-      <p style="margin: 0 0 12px 0; color: #e5e7eb;">This test notification confirms that your AutoMorph email dispatcher configuration and SMTP credentials are fully functional.</p>
+      <p style="margin: 0 0 12px 0; color: #e5e7eb;">This test notification confirms that your MorpheFlow email dispatcher configuration and SMTP credentials are fully functional.</p>
       
       <table class="info-table">
         <tr>
@@ -1422,17 +1426,17 @@ def send_test_email(override: dict[str, Any] | None = None, recipient: str | Non
       </table>
     </div>
     <div class="footer">
-      AutoMorph Control Center • Automated Dispatcher Test
+      MorpheFlow Control Center • Automated Dispatcher Test
     </div>
   </div>
 </body>
 </html>"""
 
-    text_content = f"""AutoMorph SMTP Test
+    text_content = f"""MorpheFlow SMTP Test
 =======================
 ✓ SMTP Connection Successful!
 
-This test message confirms that your AutoMorph email dispatcher configuration and SMTP credentials are functioning properly.
+This test message confirms that your MorpheFlow email dispatcher configuration and SMTP credentials are functioning properly.
 
 - Server: {smtp_server}:{smtp_port}
 - Security: {'Direct SSL' if use_ssl else ('STARTTLS' if use_tls else 'None')}

@@ -1,5 +1,5 @@
 """
-Cross-container heartbeat-based execution mutex for AutoMorph.
+Cross-container heartbeat-based execution mutex for MorpheFlow.
 Prevents concurrent pipeline builds between the web interface and background scheduler.
 """
 
@@ -13,12 +13,12 @@ from pathlib import Path
 import time
 from typing import Any
 
-logger = logging.getLogger("automorph.mutex")
+logger = logging.getLogger("morpheflow.mutex")
 
 # Project root resolution
-PROJECT_ROOT = Path(os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
+PROJECT_ROOT = Path(os.getenv("MORPHEFLOW_ROOT") or os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
 APPS_DIR = PROJECT_ROOT / "apps"
-LOCK_FILE = APPS_DIR / ".automorph.lock"
+LOCK_FILE = APPS_DIR / ".morpheflow.lock"
 HEARTBEAT_TIMEOUT_SECONDS = 300  # 5 minutes threshold for stale locks
 
 # In-memory asyncio lock for the web process
@@ -27,6 +27,8 @@ _asyncio_lock = asyncio.Lock()
 
 def get_lock_path() -> Path:
     APPS_DIR.mkdir(parents=True, exist_ok=True)
+    if not LOCK_FILE.exists() and (APPS_DIR / ".automorph.lock").exists():
+        return APPS_DIR / ".automorph.lock"
     return LOCK_FILE
 
 
@@ -67,7 +69,7 @@ def get_active_lock() -> dict[str, Any] | None:
 def acquire_lock(
     source: str = "manual",
     package: str | None = None,
-    container: str = "automorph_web",
+    container: str = "morpheflow_web",
     run_id: str | None = None,
 ) -> tuple[bool, dict[str, Any] | None]:
     """

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates foolproof Obtainium deep links and additionalSettings payloads for AutoMorph.
+Generates foolproof Obtainium deep links and additionalSettings payloads for MorpheFlow.
 Compatible with Dart/Flutter RegExp engine (ECMAScript syntax without invalid flags).
 """
 
@@ -29,7 +29,7 @@ def to_case_insensitive_pattern(s: str) -> str:
 
 def build_obtainium_payload(pkg: str, name: str, repo: str) -> dict:
     """Builds the complete Obtainium app payload."""
-    author = repo.split("/")[0] if "/" in repo else "AutoMorph"
+    author = repo.split("/")[0] if "/" in repo else "MorpheFlow"
     ci_pkg = to_case_insensitive_pattern(pkg)
     ci_name = to_case_insensitive_pattern(name)
 
@@ -70,14 +70,16 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Obtainium App Payload and Links")
     parser.add_argument("--pkg", required=True, help="Android package name (e.g. com.sbs.train)")
     parser.add_argument("--name", default="", help="Application display name (e.g. MacroFactor Workouts)")
-    parser.add_argument("--repo", default="wiwek13/AutoMorph", help="GitHub repo slug (owner/repo)")
+    parser.add_argument("--repo", default="wiwek13/MorpheFlow", help="GitHub repo slug (owner/repo)")
     parser.add_argument("--format", choices=["redirect", "deep_link", "json"], default="redirect")
 
     args = parser.parse_args()
     name = args.name.strip()
     if not name:
         # Try resolving from catalog
-        cat_file = "tools/automorph-data/state/morphe_catalog.json"
+        cat_file = "tools/morpheflow-data/state/morphe_catalog.json"
+        if not os.path.exists(cat_file):
+            cat_file = "tools/automorph-data/state/morphe_catalog.json"
         if os.path.exists(cat_file):
             try:
                 with open(cat_file) as f:

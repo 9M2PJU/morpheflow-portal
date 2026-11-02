@@ -1,7 +1,7 @@
 services:
-  automorph:
-    image: ghcr.io/holjab/automorph:latest
-    container_name: automorph
+  morpheflow:
+    image: ghcr.io/wiwek13/morpheflow:latest
+    container_name: morpheflow
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -10,9 +10,9 @@ services:
     env_file:
       - .env
     volumes:
-      - ./apps:/automorph/apps:rw
-      - ./tools/morphe-data:/automorph/tools/morphe-data:rw
-      - ./tools/automorph-data:/automorph/tools/automorph-data:rw
+      - ./apps:/morpheflow/apps:rw
+      - ./tools/morphe-data:/morpheflow/tools/morphe-data:rw
+      - ./tools/morpheflow-data:/morpheflow/tools/morpheflow-data:rw
 
   cloudflared:
     image: cloudflare/cloudflared:latest

@@ -1,5 +1,5 @@
 /**
- * AutoMorph Cloudflare Worker Main Entrypoint
+ * MorpheFlow Cloudflare Worker Main Entrypoint
  * Modeled after NodeWarden (https://github.com/shuaiplus/nodewarden)
  * Single-User Airtight Authentication Enabled.
  */
@@ -96,7 +96,7 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log(`[AutoMorph Cron Trigger] Scheduled job fired at ${new Date(event.scheduledTime).toISOString()}`);
+    console.log(`[MorpheFlow Cron Trigger] Scheduled job fired at ${new Date(event.scheduledTime).toISOString()}`);
 
     const storage = new StorageService(env.DB);
     await storage.initializeDatabase();
@@ -122,10 +122,10 @@ export default {
           interval: 'hourly',
           auto_sync: true,
         });
-        console.log(`[AutoMorph Cron] Hourly Community sync completed: ${totalApps} apps, ${totalBundles} bundles.`);
+        console.log(`[MorpheFlow Cron] Hourly Community sync completed: ${totalApps} apps, ${totalBundles} bundles.`);
       }
     } catch (syncErr: any) {
-      console.warn(`[AutoMorph Cron] Community sync error: ${syncErr?.message}`);
+      console.warn(`[MorpheFlow Cron] Community sync error: ${syncErr?.message}`);
     }
 
     // 2. Scheduled Build Dispatch (Hourly check for scheduled time OR unbuilt waiting apps OR available updates)
@@ -186,7 +186,7 @@ export default {
       });
 
       if (!acquired) {
-        console.log('[AutoMorph Cron Trigger] Run skipped: An active execution lock is already held.');
+        console.log('[MorpheFlow Cron Trigger] Run skipped: An active execution lock is already held.');
         return;
       }
 
@@ -200,20 +200,20 @@ export default {
       }
 
       await storage.appendRunLogs(runId, [
-        `[*] AutoMorph automated build triggered via Cloudflare Cron Trigger for ${triggerReason} at ${new Date().toISOString()}`,
+        `[*] MorpheFlow automated build triggered via Cloudflare Cron Trigger for ${triggerReason} at ${new Date().toISOString()}`,
       ]);
 
       // Dispatch to GitHub Actions if configured
       if (env.GITHUB_TOKEN && env.GITHUB_REPO) {
         try {
-          const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/automorph-cloud-builder.yaml/dispatches`;
-          const workerUrl = env.CLOUDFLARE_WORKER_URL || 'https://automorph.w161112218.workers.dev';
+          const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/morpheflow-cloud-builder.yaml/dispatches`;
+          const workerUrl = env.CLOUDFLARE_WORKER_URL || 'https://morpheflow.w161112218.workers.dev';
           const res = await fetch(ghUrl, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${env.GITHUB_TOKEN}`,
               Accept: 'application/vnd.github.v3+json',
-              'User-Agent': 'AutoMorph-CloudflareWorker',
+              'User-Agent': 'MorpheFlow-CloudflareWorker',
             },
             body: JSON.stringify({
               ref: 'main',

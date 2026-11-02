@@ -1,4 +1,13 @@
 tools/*
+!tools/morpheflow-data/
+tools/morpheflow-data/*
+!tools/morpheflow-data/app_sources.yaml
+!tools/morpheflow-data/morpheflow.keystore
+!tools/morpheflow-data/automorph.keystore
+tools/morpheflow-data/config.yaml*
+tools/morpheflow-data/options/
+tools/morpheflow-data/state/
+
 !tools/automorph-data/
 tools/automorph-data/*
 !tools/automorph-data/app_sources.yaml
@@ -11,6 +20,8 @@ morphe-data/
 .venv/
 .env
 *.keystore
+!tools/morpheflow-data/morpheflow.keystore
+!tools/morpheflow-data/automorph.keystore
 !tools/automorph-data/automorph.keystore
 *.bak
 tmp/

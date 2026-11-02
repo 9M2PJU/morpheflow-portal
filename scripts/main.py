@@ -56,7 +56,9 @@ def main(project_root: Path, conf: dict) -> None:
             return
 
         package_version_req, enabled_patches = result
-        sources = project_root / "tools" / "automorph-data" / "app_sources.yaml"
+        sources = project_root / "tools" / "morpheflow-data" / "app_sources.yaml"
+        if not sources.is_file():
+            sources = project_root / "tools" / "automorph-data" / "app_sources.yaml"
         download_list = check_patched_version(package_version_req, patched_dir, architecture, sources, force)
 
         if target_pkgs:
@@ -280,7 +282,7 @@ def check_patched_version(package_req: list, patched: Path, arch: str, sources: 
                 continue
 
             if force:
-                logger.info(" └── Forced via automorph console. Added to needs patching list..")
+                logger.info(" └── Forced via MorpheFlow console. Added to needs patching list..")
                 target_versions_set.add(version_tup)
                 first_it = False
                 continue
@@ -407,7 +409,9 @@ def clear_old_packages(max_original_packages: int, max_patched_packages:int, pro
     if not max_original_packages and not max_patched_packages:
         return
     
-    patched_json = project_root / "tools" / "automorph-data" / "state"  / "patched.json"
+    patched_json = project_root / "tools" / "morpheflow-data" / "state" / "patched.json"
+    if not patched_json.is_file() and (project_root / "tools" / "automorph-data" / "state" / "patched.json").is_file():
+        patched_json = project_root / "tools" / "automorph-data" / "state" / "patched.json"
     json_results = None
     json_results = load_patched_json(patched_json)
 
@@ -508,8 +512,11 @@ def load_patched_json(patched_json: Path) -> dict | None:
         return
 
 if __name__ == "__main__":
-    project_root = Path(os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent))
-    config_file = project_root / "tools" / "automorph-data" / "config.yaml"
+    env_root = os.getenv("MORPHEFLOW_ROOT") or os.getenv("AUTOMORPH_ROOT")
+    project_root = Path(env_root) if env_root else Path(__file__).resolve().parent.parent
+    config_file = project_root / "tools" / "morpheflow-data" / "config.yaml"
+    if not config_file.is_file():
+        config_file = project_root / "tools" / "automorph-data" / "config.yaml"
 
     if not config_file.is_file():
         fallback_config = project_root / "defaults" / "config.yaml"

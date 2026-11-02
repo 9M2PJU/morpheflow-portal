@@ -19,12 +19,15 @@ from typing import Any, AsyncGenerator
 
 from . import mutex
 
-logger = logging.getLogger("automorph.runner")
+logger = logging.getLogger("morpheflow.runner")
 
-PROJECT_ROOT = Path(os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
+PROJECT_ROOT = Path(os.getenv("MORPHEFLOW_ROOT") or os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
 MAIN_SCRIPT = PROJECT_ROOT / "scripts" / "main.py"
 APPS_DIR = PROJECT_ROOT / "apps"
-LOGS_DIR = PROJECT_ROOT / "tools" / "automorph-data" / "state" / "logs"
+DATA_DIR = PROJECT_ROOT / "tools" / "morpheflow-data"
+if not DATA_DIR.exists() and (PROJECT_ROOT / "tools" / "automorph-data").exists():
+    DATA_DIR = PROJECT_ROOT / "tools" / "automorph-data"
+LOGS_DIR = DATA_DIR / "state" / "logs"
 LAST_RUN_FILE = LOGS_DIR / "last_run.json"
 LAST_RUN_LOG_FILE = LOGS_DIR / "last_run.log"
 
@@ -86,7 +89,7 @@ class PipelineRunner:
         acquired, lock_data = mutex.acquire_lock(
             source=source,
             package=package,
-            container="automorph_web",
+            container="morpheflow_web",
             run_id=run_id,
         )
         if not acquired:
@@ -116,6 +119,7 @@ class PipelineRunner:
     async def _execute_process(self, run_id: str, source: str, package: str | None = None) -> None:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        env["MORPHEFLOW_ROOT"] = str(PROJECT_ROOT)
         env["AUTOMORPH_ROOT"] = str(PROJECT_ROOT)
         if package:
             env["TARGET_PACKAGE"] = package
@@ -136,7 +140,7 @@ class PipelineRunner:
         # Broadcast initial line
         pkg_suffix = f" for package '{package}'" if package else ""
         now_dt = datetime.now(tz=tz_obj) if tz_obj else datetime.now()
-        initial_msg_line = f"[*] AutoMorph pipeline triggered ({source}){pkg_suffix} at {now_dt.strftime('%Y-%m-%d %H:%M:%S')}"
+        initial_msg_line = f"[*] MorpheFlow pipeline triggered ({source}){pkg_suffix} at {now_dt.strftime('%Y-%m-%d %H:%M:%S')}"
         initial_msg = {
             "line": initial_msg_line,
             "timestamp": time.time(),

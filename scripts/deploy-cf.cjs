@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * AutoMorph 1-Click Cloudflare Workers Deployment Automation
+ * MorpheFlow 1-Click Cloudflare Workers Deployment Automation
  *
  * Automates the entire deployment pipeline:
  * 1. Checks Wrangler CLI authentication.
- * 2. Automatically finds or creates the Cloudflare D1 database (`automorph-db`).
+ * 2. Automatically finds or creates the Cloudflare D1 database (`morpheflow-db`).
  * 3. Auto-pins the real database UUID into `wrangler.toml` and `wrangler.kv.toml`.
  * 4. Automatically creates and pins Cloudflare KV namespace if in KV mode (`--kv`).
  * 5. Applies D1 database schema migrations automatically with zero prompts.
@@ -21,7 +21,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const WRANGLER_TOML = path.join(ROOT_DIR, 'wrangler.toml');
 const WRANGLER_KV_TOML = path.join(ROOT_DIR, 'wrangler.kv.toml');
 const ENV_FILE = path.join(ROOT_DIR, '.env');
-const DB_NAME = 'automorph-db';
+const DB_NAME = 'morpheflow-db';
 
 const isKvMode = process.argv.includes('--kv');
 const targetConfig = isKvMode ? 'wrangler.kv.toml' : 'wrangler.toml';
@@ -339,7 +339,7 @@ function setupGitHubIntegration(workerUrl, webhookSecret) {
     }
     // Enable workflow if disabled
     try {
-      run(`gh workflow enable automorph-cloud-builder.yaml -R "${targetRepo}"`);
+      run(`gh workflow enable morpheflow-cloud-builder.yaml -R "${targetRepo}"`);
     } catch {}
   } catch (err) {
     warn(`Could not set GitHub secrets: ${err.message}`);
@@ -350,10 +350,10 @@ function setupGitHubIntegration(workerUrl, webhookSecret) {
 
 function printSummary(secrets, workerUrl) {
   console.log('\n' + '='.repeat(64));
-  console.log('  🎉  AutoMorph Cloudflare Workers Deployment Successful!  🎉');
+  console.log('  🎉  MorpheFlow Cloudflare Workers Deployment Successful!  🎉');
   console.log('='.repeat(64));
   console.log('\n📌 Configuration Summary:');
-  console.log(`   • Portal URL:  \x1b[36m\x1b[1m${workerUrl || 'https://automorph.<subdomain>.workers.dev'}\x1b[0m`);
+  console.log(`   • Portal URL:  \x1b[36m\x1b[1m${workerUrl || 'https://morpheflow.<subdomain>.workers.dev'}\x1b[0m`);
   console.log(`   • Mode:        ${isKvMode ? 'Zero-Card KV Mode (wrangler.kv.toml)' : 'Standard D1 Mode (wrangler.toml)'}`);
   console.log(`   • Database:    Cloudflare D1 (${DB_NAME})`);
   console.log(`   • Static UI:   Workers Static Assets (web/frontend)`);
@@ -364,7 +364,7 @@ function printSummary(secrets, workerUrl) {
   console.log('   • Username:    Not required (Single-user master access; or "admin" if prompted)');
   if (secrets.authPassword) {
     console.log(`   • Password:    \x1b[32m\x1b[1m${secrets.authPassword}\x1b[0m`);
-    console.log('   (Enter this master password in the AutoMorph login gateway)');
+    console.log('   (Enter this master password in the MorpheFlow login gateway)');
   }
 
   if (secrets.ghRepo) {
@@ -376,7 +376,7 @@ function printSummary(secrets, workerUrl) {
   } else {
     console.log('\n🔐 Next Step: GitHub Actions Secrets (for Free Cloud Builds)');
     console.log('   In your GitHub repository (Settings > Secrets and variables > Actions):');
-    console.log(`   • CLOUDFLARE_WORKER_URL = ${workerUrl || 'https://automorph.<your-subdomain>.workers.dev'}`);
+    console.log(`   • CLOUDFLARE_WORKER_URL = ${workerUrl || 'https://morpheflow.<your-subdomain>.workers.dev'}`);
     if (secrets.webhookSecret) {
       console.log(`   • WEBHOOK_SECRET        = ${secrets.webhookSecret}`);
     }
@@ -386,7 +386,7 @@ function printSummary(secrets, workerUrl) {
 }
 
 function main() {
-  console.log('\n🤖 AutoMorph Automated Cloudflare Deployer\n');
+  console.log('\n🤖 MorpheFlow Automated Cloudflare Deployer\n');
   try {
     // 0. Auto-sync version metadata across Worker and Frontend
     try {
@@ -403,7 +403,7 @@ function main() {
     ensureKv();
     applyMigrations(dbId);
     const secrets = syncSecrets();
-    const workerUrl = deployWorker() || 'https://automorph.w161112218.workers.dev';
+    const workerUrl = deployWorker() || 'https://morpheflow.w161112218.workers.dev';
 
     // End-to-end GitHub private fork & Actions secrets automation
     const gh = setupGitHubIntegration(workerUrl, secrets.webhookSecret);

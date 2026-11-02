@@ -1,5 +1,5 @@
 /**
- * AutoMorph Management Dashboard — Client Application
+ * MorpheFlow Management Dashboard — Client Application
  * Interacts with FastAPI backend for metrics, live SSE log streaming,
  * and multi-step YAML configuration wizards.
  */
@@ -44,8 +44,8 @@ const state = {
   updateInfo: null,
   statusPollTimer: null,
   updateCheckTimer: null,
-  statusPollIntervalSec: parseInt(localStorage.getItem('automorph-poll-sec') || '30', 10),
-  updateCheckIntervalHours: parseInt(localStorage.getItem('automorph-update-hours') || '4', 10),
+  statusPollIntervalSec: parseInt(localStorage.getItem('morpheflow-poll-sec') || localStorage.getItem('automorph-poll-sec') || '30', 10),
+  updateCheckIntervalHours: parseInt(localStorage.getItem('morpheflow-update-hours') || localStorage.getItem('automorph-update-hours') || '4', 10),
 
   wizard: {
     step: 1,
@@ -163,7 +163,7 @@ function scheduleStatusPolling(intervalSec) {
   }
   const sec = Number.isInteger(intervalSec) && intervalSec > 0 ? intervalSec : 30;
   state.statusPollIntervalSec = sec;
-  localStorage.setItem('automorph-poll-sec', String(sec));
+  localStorage.setItem('morpheflow-poll-sec', String(sec));
 
   state.statusPollTimer = setInterval(() => {
     // If the browser tab is hidden in the background, pause status polling to preserve Free Tier quota
@@ -179,7 +179,7 @@ function scheduleUpdateChecking(intervalHours) {
   }
   const hours = Number.isInteger(intervalHours) ? intervalHours : 4;
   state.updateCheckIntervalHours = hours;
-  localStorage.setItem('automorph-update-hours', String(hours));
+  localStorage.setItem('morpheflow-update-hours', String(hours));
 
   // If set to 0, update checking is manual only
   if (hours > 0) {
@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initTheme() {
-  const saved = localStorage.getItem('automorph-theme') || 'dark';
+  const saved = localStorage.getItem('morpheflow-theme') || localStorage.getItem('automorph-theme') || 'dark';
   document.documentElement.setAttribute('data-theme', saved);
   updateThemeIcon(saved);
 }
@@ -240,7 +240,7 @@ function setupEventListeners() {
     const current = document.documentElement.getAttribute('data-theme') || 'dark';
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('automorph-theme', next);
+    localStorage.setItem('morpheflow-theme', next);
     updateThemeIcon(next);
   });
 
@@ -926,7 +926,7 @@ function renderStatus(data) {
     if (versionValEl) versionValEl.textContent = formattedVer;
     if (versionTagEl) {
       versionTagEl.textContent = formattedVer;
-      versionTagEl.title = `AutoMorph ${formattedVer} (${version.branch || 'main'}) — Click to view update details`;
+      versionTagEl.title = `MorpheFlow ${formattedVer} (${version.branch || 'main'}) — Click to view update details`;
     }
   }
 
@@ -2021,7 +2021,7 @@ function getAppVersionInfo(app) {
     ? `/api/download/${encodeURIComponent(pkg)}`
     : (apkName ? `/files/${encodeURIComponent(apkName)}` : null);
 
-  const ghRepo = 'wiwek13/AutoMorph';
+  const ghRepo = 'wiwek13/MorpheFlow';
   const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
   const patchCount = lastRes?.applied_count ?? appliedPatches.length;
 
@@ -2209,7 +2209,7 @@ function renderOverview() {
               </a>
             ` : ''}
 
-            <a href="https://github.com/wiwek13/AutoMorph/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
+            <a href="https://github.com/wiwek13/MorpheFlow/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
               <span>Release</span>
             </a>
@@ -2423,7 +2423,7 @@ function renderConfiguredApps() {
               </a>
             ` : ''}
 
-            <a href="https://github.com/wiwek13/AutoMorph/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
+            <a href="https://github.com/wiwek13/MorpheFlow/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
               <span>Release</span>
             </a>
@@ -3268,7 +3268,7 @@ function openAppUpdateModal(pkg) {
 
   diffCardsHtml += `
     <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-      <strong>Pipeline Action:</strong> AutoMorph will automatically obtain base APK ${escapeHtml(verInfo.targetVer || verInfo.currentVer || 'latest')}, apply all ${verInfo.patchCount} configured patches, deterministically sign with your persistent keystore, and publish to GitHub Releases.
+      <strong>Pipeline Action:</strong> MorpheFlow will automatically obtain base APK ${escapeHtml(verInfo.targetVer || verInfo.currentVer || 'latest')}, apply all ${verInfo.patchCount} configured patches, deterministically sign with your persistent keystore, and publish to GitHub Releases.
     </div>
   `;
 
@@ -4404,7 +4404,7 @@ function renderDrawerBody(app) {
           Deterministic Keystore Attached
         </div>
         <div style="font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4;">
-          Signed with your dedicated AutoMorph keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
+          Signed with your dedicated MorpheFlow keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
         </div>
       </div>
     `;
@@ -4446,7 +4446,7 @@ function renderDrawerBody(app) {
 
       <!-- Mode 1: Auto-Fetch -->
       <div id="drawer-base-apk-auto" style="display: ${currentDrawerBaseApkMode === 'auto' ? 'block' : 'none'}; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
-        <span>AutoMorph automatically fetches clean base APK from upstream (Target: <strong style="color: var(--accent-base);">${escapeHtml(recVer)}</strong>) during compilation.</span>
+        <span>MorpheFlow automatically fetches clean base APK from upstream (Target: <strong style="color: var(--accent-base);">${escapeHtml(recVer)}</strong>) during compilation.</span>
       </div>
 
       <!-- Mode 2: Custom URL -->
@@ -5176,7 +5176,7 @@ let obtainiumSelectedApps = new Set();
 let obtainiumFilterQuery = '';
 
 function getObtainiumRepoSlug() {
-  const repo = (window.__automorph_repo || 'wiwek13/AutoMorph').trim();
+  const repo = (window.__morpheflow_repo || window.__automorph_repo || 'wiwek13/MorpheFlow').trim();
   return repo.startsWith('http') ? repo.replace(/.*github\.com\//, '') : repo;
 }
 
@@ -5213,7 +5213,7 @@ function buildObtainiumAppPayload(pkg) {
   return {
     id: pkg,
     url: `https://github.com/${repo}`,
-    author: repo.split('/')[0] || 'AutoMorph',
+    author: repo.split('/')[0] || 'MorpheFlow',
     name: appName,
     preferredApkIndex: 0,
     additionalSettings
@@ -5270,7 +5270,7 @@ function renderObtainiumAppsList() {
   if (displayApps.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
-        ${allApps.length === 0 ? 'No configured apps found in AutoMorph pipeline.' : 'No apps match your search filter.'}
+        ${allApps.length === 0 ? 'No configured apps found in MorpheFlow pipeline.' : 'No apps match your search filter.'}
       </div>
     `;
     return;
@@ -5432,7 +5432,7 @@ function downloadObtainiumJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `automorph-obtainium-${payload.apps.length}-apps.json`;
+  a.download = `morpheflow-obtainium-${payload.apps.length}-apps.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -5547,12 +5547,12 @@ async function exportConfigBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `automorph-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `morpheflow-backup-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('AutoMorph configuration exported successfully!', 'success');
+    showToast('MorpheFlow configuration exported successfully!', 'success');
   } catch (err) {
     showToast(`Export failed: ${err.message}`, 'error');
   }
@@ -6124,7 +6124,7 @@ function renderSettings(settings) {
   const elSender = document.getElementById('email-card-sender');
   if (elSender) {
     elSender.textContent = email.sender_email
-      ? `${email.sender_name || 'AutoMorph'} <${email.sender_email}>`
+      ? `${email.sender_name || 'MorpheFlow'} <${email.sender_email}>`
       : 'Not configured';
   }
 
@@ -6249,7 +6249,7 @@ function openEmailWizard() {
   if (chkEnabled) chkEnabled.checked = email.enabled !== false;
 
   const inpSenderName = document.getElementById('email-wiz-sender-name');
-  if (inpSenderName) inpSenderName.value = email.sender_name || 'AutoMorph';
+  if (inpSenderName) inpSenderName.value = email.sender_name || 'MorpheFlow';
 
   const inpSenderEmail = document.getElementById('email-wiz-sender-email');
   if (inpSenderEmail) inpSenderEmail.value = email.sender_email || '';
@@ -6273,7 +6273,7 @@ function openEmailWizard() {
   }
 
   const inpPrefix = document.getElementById('email-wiz-subject-prefix');
-  if (inpPrefix) inpPrefix.value = email.subject_prefix || '[AutoMorph]';
+  if (inpPrefix) inpPrefix.value = email.subject_prefix || '[MorpheFlow]';
 
   // Layout mode radio
   const layout = (email.layout_mode || 'auto').toLowerCase();
@@ -7099,7 +7099,7 @@ async function openLastRunLogModal() {
     const lines = data.lines || [];
     if (lines.length === 0) {
       if (lastRun) {
-        appendTerminalLine(`[*] AutoMorph Last Pipeline Run (${lastRun.source || 'pipeline'})`);
+        appendTerminalLine(`[*] MorpheFlow Last Pipeline Run (${lastRun.source || 'pipeline'})`);
         appendTerminalLine(`[*] Status: ${lastRun.status || 'unknown'}`);
         appendTerminalLine(`[*] Duration: ${lastRun.duration_formatted || formatDuration(lastRun.duration_seconds || lastRun.duration)}`);
         appendTerminalLine(`[*] No verbose console log file is currently saved on disk for this run.`);

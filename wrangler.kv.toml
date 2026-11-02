@@ -1,4 +1,4 @@
-name = "automorph"
+name = "morpheflow"
 main = "worker/index.ts"
 compatibility_date = "2024-01-01"
 
@@ -14,8 +14,8 @@ crons = [ "0 3 * * *" ]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "automorph-db"
-database_id = "0e753fd6-85dc-49fd-9f80-44d6a7ac7551"
+database_name = "morpheflow-db"
+database_id = "24643628-589b-41cb-a063-34a9c259a730"
 
 [[kv_namespaces]]
 binding = "STATE_KV"

@@ -18,7 +18,12 @@ class Downloader:
         self.project_root = project_root
         self.org_path = org_path
         self.architecture = architecture
-        self.sources_file = (project_root / "tools" / "automorph-data" / "app_sources.yaml") if (project_root / "tools" / "automorph-data" / "app_sources.yaml").is_file() else (project_root / "tools" / "app_sources.yaml")
+        sources_candidate = project_root / "tools" / "morpheflow-data" / "app_sources.yaml"
+        if not sources_candidate.is_file():
+            sources_candidate = project_root / "tools" / "automorph-data" / "app_sources.yaml"
+        if not sources_candidate.is_file():
+            sources_candidate = project_root / "tools" / "app_sources.yaml"
+        self.sources_file = sources_candidate
 
 #################################
 #        DOWNLOAD LOGIC         #
@@ -50,8 +55,10 @@ class Downloader:
                 except Exception as e:
                     logger.warning(f" └── [!] Error inspecting staged base APK {staged.name}: {e}")
 
-        # Check for custom base_apk_url configured in tools/automorph-data/config.yaml or defaults/config.yaml
-        config_path = self.project_root / "tools" / "automorph-data" / "config.yaml"
+        # Check for custom base_apk_url configured in tools/morpheflow-data/config.yaml, automorph-data, or defaults/config.yaml
+        config_path = self.project_root / "tools" / "morpheflow-data" / "config.yaml"
+        if not config_path.is_file():
+            config_path = self.project_root / "tools" / "automorph-data" / "config.yaml"
         if not config_path.is_file():
             config_path = self.project_root / "defaults" / "config.yaml"
         custom_base_url = None

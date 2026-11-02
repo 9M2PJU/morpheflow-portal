@@ -19,11 +19,13 @@ class CleanRecord(logging.Filter):
         return True
 
 def logger_init(project_root: Path, name: str = "main") -> tuple[logging.Logger, Path]:
-    log_dir = project_root / "tools" / "automorph-data" / "state" / "logs"
+    log_dir = project_root / "tools" / "morpheflow-data" / "state" / "logs"
+    if not log_dir.parent.parent.exists() and (project_root / "tools" / "automorph-data" / "state" / "logs").parent.parent.exists():
+        log_dir = project_root / "tools" / "automorph-data" / "state" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = log_dir / f"automorph_{timestamp}.log"
+    filename = log_dir / f"morpheflow_{timestamp}.log"
     logger = logging.getLogger(name)
 
     console_handler = logging.StreamHandler()
@@ -45,7 +47,7 @@ def remove_log(log_dir: Path, max_logs: int | None = 5) -> None:
     if max_logs is None:
         max_logs = 5
 
-    existing_logs = sorted(log_dir.glob("automorph_*.log"))
+    existing_logs = sorted(list(log_dir.glob("morpheflow_*.log")) + list(log_dir.glob("automorph_*.log")))
 
     while len(existing_logs) > max_logs:
         oldest = existing_logs.pop(0)

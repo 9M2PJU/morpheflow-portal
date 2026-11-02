@@ -45,7 +45,9 @@ def load_config(project_root: Path | None = None) -> dict:
     if project_root is None:
         project_root = Path(__file__).resolve().parent.parent
 
-    config_path = project_root / "tools" / "automorph-data" / "config.yaml"
+    config_path = project_root / "tools" / "morpheflow-data" / "config.yaml"
+    if not config_path.is_file():
+        config_path = project_root / "tools" / "automorph-data" / "config.yaml"
     if not config_path.is_file():
         fallback = project_root / "defaults" / "config.yaml"
         if fallback.is_file():
@@ -353,7 +355,10 @@ def generate_email_content(
         s_path = Path(raw_state_loc)
         state_dir = s_path if s_path.is_absolute() else (project_root / s_path).resolve()
     else:
-        state_dir = (project_root / "tools" / "automorph-data" / "state").resolve()
+        def_state = project_root / "tools" / "morpheflow-data" / "state"
+        if not def_state.parent.exists() and (project_root / "tools" / "automorph-data" / "state").parent.exists():
+            def_state = project_root / "tools" / "automorph-data" / "state"
+        state_dir = def_state.resolve()
 
     reports_dir = state_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -633,7 +638,12 @@ def main(
     # Persist last_run_report and package_runs for Web Dashboard
     try:
         raw_state_loc = config.get("state_location")
-        state_dir = Path(raw_state_loc) if raw_state_loc else (root / "tools" / "automorph-data" / "state")
+        if raw_state_loc:
+            state_dir = Path(raw_state_loc)
+        else:
+            state_dir = (root / "tools" / "morpheflow-data" / "state")
+            if not state_dir.parent.exists() and (root / "tools" / "automorph-data" / "state").parent.exists():
+                state_dir = (root / "tools" / "automorph-data" / "state")
         state_dir = state_dir if state_dir.is_absolute() else (root / state_dir).resolve()
 
         serialized_success: dict[str, Any] = {}

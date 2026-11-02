@@ -1,11 +1,11 @@
-# AutoMorph 1-Click Cloudflare Workers Deployer (Windows PowerShell)
+# MorpheFlow 1-Click Cloudflare Workers Deployer (Windows PowerShell)
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  AutoMorph 1-Click Cloudflare Deployer" -ForegroundColor Cyan
+Write-Host "  MorpheFlow 1-Click Cloudflare Deployer" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {

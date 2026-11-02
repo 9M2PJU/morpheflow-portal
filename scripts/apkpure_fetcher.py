@@ -339,11 +339,14 @@ _MORPHE_CATALOG_LOADED_AT = 0
 
 
 def get_morphe_catalog_path() -> Path:
-    env_root = os.environ.get("AUTOMORPH_ROOT")
+    env_root = os.environ.get("MORPHEFLOW_ROOT") or os.environ.get("AUTOMORPH_ROOT")
     base = Path(env_root) if env_root else Path(__file__).resolve().parent.parent
-    target_dir = base / "tools" / "automorph-data" / "state"
-    if not (base / "tools" / "automorph-data").exists() and (base / "tools").exists():
-        target_dir = base / "tools" / "state"
+    target_dir = base / "tools" / "morpheflow-data" / "state"
+    if not (base / "tools" / "morpheflow-data").exists():
+        if (base / "tools" / "automorph-data").exists():
+            target_dir = base / "tools" / "automorph-data" / "state"
+        elif (base / "tools").exists():
+            target_dir = base / "tools" / "state"
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -2346,9 +2349,12 @@ def get_latest_version(
 
     # Step 1: Check Custom Mappings First (e.g. GitHub releases in app_sources.yaml)
     if sources_file is None:
-        default_sources = Path(__file__).resolve().parent.parent / "tools" / "automorph-data" / "app_sources.yaml"
+        base_root = Path(__file__).resolve().parent.parent
+        default_sources = base_root / "tools" / "morpheflow-data" / "app_sources.yaml"
         if not default_sources.is_file():
-            default_sources = Path(__file__).resolve().parent.parent / "tools" / "app_sources.yaml"
+            default_sources = base_root / "tools" / "automorph-data" / "app_sources.yaml"
+        if not default_sources.is_file():
+            default_sources = base_root / "tools" / "app_sources.yaml"
         if default_sources.is_file():
             sources_file = default_sources
 
@@ -2740,7 +2746,10 @@ if __name__ == "__main__":
     import argparse
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    default_sources = Path(__file__).resolve().parent.parent / "tools/automorph-data/app_sources.yaml"
+    base_root = Path(__file__).resolve().parent.parent
+    default_sources = base_root / "tools/morpheflow-data/app_sources.yaml"
+    if not default_sources.is_file():
+        default_sources = base_root / "tools/automorph-data/app_sources.yaml"
 
     parser = argparse.ArgumentParser(description="Fetch APK metadata and download links across scrapers.")
     parser.add_argument("package", nargs="?", help="Android package name (e.g. epixler.de.hypnobox_android)")

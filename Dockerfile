@@ -8,7 +8,7 @@ RUN apk add --no-cache \
 
 ARG JLINK_MODULES=java.base,java.desktop,java.logging,java.naming,java.sql,java.xml,jdk.net,java.management,jdk.unsupported,jdk.crypto.ec
 
-RUN mkdir -p /rootfs/opt/java /rootfs/automorph/tools && \
+RUN mkdir -p /rootfs/opt/java /rootfs/morpheflow/tools && \
     jlink \
     --add-modules ${JLINK_MODULES} \
     --strip-debug \
@@ -24,9 +24,9 @@ RUN KEYSTORE=$(find /usr/lib/jvm -name cacerts | head -n 1) && \
     /rootfs/opt/java/runtime/bin/java -version
 
 ARG MORPHE_VERSION=1.20.0
-RUN wget -q -O /rootfs/automorph/tools/morphe-desktop-${MORPHE_VERSION}-all.jar \
+RUN wget -q -O /rootfs/morpheflow/tools/morphe-desktop-${MORPHE_VERSION}-all.jar \
     "https://github.com/MorpheApp/morphe-desktop/releases/download/v${MORPHE_VERSION}/morphe-desktop-${MORPHE_VERSION}-all.jar" && \
-    ln -sf "/automorph/tools/morphe-desktop-${MORPHE_VERSION}-all.jar" /rootfs/automorph/tools/morphe.jar
+    ln -sf "/morpheflow/tools/morphe-desktop-${MORPHE_VERSION}-all.jar" /rootfs/morpheflow/tools/morphe.jar
 
 
 # ---- Stage 2: app image ----
@@ -39,7 +39,7 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 COPY --from=jre-build /rootfs/ /
 
-WORKDIR /automorph
+WORKDIR /morpheflow
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

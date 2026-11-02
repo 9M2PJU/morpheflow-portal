@@ -1,5 +1,5 @@
 /**
- * TypeScript Interfaces for AutoMorph Cloudflare Worker
+ * TypeScript Interfaces for MorpheFlow Cloudflare Worker
  */
 
 export interface Env {
@@ -14,6 +14,7 @@ export interface Env {
   GITHUB_TOKEN?: string;
   GITHUB_REPO?: string;
   WEBHOOK_SECRET?: string;
+  MORPHEFLOW_RUNNER_URL?: string;
   AUTOMORPH_RUNNER_URL?: string;
   CLOUDFLARE_WORKER_URL?: string;
   SCHEDULE_TIME?: string;

@@ -22,18 +22,22 @@ class Morphe:
         self.detailed_patch_list = detailed_app_list
         self.force = force
         
-        self.options_dir = project_root / "tools" / "automorph-data" / "options"
+        data_dir = project_root / "tools" / "morpheflow-data"
+        if not data_dir.exists() and (project_root / "tools" / "automorph-data").exists():
+            data_dir = project_root / "tools" / "automorph-data"
+        self.data_dir = data_dir
+        self.options_dir = data_dir / "options"
         self.original_dir = original_dir
         self.patched_dir = patched_dir
-        self.state_dir = project_root / "tools" / "automorph-data" / "state" 
+        self.state_dir = data_dir / "state"
         self.morphe_location = project_root / "tools" / "morphe.jar"
         
         self.repo_versions_json = self.state_dir / "repo_versions.json"
         self.options_checksum_json = self.state_dir / "options_checksum.json"
 
-        self.keystore_alias = os.getenv("AUTOMORPH_KEYSTORE_ALIAS", "automorph")
-        self.keystore_password = os.getenv("AUTOMORPH_KEYSTORE_PASSWORD", "automorph")
-        self.keystore_entry_password = os.getenv("AUTOMORPH_KEYSTORE_ENTRY_PASSWORD", "automorph")
+        self.keystore_alias = os.getenv("MORPHEFLOW_KEYSTORE_ALIAS") or os.getenv("AUTOMORPH_KEYSTORE_ALIAS", "morpheflow")
+        self.keystore_password = os.getenv("MORPHEFLOW_KEYSTORE_PASSWORD") or os.getenv("AUTOMORPH_KEYSTORE_PASSWORD", "morpheflow")
+        self.keystore_entry_password = os.getenv("MORPHEFLOW_KEYSTORE_ENTRY_PASSWORD") or os.getenv("AUTOMORPH_KEYSTORE_ENTRY_PASSWORD", "morpheflow")
         self.keystore_path = self._resolve_keystore()
 
         self.java_bin = "java"
@@ -55,30 +59,34 @@ class Morphe:
         import base64
 
         # 1. Explicit path from env
-        env_path = os.getenv("AUTOMORPH_KEYSTORE_PATH")
+        env_path = os.getenv("MORPHEFLOW_KEYSTORE_PATH") or os.getenv("AUTOMORPH_KEYSTORE_PATH")
         if env_path:
             p = Path(env_path)
             if p.is_file():
-                logger.info(f"[*] Using keystore from AUTOMORPH_KEYSTORE_PATH: {p}")
+                logger.info(f"[*] Using keystore from KEYSTORE_PATH: {p}")
                 return p
 
         # 2. Base64 encoded secret from env (useful for CI secrets)
-        b64_keystore = os.getenv("AUTOMORPH_KEYSTORE_BASE64")
-        target_path = self.project_root / "tools" / "automorph-data" / "automorph.keystore"
-        if b64_keystore and not target_path.is_file():
+        b64_keystore = os.getenv("MORPHEFLOW_KEYSTORE_BASE64") or os.getenv("AUTOMORPH_KEYSTORE_BASE64")
+        target_path = self.data_dir / "morpheflow.keystore"
+        legacy_path = self.data_dir / "automorph.keystore"
+        if b64_keystore and not target_path.is_file() and not legacy_path.is_file():
             try:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(target_path, "wb") as f:
                     f.write(base64.b64decode(b64_keystore))
-                logger.info(f"[✓] Restored persistent keystore from AUTOMORPH_KEYSTORE_BASE64: {target_path}")
+                logger.info(f"[✓] Restored persistent keystore from KEYSTORE_BASE64: {target_path}")
                 return target_path
             except Exception as e:
-                logger.error(f"[!] Failed to decode AUTOMORPH_KEYSTORE_BASE64: {e}")
+                logger.error(f"[!] Failed to decode KEYSTORE_BASE64: {e}")
 
         # 3. Dedicated persistent repository keystore
         if target_path.is_file():
-            logger.info(f"[*] Using persistent AutoMorph keystore: {target_path}")
+            logger.info(f"[*] Using persistent MorpheFlow keystore: {target_path}")
             return target_path
+        if legacy_path.is_file():
+            logger.info(f"[*] Using legacy AutoMorph keystore: {legacy_path}")
+            return legacy_path
 
         # 4. Custom keystores placed in morphe-data
         for custom_name in ("morphe.keystore", "Morphe.keystore"):
@@ -87,9 +95,9 @@ class Morphe:
                 logger.info(f"[*] Using custom user keystore: {custom_p}")
                 return custom_p
 
-        # 5. If none exists, auto-generate automorph.keystore
+        # 5. If none exists, auto-generate morpheflow.keystore
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(f"[*] Generating new permanent AutoMorph keystore at {target_path}...")
+        logger.info(f"[*] Generating new permanent MorpheFlow keystore at {target_path}...")
         try:
             gen_cmd = [
                 "keytool",
@@ -101,7 +109,7 @@ class Morphe:
                 "-keystore", str(target_path),
                 "-storepass", self.keystore_password,
                 "-keypass", self.keystore_entry_password,
-                "-dname", "CN=AutoMorph, OU=AutoMorph, O=AutoMorph, L=Internet, ST=Global, C=XX"
+                "-dname", "CN=MorpheFlow, OU=MorpheFlow, O=MorpheFlow, L=Internet, ST=Global, C=XX"
             ]
             subprocess.run(gen_cmd, check=True, capture_output=True, text=True)
             logger.info(f"[✓] Successfully generated persistent keystore: {target_path}")
@@ -974,7 +982,7 @@ class Morphe:
 
         # Ensure all configured packages in detailed_patch_list have a version requirement
         # If no explicit version was dictated by patches, fallback to community catalog recommended version or "0.0.0"
-        cat_file = self.project_root / "tools" / "automorph-data" / "state" / "morphe_catalog.json"
+        cat_file = self.data_dir / "state" / "morphe_catalog.json"
         cat_store = {}
         if cat_file.is_file():
             try:

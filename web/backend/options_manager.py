@@ -1,5 +1,5 @@
 """
-Morphe Patch Options Manager for AutoMorph.
+Morphe Patch Options Manager for MorpheFlow.
 Handles reading, creating, and updating options files under options/<package>/<owner>_options.json.
 Provides path validation, atomic file writes, and .bak backups.
 """
@@ -18,10 +18,14 @@ import subprocess
 from typing import Any
 import requests
 
-logger = logging.getLogger("automorph.options")
+logger = logging.getLogger("morpheflow.options")
 
-PROJECT_ROOT = Path(os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
-OPTIONS_DIR = PROJECT_ROOT / "tools" / "automorph-data" / "options"
+PROJECT_ROOT = Path(os.getenv("MORPHEFLOW_ROOT") or os.getenv("AUTOMORPH_ROOT", Path(__file__).resolve().parent.parent.parent))
+DATA_DIR = PROJECT_ROOT / "tools" / "morpheflow-data"
+if not DATA_DIR.exists() and (PROJECT_ROOT / "tools" / "automorph-data").exists():
+    DATA_DIR = PROJECT_ROOT / "tools" / "automorph-data"
+
+OPTIONS_DIR = DATA_DIR / "options"
 PATCHES_CACHE_DIR = PROJECT_ROOT / "tools" / "morphe-data" / "patches"
 
 SAFE_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
@@ -366,7 +370,7 @@ def sanitize_options_blocks(existing_data: Any) -> list[dict[str, Any]]:
 def download_repo_mpp(owner: str, repo_name: str, log_fn: Any = None) -> Path | None:
     """Tier 3: Downloads the latest .mpp or .jar release asset from GitHub for owner/repo_name."""
     headers = {
-        "User-Agent": "AutoMorphOptionsFetcher",
+        "User-Agent": "MorpheFlowOptionsFetcher",
         "Accept": "application/vnd.github+json",
     }
     token = os.getenv("GITHUB_TOKEN")
@@ -413,7 +417,7 @@ def download_repo_mpp(owner: str, repo_name: str, log_fn: Any = None) -> Path | 
         if log_fn:
             log_fn(f"[GitHub] Downloading '{file_name}' ({asset_size:,} bytes) from {tag_name}...")
 
-        with requests.get(download_url, headers={"User-Agent": "AutoMorphDownloader"}, stream=True, timeout=90) as r:
+        with requests.get(download_url, headers={"User-Agent": "MorpheFlowDownloader"}, stream=True, timeout=90) as r:
             r.raise_for_status()
             tmp_dest = dest_path.with_suffix(".tmp")
             with tmp_dest.open("wb") as f:

@@ -1,5 +1,5 @@
 """
-GitHub Releases Update Checker for AutoMorph Web Portal.
+GitHub Releases Update Checker for MorpheFlow Web Portal.
 
 Queries GitHub Releases API to detect new published releases and pre-releases,
 separated by channel track ('dev' vs 'main'). Supports ETag caching and force cooldown.
@@ -16,13 +16,13 @@ from typing import Any
 
 import requests
 
-logger = logging.getLogger("automorph.update_checker")
+logger = logging.getLogger("morpheflow.update_checker")
 
 # Root directory of the repository/container
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 VERSION_FILE = ROOT_DIR / "web" / "version.json"
 
-DEFAULT_REPO = "holjab/automorph"
+DEFAULT_REPO = "wiwek13/MorpheFlow"
 CACHE_TTL_SECONDS = 1800.0  # 30 minutes for automatic background checks
 FORCE_COOLDOWN_SECONDS = 60.0  # 60s cooldown for manual 'Check Again' button
 
@@ -150,7 +150,7 @@ def check_for_updates(force: bool = False) -> dict[str, Any]:
 
     headers = {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "AutoMorph-UpdateChecker",
+        "User-Agent": "MorpheFlow-UpdateChecker",
     }
 
     # Optional GitHub Token from environment (required if private repo)

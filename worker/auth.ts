@@ -1,5 +1,5 @@
 /**
- * AutoMorph Security & Authentication Service
+ * MorpheFlow Security & Authentication Service
  * Unbreakable single-user authentication for Cloudflare Workers.
  *
  * Features:
@@ -14,8 +14,10 @@
 import { Env } from './types';
 import { StorageService } from './storage';
 
-export const PRIMARY_COOKIE_NAME = '__Host-automorph_session';
-export const FALLBACK_COOKIE_NAME = 'automorph_session';
+export const PRIMARY_COOKIE_NAME = '__Host-morpheflow_session';
+export const FALLBACK_COOKIE_NAME = 'morpheflow_session';
+const LEGACY_PRIMARY_COOKIE_NAME = '__Host-automorph_session';
+const LEGACY_FALLBACK_COOKIE_NAME = 'automorph_session';
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600; // 30 days
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_SECONDS = 15 * 60; // 15 minutes
@@ -43,7 +45,7 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
  */
 async function getSigningKey(secret: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.digest('SHA-256', enc.encode(secret + '_automorph_session_v1'));
+  const keyMaterial = await crypto.subtle.digest('SHA-256', enc.encode(secret + '_morpheflow_session_v1'));
   return crypto.subtle.importKey(
     'raw',
     keyMaterial,
@@ -153,7 +155,7 @@ export function getSessionCookie(request: Request): string | null {
     if (name === PRIMARY_COOKIE_NAME) {
       return rest.join('=');
     }
-    if (name === FALLBACK_COOKIE_NAME && !fallbackVal) {
+    if ((name === FALLBACK_COOKIE_NAME || name === LEGACY_PRIMARY_COOKIE_NAME || name === LEGACY_FALLBACK_COOKIE_NAME) && !fallbackVal) {
       fallbackVal = rest.join('=');
     }
   }
@@ -327,7 +329,7 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoMorph — Gateway Lock</title>
+  <title>MorpheFlow — Gateway Lock</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
     :root {
@@ -484,9 +486,9 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
 </head>
 <body>
   <div class="card">
-    <img src="/logo.png" alt="AutoMorph Logo" class="logo" onerror="this.style.display='none'">
+    <img src="/logo.png" alt="MorpheFlow Logo" class="logo" onerror="this.style.display='none'">
     <div class="badge-lock">🔒 Protected Access</div>
-    <h1>AutoMorph Gateway</h1>
+    <h1>MorpheFlow Gateway</h1>
     <p class="subtitle">Single-user console • Enter master password to unlock</p>
 
     ${errorHtml}
@@ -497,10 +499,10 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
         <input type="password" id="pwdInput" name="password" placeholder="Enter master password..." required autofocus ${lockedSeconds > 0 ? 'disabled' : ''}>
         <button type="button" class="toggle-pwd" id="toggleBtn" aria-label="Toggle password visibility">👁️</button>
       </div>
-      <button type="submit" class="btn-submit" id="submitBtn" ${lockedSeconds > 0 ? 'disabled' : ''}>Unlock AutoMorph</button>
+      <button type="submit" class="btn-submit" id="submitBtn" ${lockedSeconds > 0 ? 'disabled' : ''}>Unlock MorpheFlow</button>
     </form>
 
-    <div class="footer-note">AutoMorph Edge System • Cloudflare Workers isolate</div>
+    <div class="footer-note">MorpheFlow Edge System • Cloudflare Workers isolate</div>
   </div>
 
   <script>
@@ -536,7 +538,7 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
       } catch (err) {
         alert('Network connection error');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Unlock AutoMorph';
+        submitBtn.textContent = 'Unlock MorpheFlow';
       }
     });
 

@@ -43,9 +43,13 @@ default_compose.yaml
 TODO.md
 
 # Whitelist
+!tools/morpheflow-data/
 !tools/automorph-data/
 
 # Whitelist Exceptions
+tools/morpheflow-data/options/
+tools/morpheflow-data/state/
+tools/morpheflow-data/config.yaml*
 tools/automorph-data/options/
 tools/automorph-data/state/
 tools/automorph-data/config.yaml*

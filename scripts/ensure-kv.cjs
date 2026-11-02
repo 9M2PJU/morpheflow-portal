@@ -20,7 +20,7 @@ function bindingBlockHasId(toml) {
 }
 
 function expectedTitle(toml) {
-  const name = (toml.match(/^\s*name\s*=\s*"([^"]+)"/m) || [])[1] || 'automorph';
+  const name = (toml.match(/^\s*name\s*=\s*"([^"]+)"/m) || [])[1] || 'morpheflow';
   return `${name}-${BINDING.toLowerCase().replace(/_/g, '-')}`;
 }
 

@@ -1,6 +1,6 @@
 /**
- * AutoMorph D1 Storage Service
- * Provides SQLite operations matching AutoMorph's data contract on Cloudflare Free Tier.
+ * MorpheFlow D1 Storage Service
+ * Provides SQLite operations matching MorpheFlow's data contract on Cloudflare Free Tier.
  */
 
 import {
@@ -124,10 +124,10 @@ export class StorageService {
         smtp_port: 587,
         use_tls: true,
         use_ssl: false,
-        sender_name: 'AutoMorph',
+        sender_name: 'MorpheFlow',
         sender_email: '',
         recipients: [],
-        subject_prefix: '[AutoMorph]',
+        subject_prefix: '[MorpheFlow]',
         attach_result_json: false,
         layout_mode: 'auto',
         compact_threshold: 15,
@@ -411,7 +411,7 @@ export class StorageService {
       if (activeLock && activeLock.run_id === targetRunId) {
         return {
           logs: [
-            `[*] AutoMorph build pipeline in progress for ${activeLock.package || 'all packages'}...`,
+            `[*] MorpheFlow build pipeline in progress for ${activeLock.package || 'all packages'}...`,
             '[*] Waiting for runner logs.',
           ],
           run_id: targetRunId,

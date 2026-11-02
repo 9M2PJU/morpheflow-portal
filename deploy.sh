@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# AutoMorph 1-Click Cloudflare Workers Deployer
+# MorpheFlow 1-Click Cloudflare Workers Deployer
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 echo "=================================================="
-echo "  AutoMorph 1-Click Cloudflare Deployer"
+echo "  MorpheFlow 1-Click Cloudflare Deployer"
 echo "=================================================="
 
 # Check for Node.js

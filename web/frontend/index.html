@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoMorph: Edge Patching and Distribution Console</title>
+  <title>MorpheFlow: Edge Patching and Distribution Console</title>
   <meta name="description" content="Autonomous edge control plane for automated Android APK patching, deterministic signing, and distribution.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="alternate icon" type="image/png" href="favicon.png">
@@ -52,7 +52,7 @@
   <script>
     (function() {
       try {
-        var savedTheme = localStorage.getItem("automorph-theme") || "dark";
+        var savedTheme = localStorage.getItem("morpheflow-theme") || localStorage.getItem("automorph-theme") || "dark";
         document.documentElement.setAttribute("data-theme", savedTheme);
       } catch (e) {}
 
@@ -96,7 +96,7 @@
           </svg>
         </div>
         <span class="brand-title">
-          AutoMorph
+          MorpheFlow
           <span class="brand-badge" id="site-version-tag" title="Click to check for updates">v2.4.0</span>
         </span>
       </div>
@@ -135,7 +135,7 @@
           <span class="tabular-nums" id="stat-next-run" style="color: var(--text-muted);">next in 5h</span>
         </div>
 
-        <div class="keystore-seal-chip" title="Dedicated AutoMorph Keystore Active and Enforced">
+        <div class="keystore-seal-chip" title="Dedicated MorpheFlow Keystore Active and Enforced">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
           <span>Deterministic Key</span>
         </div>
@@ -216,7 +216,7 @@
         <!-- Right: Telemetry Monolith (1.1fr) -->
         <aside class="telemetry-pillar">
           
-          <!-- Dedicated AutoMorph Keystore Security Seal -->
+          <!-- Dedicated MorpheFlow Keystore Security Seal -->
           <div class="crypto-seal-card">
             <div class="crypto-header">
               <span class="crypto-title">
@@ -425,7 +425,7 @@
           </div>
         </div>
         <div class="terminal-stream" id="terminal-stream-log">
-          <div class="terminal-line log-info">[*] AutoMorph Edge Console ready. Click 'Run Pipeline' or select a target app to view live telemetry.</div>
+          <div class="terminal-line log-info">[*] MorpheFlow Edge Console ready. Click 'Run Pipeline' or select a target app to view live telemetry.</div>
         </div>
       </section>
     </main>
@@ -465,10 +465,10 @@
               <span class="keystore-pill">Active</span>
             </div>
             <p class="crypto-notice" style="margin-bottom: 0.75rem;">
-              Path: <code>tools/automorph-data/automorph.keystore</code><br>
-              Algorithm: RSA 4096-bit (AutoMorph Dedicated Keystore)
+              Path: <code>tools/morpheflow-data/morpheflow.keystore</code><br>
+              Algorithm: RSA 4096-bit (MorpheFlow Dedicated Keystore)
             </p>
-            <a href="/api/keystore/download" download="automorph.keystore" class="btn-secondary" style="font-size: 0.75rem; justify-content: center;">
+            <a href="/api/keystore/download" download="morpheflow.keystore" class="btn-secondary" style="font-size: 0.75rem; justify-content: center;">
               Backup Keystore File
             </a>
           </div>
@@ -795,7 +795,7 @@
         <div style="padding: 0.625rem 0.75rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); margin-bottom: 0.875rem; display: flex; align-items: flex-start; gap: 0.5rem;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-base); flex-shrink: 0; margin-top: 0.125rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
           <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
-            <strong>Direct GitHub Release Feed:</strong> Sourced via verified public releases on <code style="font-family: var(--font-mono); color: var(--accent-base);">wiwek13/AutoMorph</code>. Never requires local passwords or session cookies inside Obtainium.
+            <strong>Direct GitHub Release Feed:</strong> Sourced via verified public releases on <code style="font-family: var(--font-mono); color: var(--accent-base);">wiwek13/MorpheFlow</code>. Never requires local passwords or session cookies inside Obtainium.
           </div>
         </div>
 
@@ -895,7 +895,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--status-warning); flex-shrink: 0; margin-top: 2px;" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           <div style="font-size: 0.8125rem; line-height: 1.45; color: var(--text-primary);">
             <strong>Base APK needed to apply patches</strong><br>
-            <span style="color: var(--text-secondary);">AutoMorph cannot automatically scrape unlisted, modded, or private apps from public app stores. Upload your clean base APK or provide a direct download URL.</span>
+            <span style="color: var(--text-secondary);">MorpheFlow cannot automatically scrape unlisted, modded, or private apps from public app stores. Upload your clean base APK or provide a direct download URL.</span>
           </div>
         </div>
 
@@ -903,7 +903,7 @@
           <input type="file" id="prompt-apk-file-input" accept=".apk" style="display: none;">
           <img src="/apk-icon.png" width="48" height="48" alt="APK" style="width: 48px; height: 48px; object-fit: contain; margin-bottom: 0.5rem; display: inline-block;" onerror="this.style.display='none'">
           <div style="font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem;">Click to browse or drop .apk here</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);">Direct upload to persistent AutoMorph cloud storage</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Direct upload to persistent MorpheFlow cloud storage</div>
           <div id="prompt-apk-file-status" style="margin-top: 0.625rem; font-size: 0.8125rem; font-weight: 500;"></div>
         </div>
 

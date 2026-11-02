@@ -1,4 +1,4 @@
-name: AutoMorph Cloud Patch Runner
+name: MorpheFlow Cloud Patch Runner
 
 on:
   workflow_dispatch:
@@ -77,7 +77,7 @@ jobs:
           url = os.environ.get('CF_WORKER_URL').rstrip('/') + '/api/runner/sync'
           secret = os.environ.get('WEBHOOK_SECRET', '')
           try:
-              headers = {'User-Agent': 'AutoMorph-CloudRunner'}
+              headers = {'User-Agent': 'MorpheFlow-CloudRunner'}
               if secret:
                   headers['X-Webhook-Secret'] = secret
               req = urllib.request.Request(url, headers=headers)
@@ -87,18 +87,18 @@ jobs:
                   patched_apps = payload.get('patched_apps', [])
                   repo_versions = payload.get('repo_versions', {})
 
-                  os.makedirs('tools/automorph-data/state', exist_ok=True)
-                  with open('tools/automorph-data/config.yaml', 'w') as f:
+                  os.makedirs('tools/morpheflow-data/state', exist_ok=True)
+                  with open('tools/morpheflow-data/config.yaml', 'w') as f:
                       yaml.dump(config, f)
 
                   if repo_versions:
-                      with open('tools/automorph-data/state/repo_versions.json', 'w') as f:
+                      with open('tools/morpheflow-data/state/repo_versions.json', 'w') as f:
                           json.dump(repo_versions, f, indent=2)
 
                   # Cache Morphe community catalog so all release names, icons, and metadata are available
                   try:
-                      cat_req = urllib.request.Request('https://morphe-patches.software/data/bundles.json', headers={'User-Agent': 'AutoMorph-CloudRunner'})
-                      with urllib.request.urlopen(cat_req, timeout=15) as cat_resp, open('tools/automorph-data/state/morphe_catalog.json', 'w', encoding='utf-8') as cat_f:
+                      cat_req = urllib.request.Request('https://morphe-patches.software/data/bundles.json', headers={'User-Agent': 'MorpheFlow-CloudRunner'})
+                      with urllib.request.urlopen(cat_req, timeout=15) as cat_resp, open('tools/morpheflow-data/state/morphe_catalog.json', 'w', encoding='utf-8') as cat_f:
                           cat_f.write(cat_resp.read().decode())
                       print('[✓] Successfully cached community catalog in runner state.')
                   except Exception as cat_err:
@@ -111,7 +111,7 @@ jobs:
                       if pkg_id and isinstance(pkg_opts, dict):
                           for owner, opt_data in pkg_opts.items():
                               if opt_data:
-                                  opt_path = Path('tools/automorph-data/options') / pkg_id / f"{owner}_options.json"
+                                  opt_path = Path('tools/morpheflow-data/options') / pkg_id / f"{owner}_options.json"
                                   opt_path.parent.mkdir(parents=True, exist_ok=True)
                                   content = [opt_data] if isinstance(opt_data, dict) else opt_data
                                   cleaned = []
@@ -180,7 +180,7 @@ jobs:
           fi
           fi
 
-      - name: Run AutoMorph Patching Pipeline
+      - name: Run MorpheFlow Patching Pipeline
         id: patch
         env:
           TARGET_PACKAGE: ${{ inputs.target_package }}
@@ -188,14 +188,16 @@ jobs:
           GOOPDL_AAS_TOKEN: ${{ secrets.GOOPDL_AAS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AUTOMORPH_KEYSTORE_BASE64: ${{ secrets.AUTOMORPH_KEYSTORE_BASE64 }}
-          AUTOMORPH_KEYSTORE_PASSWORD: ${{ secrets.AUTOMORPH_KEYSTORE_PASSWORD }}
+          MORPHEFLOW_KEYSTORE_BASE64: ${{ secrets.MORPHEFLOW_KEYSTORE_BASE64 || secrets.AUTOMORPH_KEYSTORE_BASE64 }}
+          MORPHEFLOW_KEYSTORE_PASSWORD: ${{ secrets.MORPHEFLOW_KEYSTORE_PASSWORD || secrets.AUTOMORPH_KEYSTORE_PASSWORD }}
+          AUTOMORPH_KEYSTORE_BASE64: ${{ secrets.MORPHEFLOW_KEYSTORE_BASE64 || secrets.AUTOMORPH_KEYSTORE_BASE64 }}
+          AUTOMORPH_KEYSTORE_PASSWORD: ${{ secrets.MORPHEFLOW_KEYSTORE_PASSWORD || secrets.AUTOMORPH_KEYSTORE_PASSWORD }}
         run: |
-          mkdir -p apps/original apps/patched tools/automorph-data/state/logs tools/automorph-data/state/reports
+          mkdir -p apps/original apps/patched tools/morpheflow-data/state/logs tools/morpheflow-data/state/reports
           START_TIME=$(date +%s)
           
           # Run main patcher
-          python scripts/main.py ${TARGET_PACKAGE:-} 2>&1 | tee tools/automorph-data/state/logs/last_run.log || true
+          python scripts/main.py ${TARGET_PACKAGE:-} 2>&1 | tee tools/morpheflow-data/state/logs/last_run.log || true
 
           END_TIME=$(date +%s)
           DURATION=$((END_TIME - START_TIME))
@@ -223,9 +225,9 @@ jobs:
             REPO="${{ github.repository }}"
             
             NOTES_FILE="release_notes_${DATE_TAG}.md"
-            echo "## 🚀 AutoMorph Cloud Build \`${DATE_TAG}\`" > "$NOTES_FILE"
+            echo "## 🚀 MorpheFlow Cloud Build \`${DATE_TAG}\`" > "$NOTES_FILE"
             echo "" >> "$NOTES_FILE"
-            echo "🌐 **AutoMorph Web Portal:** [https://automorph.w161112218.workers.dev](https://automorph.w161112218.workers.dev) | 🐙 **GitHub Repository:** [wiwek13/AutoMorph](https://github.com/${REPO})" >> "$NOTES_FILE"
+            echo "🌐 **MorpheFlow Web Portal:** [https://morpheflow.w161112218.workers.dev](https://morpheflow.w161112218.workers.dev) | 🐙 **GitHub Repository:** [wiwek13/MorpheFlow](https://github.com/${REPO})" >> "$NOTES_FILE"
             echo "" >> "$NOTES_FILE"
             echo "### 📦 Newly Built APKs in this Release:" >> "$NOTES_FILE"
             
@@ -234,9 +236,9 @@ jobs:
               ver_dir=$(basename $(dirname "$apk"))
               pkg_dir=$(basename $(dirname $(dirname "$apk")))
               
-              app_name=$(python3 -c "import os, json; cat=json.load(open('tools/automorph-data/state/morphe_catalog.json')) if os.path.exists('tools/automorph-data/state/morphe_catalog.json') else {}; print(cat.get('store',{}).get('${pkg_dir}',{}).get('name') or '')" 2>/dev/null || true)
+              app_name=$(python3 -c "import os, json; cat=json.load(open('tools/morpheflow-data/state/morphe_catalog.json')) if os.path.exists('tools/morpheflow-data/state/morphe_catalog.json') else {}; print(cat.get('store',{}).get('${pkg_dir}',{}).get('name') or '')" 2>/dev/null || true)
               if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then
-                app_name=$(python3 -c "import yaml; c=yaml.safe_load(open('tools/automorph-data/config.yaml')) if os.path.exists('tools/automorph-data/config.yaml') else {}; print(next((p.get('package_name') or p.get('name') for p in c.get('packages',[]) if (p.get('package') or p.get('package_name')) == '${pkg_dir}'), ''))" 2>/dev/null || true)
+                app_name=$(python3 -c "import yaml; c=yaml.safe_load(open('tools/morpheflow-data/config.yaml')) if os.path.exists('tools/morpheflow-data/config.yaml') else {}; print(next((p.get('package_name') or p.get('name') for p in c.get('packages',[]) if (p.get('package') or p.get('package_name')) == '${pkg_dir}'), ''))" 2>/dev/null || true)
               fi
               if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then
                 # Fallback to capitalized last segment (e.g. latin -> Latin)
@@ -269,7 +271,7 @@ jobs:
               PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
               echo "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`." > "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
-              echo "🌐 **AutoMorph Web Portal:** [https://automorph.w161112218.workers.dev](https://automorph.w161112218.workers.dev)" >> "$PER_APP_NOTES"
+              echo "🌐 **MorpheFlow Web Portal:** [https://morpheflow.w161112218.workers.dev](https://morpheflow.w161112218.workers.dev)" >> "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
               echo "### 📲 One-Click Install / Track in Obtainium:" >> "$PER_APP_NOTES"
               echo "👉 [**📲 Add to Obtainium**](${OBTAINIUM_URL})" >> "$PER_APP_NOTES"
@@ -306,7 +308,7 @@ jobs:
             
             # 3. Create unified batch release
             gh release create "$DATE_TAG" $APK_FILES \
-              --title "AutoMorph Build $DATE_TAG" \
+              --title "MorpheFlow Build $DATE_TAG" \
               --notes-file "$NOTES_FILE" \
               --latest
               
@@ -387,14 +389,14 @@ for r in build_releases[5:]:
               })
 
           # Collect logs
-          log_file = Path('tools/automorph-data/state/logs/last_run.log')
+          log_file = Path('tools/morpheflow-data/state/logs/last_run.log')
           logs = log_file.read_text(errors='replace').splitlines() if log_file.is_file() else []
 
           # Collect report HTML
-          report_file = Path('tools/automorph-data/state/reports/build_report.html')
+          report_file = Path('tools/morpheflow-data/state/reports/build_report.html')
           report_html = report_file.read_text(errors='replace') if report_file.is_file() else ''
 
-          repo_versions_file = Path('tools/automorph-data/state/repo_versions.json')
+          repo_versions_file = Path('tools/morpheflow-data/state/repo_versions.json')
           repo_versions = json.loads(repo_versions_file.read_text()) if repo_versions_file.is_file() else {}
 
           run_tag = tag if tag else f"check-{int(time.time())}"
@@ -418,7 +420,7 @@ for r in build_releases[5:]:
               headers={
                   'Content-Type': 'application/json',
                   'X-Webhook-Secret': secret,
-                  'User-Agent': 'AutoMorph-CloudRunner',
+                  'User-Agent': 'MorpheFlow-CloudRunner',
               },
               method='POST'
           )

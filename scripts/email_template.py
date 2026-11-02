@@ -1132,7 +1132,11 @@ if __name__ == "__main__":
     sample = generate_sample_data()
     html_content = assemble_email_html(**sample)
 
-    output_path = Path(__file__).resolve().parent.parent / "tools" / "automorph-data" / "state" / "reports" / "test_email.html"
+    base_root = Path(__file__).resolve().parent.parent
+    target_data = base_root / "tools" / "morpheflow-data"
+    if not target_data.exists():
+        target_data = base_root / "tools" / "automorph-data"
+    output_path = target_data / "state" / "reports" / "test_email.html"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html_content, encoding="utf-8")
     print(f"Successfully generated email preview at: {output_path}")
