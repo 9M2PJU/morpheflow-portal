@@ -105,6 +105,55 @@ function formatDuration(totalSeconds) {
   return `${s}s`;
 }
 
+// ---------------------------------------------------------------------------
+// Client-Side Live Morphe Catalog Engine (Direct Browser Fetch & Top-Level Cache)
+// ---------------------------------------------------------------------------
+var MORPHE_OFFICIAL_REPO_URL = 'https://github.com/MorpheApp/morphe-patches';
+var MORPHE_DEFAULT_APPS = {
+  'com.google.android.youtube': {
+    package: 'com.google.android.youtube',
+    name: 'YouTube',
+    category: 'Video',
+    description: 'Official YouTube app with ad-blocking, background playback, and customization options.',
+    icon_url: 'https://play-lh.googleusercontent.com/QNmuZQc9I6Zbe3mWnSr0hycnENqGFCI5p3yE29Hkxtf22T0IWS6zTrpxULLyyjWpB7ONAXDsDQXnXcVWokl3eg=s128-rw',
+    patch_count: 85,
+  },
+  'com.google.android.apps.youtube.music': {
+    package: 'com.google.android.apps.youtube.music',
+    name: 'YouTube Music',
+    category: 'Music & Audio',
+    description: 'Official YouTube Music streaming app with ad-free listening and background play.',
+    icon_url: 'https://play-lh.googleusercontent.com/MyptZXmcCyF59phIWPsNCfHq6zSO_ojEdw_4rMYYWPOGdikSjqeOXcoszBZ053VYpINe5K7ZR9KV1nkFWgxdOw=s128-rw',
+    patch_count: 25,
+  },
+  'com.reddit.frontpage': {
+    package: 'com.reddit.frontpage',
+    name: 'Reddit',
+    category: 'Social & Communication',
+    description: 'Discover why people are the best - through real & authentic conversations.',
+    icon_url: 'https://play-lh.googleusercontent.com/8FVS0kvM60JwqZWRNzBIlwrZZxJa8vpli8IWaaTo8QXRe1PHmCNJ8UpWoXkGPV3jKEaTY2OVAeYoisOnGJXY=s128-rw',
+    patch_count: 20,
+  },
+};
+
+var morpheCatalogData = null;
+var rawBundlesData = [];
+var rawCompatibilitiesData = [];
+var isFetchingMorpheCatalog = false;
+
+try {
+  sessionStorage.removeItem('morphe_catalog_data_v5');
+  sessionStorage.removeItem('morphe_catalog_data_v6');
+  const cachedCatalog = sessionStorage.getItem('morphe_catalog_data_v7');
+  const cachedBundles = sessionStorage.getItem('morphe_bundles_data_v7');
+  const cachedCompat = sessionStorage.getItem('morphe_compat_data_v7');
+  if (cachedCatalog && cachedBundles) {
+    morpheCatalogData = JSON.parse(cachedCatalog);
+    rawBundlesData = JSON.parse(cachedBundles);
+    if (cachedCompat) rawCompatibilitiesData = JSON.parse(cachedCompat);
+  }
+} catch (_) {}
+
 // Dynamic Free-Tier Polling & Update Check Scheduling
 // ---------------------------------------------------------------------------
 function scheduleStatusPolling(intervalSec) {
@@ -5436,10 +5485,6 @@ window.syncCommunityCatalogNow = syncCommunityCatalogNow;
 window.loadCatalogSyncState = loadCatalogSyncState;
 window.changeStoreSort = changeStoreSort;
 window.changeStoreCategory = changeStoreCategory;
-window.toggleProvSectionAll = toggleProvSectionAll;
-window.toggleProvSectionExpand = toggleProvSectionExpand;
-window.toggleProvBundleSectionAccordion = toggleProvBundleSectionAccordion;
-window.toggleSubBundleSelectAll = toggleSubBundleSelectAll;
 window.toggleDrawerSectionAll = toggleDrawerSectionAll;
 window.toggleDrawerSectionExpand = toggleDrawerSectionExpand;
 window.toggleDrawerBundleSubAll = toggleDrawerBundleSubAll;
@@ -7254,55 +7299,8 @@ function setTerminalReportVisible(visible) {
 }
 
 // ---------------------------------------------------------------------------
+// Client-Side Live Morphe Catalog Fetcher
 // ---------------------------------------------------------------------------
-// Client-Side Live Morphe Catalog Engine (Direct Browser Fetch)
-// ---------------------------------------------------------------------------
-const MORPHE_OFFICIAL_REPO_URL = 'https://github.com/MorpheApp/morphe-patches';
-const MORPHE_DEFAULT_APPS = {
-  'com.google.android.youtube': {
-    package: 'com.google.android.youtube',
-    name: 'YouTube',
-    category: 'Video',
-    description: 'Official YouTube app with ad-blocking, background playback, and customization options.',
-    icon_url: 'https://play-lh.googleusercontent.com/QNmuZQc9I6Zbe3mWnSr0hycnENqGFCI5p3yE29Hkxtf22T0IWS6zTrpxULLyyjWpB7ONAXDsDQXnXcVWokl3eg=s128-rw',
-    patch_count: 85,
-  },
-  'com.google.android.apps.youtube.music': {
-    package: 'com.google.android.apps.youtube.music',
-    name: 'YouTube Music',
-    category: 'Music & Audio',
-    description: 'Official YouTube Music streaming app with ad-free listening and background play.',
-    icon_url: 'https://play-lh.googleusercontent.com/MyptZXmcCyF59phIWPsNCfHq6zSO_ojEdw_4rMYYWPOGdikSjqeOXcoszBZ053VYpINe5K7ZR9KV1nkFWgxdOw=s128-rw',
-    patch_count: 25,
-  },
-  'com.reddit.frontpage': {
-    package: 'com.reddit.frontpage',
-    name: 'Reddit',
-    category: 'Social & Communication',
-    description: 'Discover why people are the best - through real & authentic conversations.',
-    icon_url: 'https://play-lh.googleusercontent.com/8FVS0kvM60JwqZWRNzBIlwrZZxJa8vpli8IWaaTo8QXRe1PHmCNJ8UpWoXkGPV3jKEaTY2OVAeYoisOnGJXY=s128-rw',
-    patch_count: 20,
-  },
-};
-
-let morpheCatalogData = null;
-let rawBundlesData = [];
-let rawCompatibilitiesData = [];
-try {
-  sessionStorage.removeItem('morphe_catalog_data_v5');
-  sessionStorage.removeItem('morphe_catalog_data_v6');
-  const cachedCatalog = sessionStorage.getItem('morphe_catalog_data_v7');
-  const cachedBundles = sessionStorage.getItem('morphe_bundles_data_v7');
-  const cachedCompat = sessionStorage.getItem('morphe_compat_data_v7');
-  if (cachedCatalog && cachedBundles) {
-    morpheCatalogData = JSON.parse(cachedCatalog);
-    rawBundlesData = JSON.parse(cachedBundles);
-    if (cachedCompat) rawCompatibilitiesData = JSON.parse(cachedCompat);
-  }
-} catch (_) {}
-
-let isFetchingMorpheCatalog = false;
-
 async function fetchMorpheCatalog(force = false) {
   if (force) {
     morpheCatalogData = null;
