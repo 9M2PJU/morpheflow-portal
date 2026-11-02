@@ -380,9 +380,11 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     isAuthorizedWebhook;
   const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
   const isObtainiumEndpoint =
-    (path.startsWith('/api/obtainium') || path.startsWith('/obtainium')) && method === 'GET';
+    (path.startsWith('/api/obtainium') || path.startsWith('/obtainium')) &&
+    (method === 'GET' || method === 'HEAD');
   const isDownloadEndpoint =
-    (path.startsWith('/api/download/') || path.startsWith('/files/')) && method === 'GET';
+    (path.startsWith('/api/download/') || path.startsWith('/files/')) &&
+    (method === 'GET' || method === 'HEAD');
 
   if (isReportWithWebhook) {
     if (!isAuthorizedWebhook) {
@@ -1528,19 +1530,27 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   }
 
   // 23b. Direct Authenticated Binary APK Download Proxy: GET /api/download/:pkg or GET /files/:filename
-  if ((path.startsWith('/api/download/') || path.startsWith('/files/')) && method === 'GET') {
+  if ((path.startsWith('/api/download/') || path.startsWith('/files/')) && (method === 'GET' || method === 'HEAD')) {
     const rawTarget = path.startsWith('/api/download/')
       ? decodeURIComponent(path.replace('/api/download/', ''))
       : decodeURIComponent(path.replace('/files/', ''));
 
+    const parts = rawTarget.split('/').filter(Boolean);
+    const primaryTarget = parts[0] || '';
+    const specificFile = parts[1] || null;
+
     const patchedApps = await storage.listPatchedApps();
     let appMatch = patchedApps.find(
-      (a) => a.package === rawTarget || a.filename === rawTarget || a.filename === `${rawTarget}.apk`
+      (a) =>
+        a.package === primaryTarget ||
+        a.filename === primaryTarget ||
+        a.filename === `${primaryTarget}.apk` ||
+        (specificFile && (a.filename === specificFile || a.package === primaryTarget))
     );
 
     if (!appMatch) {
-      // Check if rawTarget has package prefix
-      const stripped = rawTarget.split('_')[0];
+      // Check if primaryTarget has package prefix
+      const stripped = primaryTarget.split('_')[0];
       appMatch = patchedApps.find((a) => a.package === stripped);
     }
 
