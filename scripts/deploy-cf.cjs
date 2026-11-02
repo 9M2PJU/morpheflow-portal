@@ -248,7 +248,7 @@ function syncSecrets() {
 }
 
 function deployWorker() {
-  log('🚀', `Deploying AutoMorph to Cloudflare Workers using ${targetConfig}...`);
+  log('🚀', `Deploying MorpheFlow to Cloudflare Workers using ${targetConfig}...`);
 
   const args = ['wrangler', 'deploy'];
   if (isKvMode) {
@@ -271,7 +271,7 @@ function deployWorker() {
   const match = output.match(/https:\/\/[a-zA-Z0-9-.]+\.workers\.dev/);
   const workerUrl = match ? match[0] : null;
 
-  success('AutoMorph deployment completed!');
+  success('MorpheFlow deployment completed!');
   return workerUrl;
 }
 
@@ -292,7 +292,7 @@ function setupGitHubIntegration(workerUrl, webhookSecret) {
   if (!ghUser) return { ghRepo: null, ghToken: null };
   success(`GitHub authenticated as @${ghUser}`);
 
-  const targetRepo = `${ghUser}/AutoMorph`;
+  const targetRepo = `${ghUser}/MorpheFlow`;
   let repoExists = false;
   try {
     run(`gh repo view ${targetRepo} --json name`);

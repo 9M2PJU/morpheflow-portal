@@ -5190,11 +5190,48 @@ function toCaseInsensitiveRegexPattern(str) {
   }).join('');
 }
 
-function buildObtainiumAppPayload(pkg) {
+let obtainiumSourceMode = 'edge';
+
+function setObtainiumSourceMode(mode) {
+  obtainiumSourceMode = mode || 'edge';
+  const btnEdge = document.getElementById('obtainium-mode-edge');
+  const btnGh = document.getElementById('obtainium-mode-github');
+  const noteEdge = document.getElementById('obtainium-note-edge');
+  const noteGh = document.getElementById('obtainium-note-github');
+
+  if (btnEdge) btnEdge.classList.toggle('active', obtainiumSourceMode === 'edge');
+  if (btnGh) btnGh.classList.toggle('active', obtainiumSourceMode === 'github');
+  if (noteEdge) noteEdge.style.display = obtainiumSourceMode === 'edge' ? 'flex' : 'none';
+  if (noteGh) noteGh.style.display = obtainiumSourceMode === 'github' ? 'flex' : 'none';
+
+  renderObtainiumAppsList();
+  updateObtainiumExportJson();
+}
+
+function buildObtainiumAppPayload(pkg, mode = obtainiumSourceMode) {
   const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg };
   const catalogItem = (morpheCatalogData && morpheCatalogData[pkg]) ? morpheCatalogData[pkg] : null;
   const appName = app.name || catalogItem?.name || getFallbackAppName(pkg);
   const repo = getObtainiumRepoSlug();
+
+  if (mode === 'edge') {
+    const origin = window.location.origin;
+    const additionalSettings = JSON.stringify({
+      versionExtractionRegEx: 'id="version"[^>]*>v?([0-9][0-9a-zA-Z._-]+)<',
+      matchGroupToUse: '1',
+      apkFilterRegEx: '\\.apk$',
+      autoCheckForUpdates: true
+    });
+
+    return {
+      id: pkg,
+      url: `${origin}/obtainium/${encodeURIComponent(pkg)}`,
+      author: 'MorpheFlow',
+      name: appName,
+      preferredApkIndex: 0,
+      additionalSettings
+    };
+  }
 
   const ciPkg = toCaseInsensitiveRegexPattern(pkg);
   const ciName = toCaseInsensitiveRegexPattern(appName);

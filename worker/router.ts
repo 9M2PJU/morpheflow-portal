@@ -42,6 +42,16 @@ function toCaseInsensitiveRegexPattern(str: string): string {
     .join('');
 }
 
+function escapeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const KNOWN_APP_NAMES: Record<string, string> = {
   'com.sbs.train': 'MacroFactor Workouts',
   'com.sbs.diet': 'MacroFactor',
@@ -371,12 +381,14 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   const isReportWithWebhook = path === '/api/webhook/report' && method === 'POST';
   const isObtainiumEndpoint =
     (path.startsWith('/api/obtainium') || path.startsWith('/obtainium')) && method === 'GET';
+  const isDownloadEndpoint =
+    (path.startsWith('/api/download/') || path.startsWith('/files/')) && method === 'GET';
 
   if (isReportWithWebhook) {
     if (!isAuthorizedWebhook) {
       return json({ error: 'Unauthorized webhook' }, 401);
     }
-  } else if (!isConfigWithWebhook && !isObtainiumEndpoint) {
+  } else if (!isConfigWithWebhook && !isObtainiumEndpoint && !isDownloadEndpoint) {
     const auth = await authenticateRequest(request, env, storage);
     if (!auth.authenticated) {
       return json(
@@ -660,26 +672,60 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     });
 
     // If browser/direct download requested with ?download=1
-    if (url.searchParams.get('download') === '1' && patched?.download_url) {
-      return Response.redirect(patched.download_url, 302);
+    if (url.searchParams.get('download') === '1') {
+      return Response.redirect(`https://${url.host}/api/download/${encodeURIComponent(pkg)}`, 302);
     }
 
-    const acceptsHtml = request.headers.get('Accept')?.includes('text/html') || url.searchParams.get('format') === 'html';
-    if (acceptsHtml && patched?.download_url) {
+    const acceptsHtml =
+      request.headers.get('Accept')?.includes('text/html') ||
+      url.searchParams.get('format') === 'html';
+
+    if (acceptsHtml) {
+      const isCompiled = Boolean(patched);
+      const ver = patched?.version ? (patched.version.startsWith('v') ? patched.version : `v${patched.version}`) : '1.0.0';
+      const cleanVer = ver.replace(/^v/, '');
+      const downloadPath = `https://${url.host}/api/download/${encodeURIComponent(pkg)}/${encodeURIComponent(patched?.filename || `${pkg}_${cleanVer}_patched.apk`)}`;
+
       const htmlResponse = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${appName} Release - MorpheFlow</title>
+  <title>${escapeHtml(appName)} - MorpheFlow</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 40px auto; padding: 24px; line-height: 1.5; color: #1e293b; background: #f8fafc; }
+    .card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .title { margin: 0 0 6px 0; font-size: 1.35rem; font-weight: 700; color: #0f172a; }
+    .pkg { font-family: monospace; font-size: 0.85rem; color: #64748b; margin-bottom: 16px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.825rem; font-weight: 600; background: #e0f2fe; color: #0369a1; margin-bottom: 20px; }
+    .btn { display: inline-block; padding: 12px 24px; background: #0284c7; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; }
+    .btn:hover { background: #0369a1; }
+    .footer { margin-top: 24px; font-size: 0.8rem; color: #94a3b8; }
+  </style>
 </head>
-<body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.5;">
-  <h2>${appName} (${pkg})</h2>
-  <p>Version: <strong>${patched.version || 'latest'}</strong></p>
-  <p><a href="${patched.download_url}" style="display: inline-block; padding: 10px 20px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px;">Download Patched APK</a></p>
-  <p style="font-size: 0.85em; color: #666;">Source: <a href="https://github.com/${repo}">https://github.com/${repo}</a></p>
+<body>
+  <div class="card">
+    <h1 class="title">${escapeHtml(appName)}</h1>
+    <div class="pkg">${escapeHtml(pkg)}</div>
+    ${isCompiled ? `
+      <div>Version: <span id="version" class="badge">${escapeHtml(ver)}</span></div>
+      <p style="margin-top: 8px; margin-bottom: 24px;">
+        <a href="${downloadPath}" id="apk-link" class="btn">Download Patched APK</a>
+      </p>
+      <div style="font-size: 0.85rem; color: #64748b;">
+        Binary file: <code>${escapeHtml(patched?.filename || `${pkg}_patched.apk`)}</code>
+      </div>
+    ` : `
+      <div class="badge" style="background: #fef3c7; color: #b45309;">Awaiting Compilation</div>
+      <p style="color: #64748b; font-size: 0.9rem;">This application is configured in MorpheFlow but has not completed a build yet. Trigger a build from your console to generate the APK.</p>
+    `}
+    <div class="footer">
+      MorpheFlow Distribution Edge • <a href="https://${url.host}" style="color: #64748b;">Console</a>
+    </div>
+  </div>
 </body>
 </html>`;
+
       return new Response(htmlResponse, {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
@@ -692,11 +738,12 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json(
       {
         id: pkg,
-        url: `https://github.com/${repo}`,
+        url: `https://${url.host}/obtainium/${encodeURIComponent(pkg)}`,
+        github_url: `https://github.com/${repo}`,
         author,
         name: appName,
         version: patched?.version || 'latest',
-        apk_url: patched?.download_url || `https://github.com/${repo}/releases`,
+        apk_url: `https://${url.host}/api/download/${encodeURIComponent(pkg)}`,
         preferredApkIndex: 0,
         additionalSettings,
       },

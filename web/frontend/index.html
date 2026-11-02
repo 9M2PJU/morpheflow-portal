@@ -786,16 +786,33 @@
           </div>
         </div>
 
+        <!-- Feed Source Mode Switcher -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.375rem 0.625rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+          <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);">Source Mode:</span>
+          <div style="display: flex; gap: 0.25rem;">
+            <button type="button" class="btn-micro active" id="obtainium-mode-edge" onclick="setObtainiumSourceMode('edge')" title="Recommended: Streams directly through MorpheFlow edge without needing a GitHub PAT">⚡ Edge Worker (Private-Safe)</button>
+            <button type="button" class="btn-micro" id="obtainium-mode-github" onclick="setObtainiumSourceMode('github')" title="Direct GitHub Releases (Requires Personal Access Token in Obtainium settings for private repos)">🐙 GitHub Releases</button>
+          </div>
+        </div>
+
         <!-- App Checklist Container -->
         <div id="obtainium-apps-list" style="display: flex; flex-direction: column; gap: 0.375rem; max-height: 280px; overflow-y: auto; background: var(--surface-lowest); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); padding: 0.5rem; margin-bottom: 0.875rem;">
           <!-- Dynamically populated with app rows and direct Obtainium links -->
         </div>
 
-        <!-- Direct GitHub Release Feed Note -->
-        <div style="padding: 0.625rem 0.75rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); margin-bottom: 0.875rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+        <!-- Edge Worker Feed Note -->
+        <div id="obtainium-note-edge" style="padding: 0.625rem 0.75rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); margin-bottom: 0.875rem; display: flex; align-items: flex-start; gap: 0.5rem;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-base); flex-shrink: 0; margin-top: 0.125rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
           <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
-            <strong>Direct GitHub Release Feed:</strong> Sourced via verified public releases on <code style="font-family: var(--font-mono); color: var(--accent-base);">wiwek13/MorpheFlow</code>. Never requires local passwords or session cookies inside Obtainium.
+            <strong>⚡ Edge Worker Source (Recommended):</strong> Streams APK updates directly through your MorpheFlow Cloudflare Worker edge. <strong>100% private-repo safe</strong> with zero GitHub Personal Access Token (PAT) setup required on your device!
+          </div>
+        </div>
+
+        <!-- GitHub Releases Feed Note -->
+        <div id="obtainium-note-github" style="padding: 0.625rem 0.75rem; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-sm); margin-bottom: 0.875rem; display: none; align-items: flex-start; gap: 0.5rem;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #f59e0b; flex-shrink: 0; margin-top: 0.125rem;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+            <strong>Private Repository Notice:</strong> Since <code style="font-family: var(--font-mono); color: #f59e0b;">wiwek13/MorpheFlow</code> is private, you <strong>must</strong> enter a GitHub Personal Access Token once in Obtainium (<strong>Settings ➔ App Sources ➔ GitHub ➔ API Token</strong>) to avoid "Could not find a suitable release" errors.
           </div>
         </div>
 
