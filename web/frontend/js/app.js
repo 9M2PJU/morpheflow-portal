@@ -252,6 +252,7 @@ function setupEventListeners() {
   document.getElementById('btn-copy-obtainium-json')?.addEventListener('click', () => copyObtainiumJson());
   document.getElementById('btn-confirm-provision')?.addEventListener('click', () => confirmProvisionApp());
   document.getElementById('btn-drawer-save')?.addEventListener('click', () => saveAppDrawerChanges());
+  document.getElementById('btn-drawer-save-and-patch')?.addEventListener('click', () => saveAndPatchAppDrawer());
   document.getElementById('btn-pipeline-refresh')?.addEventListener('click', () => loadPipelineViewLogs());
   document.getElementById('btn-pipeline-run')?.addEventListener('click', () => runPipeline());
 
@@ -2137,6 +2138,11 @@ function renderOverview() {
           <div class="app-card-actions">
             ${patchBtnHtml}
 
+            <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}', 'patches')" title="Open Pure Patch Studio: customize base APK, repositories, and individual patch options">
+              <span style="font-size: 0.75rem;">🧪</span>
+              <span>Pure Patch</span>
+            </button>
+
             <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
               <span>Patches (${verInfo.patchCount})</span>
@@ -2346,6 +2352,11 @@ function renderConfiguredApps() {
           <div class="app-card-actions">
             ${patchBtnHtml}
 
+            <button class="btn btn-secondary btn-sm" onclick="openAppDrawer('${escapeHtml(pkg)}', 'patches')" title="Open Pure Patch Studio: customize base APK, repositories, and individual patch options">
+              <span style="font-size: 0.75rem;">🧪</span>
+              <span>Pure Patch</span>
+            </button>
+
             <button class="btn btn-secondary btn-sm" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
               <span>Patches (${verInfo.patchCount})</span>
@@ -2458,6 +2469,49 @@ function switchStoreSubtab(subtab) {
     if (catPills) catPills.style.display = 'none';
     if (sentinel) sentinel.style.display = 'none';
     renderStoreBundles();
+  }
+}
+
+async function loadCatalogSyncState() {
+  try {
+    const res = await fetch('/api/catalog/sync');
+    if (!res.ok) return;
+    const data = await res.json();
+    const textEl = document.getElementById('store-sync-text');
+    const statsEl = document.getElementById('store-catalog-stats');
+    if (textEl && data.last_synced_at) {
+      const minutesAgo = Math.max(1, Math.round((Date.now() - data.last_synced_at) / 60000));
+      textEl.textContent = minutesAgo < 60 ? `Synced ${minutesAgo}m ago (Hourly)` : `Hourly Scan Active`;
+    }
+    if (statsEl && data.total_apps) {
+      statsEl.textContent = `${data.total_apps} Apps · ${data.total_bundles} Bundles`;
+    }
+  } catch (_) {}
+}
+
+async function syncCommunityCatalogNow() {
+  const btn = document.getElementById('btn-sync-catalog-now');
+  const icon = document.getElementById('icon-sync-catalog');
+  const textEl = document.getElementById('store-sync-text');
+  if (btn) btn.disabled = true;
+  if (icon) icon.classList.add('spin-icon');
+  if (textEl) textEl.textContent = 'Scanning Ecosystem…';
+
+  try {
+    showToast('Scanning Morphe community catalog…', 'info');
+    const res = await fetch('/api/catalog/sync', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    showToast(`Synced ${data.total_apps || 1354} community apps and ${data.total_bundles || 365} bundles!`, 'success');
+    await fetchMorpheCatalog(true);
+    await loadCatalogSyncState();
+    renderStoreCatalog(true);
+  } catch (err) {
+    showToast(`Catalog sync error: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (icon) icon.classList.remove('spin-icon');
   }
 }
 
@@ -2716,6 +2770,164 @@ function filterAppsByRepo(repoSlug) {
 }
 
 // ---------------------------------------------------------------------------
+// Community Store App Details Modal
+// ---------------------------------------------------------------------------
+function openStoreAppDetails(pkg) {
+  const modal = document.getElementById('modal-store-details');
+  if (!modal) return;
+
+  const app = morpheCatalogData ? morpheCatalogData[pkg] : null;
+  const isConfigured = state.configuredApps.some(a => (a.package || a.package_name) === pkg);
+  const friendlyName = app?.name || getFallbackAppName(pkg);
+  const iconUrl = app?.icon_url;
+
+  // 1. Icon & Header
+  const iconSlot = document.getElementById('store-details-icon-slot');
+  if (iconSlot) {
+    iconSlot.innerHTML = iconUrl
+      ? `<img src="${iconUrl}" width="50" height="50" alt="" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight: 700; font-size: 1.25rem; color: var(--text-muted);\\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 700; font-size: 1.25rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+  }
+
+  const titleEl = document.getElementById('store-details-title');
+  const pkgEl = document.getElementById('store-details-pkg');
+  if (titleEl) titleEl.textContent = friendlyName;
+  if (pkgEl) pkgEl.textContent = pkg;
+
+  // 2. Badges
+  const catBadge = document.getElementById('store-details-cat-badge');
+  const srcBadge = document.getElementById('store-details-sources-badge');
+  const verBadge = document.getElementById('store-details-rec-ver-badge');
+  const updBadge = document.getElementById('store-details-updated-badge');
+
+  const repoCount = app?.supported_repos?.length || (app?.repo_details?.length || 1);
+  const recVer = getRecommendedTargetVersion(pkg);
+
+  if (catBadge) catBadge.textContent = app?.category || 'Tools';
+  if (srcBadge) srcBadge.textContent = `${repoCount} Source${repoCount > 1 ? 's' : ''}`;
+  if (verBadge) verBadge.textContent = recVer ? (recVer.startsWith('v') ? recVer : `v${recVer}`) : 'Latest Compatible';
+  if (updBadge) {
+    const d = app?.updated_at ? new Date(app.updated_at * 1000) : null;
+    updBadge.textContent = d && !isNaN(d.getTime()) ? `Updated ${d.toLocaleDateString()}` : 'Active Ecosystem';
+  }
+
+  // 3. Description
+  const descEl = document.getElementById('store-details-desc');
+  if (descEl) {
+    descEl.textContent = app?.description || 'Verified Android ecosystem application with compatible community patch bundles.';
+  }
+
+  // 4. Compatible Patches (App-Specific FIRST, then Universal)
+  const patchContainer = document.getElementById('store-details-patches-container');
+  const patchCountEl = document.getElementById('store-details-patch-count');
+
+  const bundleGroups = getCompatiblePatchesForPackage(pkg);
+  let allAppPatches = [];
+  let allUnivPatches = [];
+
+  for (const group of bundleGroups) {
+    for (const p of (group.patches || [])) {
+      if (p.isUniversal) {
+        allUnivPatches.push({ ...p, bundleRepo: group.bundleRepo, bundleName: group.bundleName });
+      } else {
+        allAppPatches.push({ ...p, bundleRepo: group.bundleRepo, bundleName: group.bundleName });
+      }
+    }
+  }
+
+  const totalPatches = allAppPatches.length + allUnivPatches.length;
+  if (patchCountEl) {
+    patchCountEl.textContent = `${totalPatches} Patches Available`;
+  }
+
+  if (patchContainer) {
+    if (totalPatches === 0) {
+      patchContainer.innerHTML = `
+        <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
+          Standard Morphe bytecode optimization patches will be applied during provisioning.
+        </div>
+      `;
+    } else {
+      const renderPatchItem = (p) => `
+        <div style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.35rem 0.5rem; background: var(--surface-raised); border-radius: var(--radius-xs); border: 1px solid var(--border-hairline);">
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+              <span>${escapeHtml(p.name)}</span>
+              ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
+              ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+            </div>
+            <div style="font-size: 0.6875rem; color: var(--text-secondary); line-height: 1.3; margin-top: 0.125rem;">${escapeHtml(p.description || 'Optimizes application bytecode.')}</div>
+          </div>
+          <span class="badge" style="font-size: 0.5625rem; flex-shrink: 0;">${escapeHtml(cleanRepoSlug(p.bundleRepo || p.bundleName))}</span>
+        </div>
+      `;
+
+      let patchesHtml = '';
+      if (allAppPatches.length > 0) {
+        patchesHtml += `
+          <div style="font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+            📦 App-Specific Patches (${allAppPatches.length})
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.5rem;">
+            ${allAppPatches.map(renderPatchItem).join('')}
+          </div>
+        `;
+      }
+
+      if (allUnivPatches.length > 0) {
+        patchesHtml += `
+          <div class="patch-section-divider" style="margin: 0.75rem 0 0.5rem 0;" role="separator">
+            <div class="patch-section-divider-line"></div>
+            <span class="patch-section-divider-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              Universal Patches (${allUnivPatches.length}) · Compatible with All Apps
+            </span>
+            <div class="patch-section-divider-line"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+            ${allUnivPatches.map(renderPatchItem).join('')}
+          </div>
+        `;
+      }
+
+      patchContainer.innerHTML = patchesHtml;
+    }
+  }
+
+  // 5. Action Buttons
+  const actionsSlot = document.getElementById('store-details-actions');
+  if (actionsSlot) {
+    if (isConfigured) {
+      actionsSlot.innerHTML = `
+        <button class="btn btn-secondary btn-sm" onclick="closeStoreDetailsModal(); openAppDrawer('${escapeHtml(pkg)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Configure Options</span>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="closeStoreDetailsModal(); runSingleAppPatch('${escapeHtml(pkg)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span>⚡ Patch Now</span>
+        </button>
+      `;
+    } else {
+      actionsSlot.innerHTML = `
+        <button class="btn btn-primary btn-sm" onclick="closeStoreDetailsModal(); openProvisionModal('${escapeHtml(friendlyName).replace(/'/g, "\\'")}', '${escapeHtml(pkg)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>1-Click Provision</span>
+        </button>
+      `;
+    }
+  }
+
+  modal.classList.add('open');
+}
+
+function closeStoreDetailsModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-store-details') return;
+  const modal = document.getElementById('modal-store-details');
+  if (modal) modal.classList.remove('open');
+}
+
+// ---------------------------------------------------------------------------
 // 1-Click Provisioning Sheet with Grouped Patches
 // ---------------------------------------------------------------------------
 function openProvisionModal(name, pkg) {
@@ -2772,108 +2984,113 @@ function renderProvisionPatches(pkg, defaultRepo) {
     return;
   }
 
-  let hasRenderedUniversalBundleSeparator = false;
-  let hasAppSpecificBundlePrior = false;
+  // Split into App-Specific Bundles and Universal Bundles
+  const appBundles = [];
+  const univBundles = [];
+  let totalAppPatches = 0;
+  let totalUnivPatches = 0;
 
-  container.innerHTML = bundleGroups.map((group, idx) => {
+  bundleGroups.forEach((group, groupIdx) => {
     const patches = group.patches || [];
-    const isExpanded = idx === 0;
+    const appP = patches.filter(p => !p.isUniversal);
+    const univP = patches.filter(p => p.isUniversal);
 
-    const isPurelyUniversalBundle = patches.length > 0 && patches.every(p => p.isUniversal);
-    if (!isPurelyUniversalBundle && patches.length > 0) {
-      hasAppSpecificBundlePrior = true;
+    totalAppPatches += appP.length;
+    totalUnivPatches += univP.length;
+
+    if (appP.length > 0) {
+      appBundles.push({
+        group,
+        groupIdx,
+        patches: appP,
+        isUniversalSection: false,
+      });
     }
 
-    let bundleSeparatorHtml = '';
-    if (isPurelyUniversalBundle && hasAppSpecificBundlePrior && !hasRenderedUniversalBundleSeparator) {
-      hasRenderedUniversalBundleSeparator = true;
-      bundleSeparatorHtml = `
-        <div class="patch-section-divider" style="margin: 1.25rem 0 0.75rem 0;" role="separator" aria-label="Universal Patch Sources">
-          <div class="patch-section-divider-line"></div>
-          <span class="patch-section-divider-label">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-            Universal Patch Sources · Compatible with All Apps
-          </span>
-          <div class="patch-section-divider-line"></div>
-        </div>
-      `;
+    if (univP.length > 0) {
+      univBundles.push({
+        group,
+        groupIdx,
+        patches: univP,
+        isUniversalSection: true,
+      });
     }
+  });
+
+  const renderBundleAccordion = (item, isAppSpecific, defaultOpen) => {
+    const { group, groupIdx, patches } = item;
+    const accordionKey = `${groupIdx}-${isAppSpecific ? 'app' : 'univ'}`;
+    const listId = `prov-patch-list-${accordionKey}`;
+    const arrowId = `prov-arrow-${accordionKey}`;
 
     return `
-      ${bundleSeparatorHtml}
-      <div class="prov-bundle-section" id="prov-bundle-${idx}" style="margin-bottom: 0.75rem; border: 1px solid var(--border-hairline); border-radius: var(--radius-md); overflow: hidden;">
-        <div class="prov-bundle-header" onclick="toggleBundleAccordion(${idx})" style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface-raised); border-bottom: 1px solid var(--border-hairline); cursor: pointer; user-select: none;">
-          <div class="prov-bundle-title" style="display: flex; align-items: center; gap: 0.5rem;">
-            <span class="prov-accordion-arrow" id="prov-arrow-${idx}" style="font-size: 0.6875rem; color: var(--text-muted);">${isExpanded ? '▼' : '▶'}</span>
-            <span style="font-weight: 600; font-size: 0.8125rem; color: var(--text-primary);">📦 ${escapeHtml(group.bundleName)}</span>
+      <div class="prov-bundle-section" id="prov-bundle-${accordionKey}" style="margin-bottom: 0.625rem; border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-raised);">
+        <div class="prov-bundle-header" onclick="toggleBundleAccordion('${accordionKey}')" style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.875rem; background: var(--surface-raised); border-bottom: 1px solid var(--border-hairline); cursor: pointer; user-select: none;">
+          <div class="prov-bundle-title" style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span class="prov-accordion-arrow" id="${arrowId}" style="font-size: 0.6875rem; color: var(--text-muted);">${defaultOpen ? '▼' : '▶'}</span>
+            <span style="font-weight: 600; font-size: 0.8125rem; color: var(--text-primary);">${isAppSpecific ? '📦' : '🌐'} ${escapeHtml(group.bundleName)}</span>
             ${group.author ? `<span style="font-size: 0.6875rem; color: var(--text-muted);">by ${escapeHtml(group.author)}</span>` : ''}
           </div>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
             <span class="prov-bundle-count" style="font-size: 0.6875rem; color: var(--text-muted);">${patches.length} Patches</span>
-            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll(${idx}, true)">All</button>
-            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll(${idx}, false)">None</button>
+            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll('${accordionKey}', true)">All</button>
+            <button type="button" class="btn-micro" onclick="event.stopPropagation(); toggleBundleSelectAll('${accordionKey}', false)">None</button>
           </div>
         </div>
 
-        <div class="prov-patch-list" id="prov-patch-list-${idx}" style="${isExpanded ? 'display: flex;' : 'display: none;'} flex-direction: column; padding: 0.5rem; gap: 0.25rem; background: var(--surface-lowest); max-height: 240px; overflow-y: auto;">
-          ${(() => {
-            const appPatches = patches.filter(p => !p.isUniversal);
-            const univPatches = patches.filter(p => p.isUniversal);
-
-            const renderProvItem = (p) => `
-              <label class="prov-patch-item" style="display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm); cursor: pointer;">
-                <input type="checkbox" name="prov-patch" data-bundle="${idx}" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''} style="margin-top: 0.2rem; accent-color: var(--accent-base);">
-                <div class="prov-patch-content" style="flex: 1; min-width: 0;">
-                  <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;">
-                    <span>${escapeHtml(p.name)}</span>
-                    ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
-                    ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
-                  </div>
-                  ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3;">${escapeHtml(p.description)}</div>` : ''}
+        <div class="prov-patch-list" id="${listId}" style="${defaultOpen ? 'display: flex;' : 'display: none;'} flex-direction: column; padding: 0.5rem; gap: 0.25rem; background: var(--surface-lowest); max-height: 240px; overflow-y: auto;">
+          ${patches.map(p => `
+            <label class="prov-patch-item" style="display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.4rem 0.5rem; border-radius: var(--radius-sm); cursor: pointer;">
+              <input type="checkbox" name="prov-patch" data-bundle="${groupIdx}" value="${escapeHtml(p.name)}" data-repo="${escapeHtml(group.bundleRepo)}" ${p.default ? 'checked' : ''} style="margin-top: 0.2rem; accent-color: var(--accent-base);">
+              <div class="prov-patch-content" style="flex: 1; min-width: 0;">
+                <div class="prov-patch-name" style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <span>${escapeHtml(p.name)}</span>
+                  ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase;">Universal</span>` : ''}
+                  ${p.targetVersion ? `<span class="badge" style="font-size: 0.65rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
                 </div>
-              </label>
-            `;
-
-            const appHtml = appPatches.map(renderProvItem).join('');
-            const univHtml = univPatches.map(renderProvItem).join('');
-
-            if (appPatches.length > 0 && univPatches.length > 0) {
-              return `
-                ${appHtml}
-                <div class="patch-section-divider" role="separator" aria-label="Universal Patches">
-                  <div class="patch-section-divider-line"></div>
-                  <span class="patch-section-divider-label">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                    Universal Patches (${univPatches.length}) · Compatible with All Apps
-                  </span>
-                  <div class="patch-section-divider-line"></div>
-                </div>
-                ${univHtml}
-              `;
-            } else if (univPatches.length > 0 && appPatches.length === 0) {
-              return `
-                <div class="patch-section-divider" style="margin-top: 0.25rem;" role="separator" aria-label="Universal Patches">
-                  <div class="patch-section-divider-line"></div>
-                  <span class="patch-section-divider-label">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                    Universal Bundle · ${univPatches.length} Patches
-                  </span>
-                  <div class="patch-section-divider-line"></div>
-                </div>
-                ${univHtml}
-              `;
-            }
-            return appHtml;
-          })()}
+                ${p.description ? `<div class="prov-patch-desc" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3; margin-top: 0.125rem;">${escapeHtml(p.description)}</div>` : ''}
+              </div>
+            </label>
+          `).join('')}
         </div>
       </div>
     `;
-  }).join('');
+  };
+
+  let html = '';
+
+  // Section 1: App-Specific Patches (ALWAYS FIRST)
+  if (appBundles.length > 0) {
+    html += `
+      <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.375rem;">
+        <span>📦 App-Specific Patches</span>
+        <span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700;">${totalAppPatches}</span>
+      </div>
+      ${appBundles.map((item, idx) => renderBundleAccordion(item, true, idx === 0)).join('')}
+    `;
+  }
+
+  // Section 2: Universal Patches & Mutators (ALWAYS SECOND)
+  if (univBundles.length > 0) {
+    html += `
+      <div class="patch-section-divider" style="margin: 1.25rem 0 0.75rem 0;" role="separator" aria-label="Universal Patch Sources">
+        <div class="patch-section-divider-line"></div>
+        <span class="patch-section-divider-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Universal Patches & Mutators (${totalUnivPatches}) · Compatible with All Apps
+        </span>
+        <div class="patch-section-divider-line"></div>
+      </div>
+      ${univBundles.map((item, idx) => renderBundleAccordion(item, false, appBundles.length === 0 && idx === 0)).join('')}
+    `;
+  }
+
+  container.innerHTML = html;
 }
 
-function toggleBundleAccordion(idx) {
-  const list = document.getElementById(`prov-patch-list-${idx}`);
-  const arrow = document.getElementById(`prov-arrow-${idx}`);
+function toggleBundleAccordion(key) {
+  const list = document.getElementById(`prov-patch-list-${key}`);
+  const arrow = document.getElementById(`prov-arrow-${key}`);
   if (!list) return;
 
   const isHidden = list.style.display === 'none';
@@ -2881,8 +3098,8 @@ function toggleBundleAccordion(idx) {
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
 }
 
-function toggleBundleSelectAll(idx, isSelectAll) {
-  const checkboxes = document.querySelectorAll(`#prov-patch-list-${idx} input[name="prov-patch"]`);
+function toggleBundleSelectAll(key, isSelectAll) {
+  const checkboxes = document.querySelectorAll(`#prov-patch-list-${key} input[name="prov-patch"]`);
   checkboxes.forEach(cb => { cb.checked = Boolean(isSelectAll); });
 }
 
@@ -3130,6 +3347,17 @@ function openAppliedPatchesModal(pkg) {
 
   if (titleEl) titleEl.textContent = `${friendlyName} — Patch Manager`;
   if (subtitleEl) subtitleEl.textContent = `${pkg} • Select active patches & community sources`;
+
+  // Update Base APK label
+  const baseApkLabel = document.getElementById('applied-base-apk-label');
+  const baseApkSub = document.getElementById('applied-base-apk-sub');
+  const customUrl = app?.base_apk_url || (app?.options && app?.options.base_apk_url);
+  if (baseApkLabel) {
+    baseApkLabel.textContent = customUrl ? 'Base APK: Custom URL configured' : 'Base APK: APKPure Auto-Fetch';
+  }
+  if (baseApkSub) {
+    baseApkSub.textContent = customUrl ? customUrl : 'Default automatic acquisition matching target architecture';
+  }
 
   // Collect compatible bundles from community catalog
   const bundles = getCompatiblePatchesForPackage(pkg);
@@ -3615,8 +3843,24 @@ async function saveAppliedPatchesChanges() {
     showToast(`Saved patches for ${app.name || currentAppliedPkg}!`, 'success');
     closeAppliedPatchesModal();
     await loadConfig();
+    return true;
   } catch (err) {
     showToast(`Failed to save patches: ${err.message}`, 'error');
+    return false;
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function saveAndPatchAppliedModal() {
+  const pkg = currentAppliedPkg;
+  const saveBtn = document.getElementById('btn-save-and-patch-applied');
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const ok = await saveAppliedPatchesChanges();
+    if (ok && pkg) {
+      await runSingleAppPatch(pkg);
+    }
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }
@@ -3831,9 +4075,67 @@ let currentDrawerPkg = null;
 let currentDrawerBundles = [];
 let currentDrawerPatchesState = new Map();
 let currentDrawerSearchFilter = '';
+let currentDrawerSubtab = 'patches'; // 'patches' | 'settings'
+let currentDrawerPatchFilter = 'all'; // 'all' | 'app' | 'univ' | 'selected'
+let currentDrawerBaseApkMode = 'auto'; // 'auto' | 'custom' | 'upload'
 
-async function openAppDrawer(pkg) {
+function switchDrawerSubtab(tab) {
+  currentDrawerSubtab = tab || 'patches';
+  const btnPatches = document.getElementById('btn-drawer-tab-patches');
+  const btnSettings = document.getElementById('btn-drawer-tab-settings');
+  if (btnPatches) btnPatches.classList.toggle('active', currentDrawerSubtab === 'patches');
+  if (btnSettings) btnSettings.classList.toggle('active', currentDrawerSubtab === 'settings');
+
+  const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg) || { package: currentDrawerPkg, repos: [] };
+  renderDrawerBody(app);
+  if (currentDrawerSubtab === 'patches') {
+    renderDrawerActivePatches();
+    renderDrawerAvailableBundles();
+  }
+}
+
+function changeDrawerPatchFilter(filter) {
+  currentDrawerPatchFilter = filter || 'all';
+  document.querySelectorAll('.patch-filter-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.patchFilter === currentDrawerPatchFilter);
+  });
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+}
+
+function setDrawerBaseApkMode(mode) {
+  currentDrawerBaseApkMode = mode;
+  document.querySelectorAll('.btn-base-apk-mode').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  const autoSection = document.getElementById('drawer-base-apk-auto');
+  const customSection = document.getElementById('drawer-base-apk-custom');
+  const uploadSection = document.getElementById('drawer-base-apk-upload');
+  if (autoSection) autoSection.style.display = mode === 'auto' ? 'block' : 'none';
+  if (customSection) customSection.style.display = mode === 'custom' ? 'block' : 'none';
+  if (uploadSection) uploadSection.style.display = mode === 'upload' ? 'block' : 'none';
+}
+
+function toggleDrawerPatchOptionExpand(key) {
+  const safeId = 'drawer-patch-opts-' + key.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const el = document.getElementById(safeId);
+  if (el) {
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  }
+}
+
+function updateDrawerPatchOption(key, optKey, value) {
+  const item = currentDrawerPatchesState.get(key);
+  if (item) {
+    if (!item.options) item.options = {};
+    item.options[optKey] = value;
+  }
+}
+
+async function openAppDrawer(pkg, tab = 'patches') {
   currentDrawerPkg = pkg;
+  currentDrawerSubtab = tab || 'patches';
+  currentDrawerPatchFilter = 'all';
   currentDrawerSearchFilter = '';
   currentDrawerPatchesState.clear();
 
@@ -3857,11 +4159,30 @@ async function openAppDrawer(pkg) {
   const app = state.configuredApps.find(a => (a.package || a.package_name) === pkg) || { package: pkg, repos: [] };
   const catalogItem = morpheCatalogData ? morpheCatalogData[pkg] : null;
   const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
+  const iconUrl = catalogItem?.icon_url;
+
+  // Header Avatar & Title
+  const avatarSlot = document.getElementById('drawer-app-avatar');
+  if (avatarSlot) {
+    avatarSlot.innerHTML = iconUrl
+      ? `<img src="${iconUrl}" width="38" height="38" alt="" style="width: 38px; height: 38px; object-fit: cover; border-radius: var(--radius-sm);" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight: 700; font-size: 1.125rem; color: var(--text-muted);\\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
+      : `<span style="font-weight: 700; font-size: 1.125rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
+  }
 
   const titleEl = document.getElementById('drawer-app-title');
   const pkgEl = document.getElementById('drawer-app-pkg');
   if (titleEl) titleEl.textContent = friendlyName;
   if (pkgEl) pkgEl.textContent = pkg;
+
+  // Subtabs sync
+  const btnPatches = document.getElementById('btn-drawer-tab-patches');
+  const btnSettings = document.getElementById('btn-drawer-tab-settings');
+  if (btnPatches) btnPatches.classList.toggle('active', currentDrawerSubtab === 'patches');
+  if (btnSettings) btnSettings.classList.toggle('active', currentDrawerSubtab === 'settings');
+
+  // Set initial base apk mode
+  const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
+  currentDrawerBaseApkMode = baseApkUrl ? 'custom' : 'auto';
 
   // 1. Collect compatible bundles from community catalog
   const bundles = getCompatiblePatchesForPackage(pkg);
@@ -3881,7 +4202,7 @@ async function openAppDrawer(pkg) {
     }
   }
 
-  // 3. Pre-seed known patches from app.options
+  // 3. Pre-seed known patches from app.options with option definitions and preserved values
   const appOptions = app?.options || {};
   const hasConfiguredOptions = Object.keys(appOptions).length > 0;
 
@@ -3900,6 +4221,10 @@ async function openAppDrawer(pkg) {
         isEnabled = Boolean(p.default);
       }
 
+      const existingOpts = (repoPatches[p.name] && typeof repoPatches[p.name].options === 'object')
+        ? repoPatches[p.name].options
+        : {};
+
       currentDrawerPatchesState.set(key, {
         key,
         name: p.name,
@@ -3908,7 +4233,9 @@ async function openAppDrawer(pkg) {
         desc: p.description || 'Applies bytecode mutation and feature modification.',
         targetVersion: p.targetVersion || null,
         enabled: isEnabled,
-        isUniversal: Boolean(p.isUniversal)
+        isUniversal: Boolean(p.isUniversal),
+        optionDefinitions: p.options || [],
+        options: { ...existingOpts }
       });
     }
   }
@@ -3927,15 +4254,19 @@ async function openAppDrawer(pkg) {
           desc: 'Custom configured bytecode mutation.',
           targetVersion: null,
           enabled: true,
-          isUniversal: determinePatchScope(pName, pCfg) === 'universal'
+          isUniversal: determinePatchScope(pName, pCfg) === 'universal',
+          optionDefinitions: [],
+          options: (pCfg && typeof pCfg.options === 'object') ? { ...pCfg.options } : {}
         });
       }
     }
   }
 
   renderDrawerBody(app);
-  renderDrawerActivePatches();
-  renderDrawerAvailableBundles();
+  if (currentDrawerSubtab === 'patches') {
+    renderDrawerActivePatches();
+    renderDrawerAvailableBundles();
+  }
   drawer.classList.add('open');
 }
 
@@ -3958,6 +4289,7 @@ function renderDrawerBody(app) {
   const repos = Array.isArray(app.repos) ? app.repos : [];
   const targetArch = (app.options && app.options.target_arch) || 'arm64-v8a';
   const recVer = getRecommendedTargetVersion(pkg) || 'Community Recommended';
+  const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
 
   const reposHtml = repos.length > 0
     ? repos.map((r, idx) => `
@@ -3970,73 +4302,175 @@ function renderDrawerBody(app) {
       `).join('')
     : `<div style="font-size: 0.75rem; color: var(--text-muted); padding: 0.375rem 0;">No dedicated repositories configured. Inherits default Morphe repository.</div>`;
 
-  const baseApkUrl = app.base_apk_url || (app.options && app.options.base_apk_url) || '';
+  if (currentDrawerSubtab === 'settings') {
+    container.innerHTML = `
+      <!-- Top 2-Column Info Deck (Architecture & Recommended Version) -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.875rem;">
+        <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
+          <label class="form-label" style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">Target Architecture</label>
+          <select id="drawer-app-arch" class="form-select" style="font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.375rem; background: transparent; border: 1px solid var(--border-hairline); border-radius: var(--radius-xs); color: var(--text-primary); width: 100%;">
+            <option value="arm64-v8a" ${targetArch === 'arm64-v8a' ? 'selected' : ''}>arm64-v8a (64-bit)</option>
+            <option value="armeabi-v7a" ${targetArch === 'armeabi-v7a' ? 'selected' : ''}>armeabi-v7a (32-bit)</option>
+            <option value="universal" ${targetArch === 'universal' ? 'selected' : ''}>Universal (All ABIs)</option>
+          </select>
+        </div>
+
+        <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: center;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Recommended Version</span>
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-base); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(recVer)}">
+            ${escapeHtml(recVer.startsWith('v') ? recVer : `v${recVer}`)}
+          </span>
+        </div>
+      </div>
+
+      <!-- Build Automation Status -->
+      <div class="form-group" style="margin-bottom: 0.875rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.875rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
+          <div>
+            <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">Active in Pipeline</div>
+            <div style="font-size: 0.6875rem; color: var(--text-muted);">Include this application in scheduled nightly builds</div>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="drawer-app-enabled" ${isEnabled ? 'checked' : ''}>
+            <span class="switch-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Connected Patch Repositories -->
+      <div class="form-group" style="margin-bottom: 0.875rem;">
+        <label class="form-label" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Connected Patch Repositories</label>
+        <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem;">
+          ${reposHtml}
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+          <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
+          <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">Add</button>
+        </div>
+      </div>
+
+      <!-- Deterministic Keystore Attached -->
+      <div class="crypto-seal-card">
+        <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
+          Deterministic Keystore Attached
+        </div>
+        <div style="font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4;">
+          Signed with your dedicated AutoMorph keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // ELSE: currentDrawerSubtab === 'patches' (🧪 Pure Patch Studio)
+  const totalCount = currentDrawerPatchesState.size;
+  let appCount = 0;
+  let univCount = 0;
+  let activeCount = 0;
+  for (const item of currentDrawerPatchesState.values()) {
+    if (item.isUniversal) univCount++;
+    else appCount++;
+    if (item.enabled) activeCount++;
+  }
 
   container.innerHTML = `
-    <!-- Top 2-Column Info Deck (Architecture & Recommended Version) -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.875rem;">
-      <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
-        <label class="form-label" style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">Target Architecture</label>
-        <select id="drawer-app-arch" class="form-select" style="font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.375rem; background: transparent; border: 1px solid var(--border-hairline); border-radius: var(--radius-xs); color: var(--text-primary); width: 100%;">
-          <option value="arm64-v8a" ${targetArch === 'arm64-v8a' ? 'selected' : ''}>arm64-v8a (64-bit)</option>
-          <option value="armeabi-v7a" ${targetArch === 'armeabi-v7a' ? 'selected' : ''}>armeabi-v7a (32-bit)</option>
-          <option value="universal" ${targetArch === 'universal' ? 'selected' : ''}>Universal (All ABIs)</option>
-        </select>
-      </div>
-
-      <div style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); display: flex; flex-direction: column; justify-content: center;">
-        <span style="font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Recommended Version</span>
-        <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-base); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(recVer)}">
-          ${escapeHtml(recVer.startsWith('v') ? recVer : `v${recVer}`)}
+    <!-- Base APK Switcher (Morphe Mobile Studio) -->
+    <div class="form-group" style="padding: 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+        <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">Application Base APK</span>
+        <span class="badge ${baseApkUrl ? 'badge-accent' : ''}" style="font-size: 0.625rem; font-weight: 600;">
+          ${baseApkUrl ? 'Custom APK Configured' : 'Auto-Fetch APKPure'}
         </span>
       </div>
-    </div>
 
-    <!-- Build Automation Status -->
-    <div class="form-group" style="margin-bottom: 0.875rem;">
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.875rem; background: var(--surface-sunken); border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
-        <div>
-          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);">Active in Pipeline</div>
-          <div style="font-size: 0.6875rem; color: var(--text-muted);">Include this application in scheduled nightly builds</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.375rem; margin-bottom: 0.625rem;">
+        <button type="button" class="btn btn-secondary btn-sm btn-base-apk-mode ${currentDrawerBaseApkMode === 'auto' ? 'active' : ''}" data-mode="auto" onclick="setDrawerBaseApkMode('auto')" style="font-size: 0.6875rem; padding: 0.35rem 0.25rem; justify-content: center;">
+          ☁️ Auto-Fetch
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-base-apk-mode ${currentDrawerBaseApkMode === 'custom' ? 'active' : ''}" data-mode="custom" onclick="setDrawerBaseApkMode('custom')" style="font-size: 0.6875rem; padding: 0.35rem 0.25rem; justify-content: center;">
+          🔗 Custom URL
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-base-apk-mode ${currentDrawerBaseApkMode === 'upload' ? 'active' : ''}" data-mode="upload" onclick="setDrawerBaseApkMode('upload')" style="font-size: 0.6875rem; padding: 0.35rem 0.25rem; justify-content: center;">
+          📁 Upload APK
+        </button>
+      </div>
+
+      <!-- Mode 1: Auto-Fetch -->
+      <div id="drawer-base-apk-auto" style="display: ${currentDrawerBaseApkMode === 'auto' ? 'block' : 'none'}; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+        <span>AutoMorph automatically fetches clean base APK from upstream (Target: <strong style="color: var(--accent-base);">${escapeHtml(recVer)}</strong>) during compilation.</span>
+      </div>
+
+      <!-- Mode 2: Custom URL -->
+      <div id="drawer-base-apk-custom" style="display: ${currentDrawerBaseApkMode === 'custom' ? 'block' : 'none'};">
+        <p style="font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 0.375rem;">Direct download link (Google Drive, Dropbox, Catbox, CDN):</p>
+        <div style="display: flex; gap: 0.375rem;">
+          <input type="url" id="drawer-base-apk-url" class="form-input" style="flex: 1; font-size: 0.75rem; padding: 0.35rem 0.5rem;" placeholder="https://example.com/base.apk" value="${escapeHtml(baseApkUrl)}">
+          <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save</button>
         </div>
-        <label class="switch-control">
-          <input type="checkbox" id="drawer-app-enabled" ${isEnabled ? 'checked' : ''}>
-          <span class="switch-track"></span>
-        </label>
+      </div>
+
+      <!-- Mode 3: Upload APK -->
+      <div id="drawer-base-apk-upload" style="display: ${currentDrawerBaseApkMode === 'upload' ? 'block' : 'none'};">
+        <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()" style="padding: 0.75rem; text-align: center; cursor: pointer; border: 1px dashed var(--border-medium); border-radius: var(--radius-sm); background: var(--surface-raised);">
+          <img src="/apk-icon.png" alt="" width="32" height="32" style="width: 32px; height: 32px; margin-bottom: 0.375rem;" />
+          <span style="font-size: 0.75rem; font-weight: 500; display: block;">Select Local Base APK (.apk)</span>
+          <span style="font-size: 0.625rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
+          <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
+        </div>
+        <div id="drawer-apk-progress-container" class="upload-progress-container" style="display: none; margin-top: 0.5rem;">
+          <div class="upload-progress-track"><div class="upload-progress-fill" id="drawer-apk-progress-bar"></div></div>
+          <span id="drawer-apk-progress-status-text" style="font-size: 0.6875rem;">Uploading…</span>
+        </div>
       </div>
     </div>
 
-    <!-- Connected Patch Repositories -->
-    <div class="form-group" style="margin-bottom: 0.875rem;">
-      <label class="form-label" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Connected Patch Repositories</label>
-      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem;">
+    <!-- Patch Sources & Add Source Link -->
+    <div class="form-group" style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
+      <label class="form-label" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Patch Bundle Repositories</label>
+      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.5rem;">
         ${reposHtml}
       </div>
-      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;">
-        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">Add</button>
+      <div style="display: flex; gap: 0.375rem;">
+        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo or bundle link" style="font-size: 0.75rem; padding: 0.35rem 0.5rem; flex: 1;">
+        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">+ Add Source</button>
       </div>
     </div>
 
-    <!-- Patches & Bytecode Mutators (PRIMARY SECTION) -->
+    <!-- Patches & Feature Mutators -->
     <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
       <div class="section-heading-row" style="margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <div>
-          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.125rem; font-size: 0.875rem;">Available Patch Bundles & Mutators</label>
+          <label class="form-label" style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.125rem; font-size: 0.875rem;">Bytecode Patches & Mutators</label>
           <div style="font-size: 0.6875rem; color: var(--text-secondary);">Select active patches, feature mutators, and community sources</div>
         </div>
         <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
-          <span class="badge badge-accent" id="drawer-applied-count-badge" style="font-weight: 700; font-size: 0.6875rem;">0 Active</span>
-          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(true)" title="Select all compatible patches">Select All</button>
-          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(false)" title="Clear all patches">Clear All</button>
-          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(true)" title="Expand all bundles">Expand</button>
-          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(false)" title="Collapse all bundles">Collapse</button>
+          <span class="badge badge-accent" id="drawer-applied-count-badge" style="font-weight: 700; font-size: 0.6875rem;">${activeCount} Active</span>
+          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(true)">Select All</button>
+          <button type="button" class="btn-micro" onclick="toggleAllDrawerPatches(false)">Clear All</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(true)">Expand</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(false)">Collapse</button>
         </div>
+      </div>
+
+      <!-- 4-Way Filter Pills -->
+      <div style="display: flex; gap: 0.375rem; margin-bottom: 0.625rem; flex-wrap: wrap;">
+        <button type="button" class="patch-filter-pill ${currentDrawerPatchFilter === 'all' ? 'active' : ''}" data-patch-filter="all" onclick="changeDrawerPatchFilter('all')">
+          All (${totalCount})
+        </button>
+        <button type="button" class="patch-filter-pill ${currentDrawerPatchFilter === 'app' ? 'active' : ''}" data-patch-filter="app" onclick="changeDrawerPatchFilter('app')">
+          📦 App-Specific (${appCount})
+        </button>
+        <button type="button" class="patch-filter-pill ${currentDrawerPatchFilter === 'univ' ? 'active' : ''}" data-patch-filter="univ" onclick="changeDrawerPatchFilter('univ')">
+          🌐 Universal (${univCount})
+        </button>
+        <button type="button" class="patch-filter-pill ${currentDrawerPatchFilter === 'selected' ? 'active' : ''}" data-patch-filter="selected" onclick="changeDrawerPatchFilter('selected')">
+          ✅ Selected (${activeCount})
+        </button>
       </div>
 
       <!-- Search Patches Input -->
       <div style="margin-bottom: 0.75rem;">
-        <input type="text" id="drawer-patches-search" class="form-input" style="font-size: 0.75rem; padding: 0.45rem 0.625rem; width: 100%;" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)..." oninput="filterDrawerPatches(this.value)">
+        <input type="text" id="drawer-patches-search" class="form-input" style="font-size: 0.75rem; padding: 0.45rem 0.625rem; width: 100%;" placeholder="Search patches by keyword (e.g. ads, theme, oled, pip)..." value="${escapeHtml(currentDrawerSearchFilter)}" oninput="filterDrawerPatches(this.value)">
       </div>
 
       <!-- Active Applied Patches -->
@@ -4060,55 +4494,6 @@ function renderDrawerBody(app) {
         </div>
       </div>
     </div>
-
-    <!-- Custom Base APK Source (Collapsible / Advanced) -->
-    <details style="padding: 0.75rem 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;" ${baseApkUrl ? 'open' : ''}>
-      <summary style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;">
-        <span>Custom Base APK Source (Optional)</span>
-        <span style="font-size: 0.6875rem; color: var(--text-muted); font-weight: normal;">${baseApkUrl ? 'URL Configured' : 'Local / Direct CDN APK'}</span>
-      </summary>
-      <div style="margin-top: 0.75rem;">
-        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">
-          For modded or unlisted apps (e.g. InstaPrime), provide a direct base APK download link (Google Drive, Dropbox, Catbox, or CDN).
-        </p>
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-          <input type="url" id="drawer-base-apk-url" class="form-input" style="flex: 1; font-size: 0.75rem;" placeholder="https://example.com/base.apk" value="${escapeHtml(baseApkUrl)}">
-          <button class="btn btn-secondary btn-sm" onclick="saveCustomApkUrl('${escapeHtml(pkg)}')">Save URL</button>
-        </div>
-        <div class="apk-dropzone" onclick="document.getElementById('drawer-apk-file-input').click()" style="padding: 0.875rem 1rem;">
-          <img src="/apk-icon.png" width="28" height="28" alt="APK" style="width: 28px; height: 28px; object-fit: contain; margin-bottom: 0.25rem;" onerror="this.style.display='none'">
-          <span style="font-size: 0.75rem; font-weight: 500;">Select Local Base APK (.apk)</span>
-          <span style="font-size: 0.6875rem; color: var(--text-muted);" id="drawer-apk-upload-status">Supported: Android ARM64 APK</span>
-          <input type="file" id="drawer-apk-file-input" accept=".apk" style="display: none;" onchange="handleCustomApkFileSelected('${escapeHtml(pkg)}', this.files[0])">
-        </div>
-        <div id="drawer-apk-progress-container" class="upload-progress-container" style="display: none; margin-top: 0.5rem;">
-          <div class="upload-progress-header">
-            <span class="upload-progress-status" id="drawer-apk-progress-status-text">
-              <span class="badge badge-pulse" style="width: 6px; height: 6px; padding: 0; border-radius: 50%; background: var(--accent-base); display: inline-block;"></span>
-              Uploading…
-            </span>
-            <span class="upload-progress-percent" id="drawer-apk-progress-percent">0%</span>
-          </div>
-          <div class="upload-progress-track">
-            <div class="upload-progress-fill" id="drawer-apk-progress-bar"></div>
-          </div>
-          <div class="upload-progress-footer">
-            <span id="drawer-apk-progress-filename" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;"></span>
-            <span id="drawer-apk-progress-bytes">0 MB / 0 MB</span>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- Deterministic Keystore Attached -->
-    <div class="crypto-seal-card">
-      <div style="font-size: 0.75rem; font-weight: 600; color: var(--status-success); margin-bottom: 0.25rem;">
-        Deterministic Keystore Attached
-      </div>
-      <div style="font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4;">
-        Signed with your dedicated AutoMorph keystore. Updates cleanly overwrite existing releases on Android with zero signature mismatches.
-      </div>
-    </div>
   `;
 }
 
@@ -4130,6 +4515,12 @@ function renderDrawerActivePatches() {
       p.owner.toLowerCase().includes(currentDrawerSearchFilter) ||
       p.repo.toLowerCase().includes(currentDrawerSearchFilter)
     );
+  }
+
+  if (currentDrawerPatchFilter === 'app') {
+    displayPatches = displayPatches.filter(p => !p.isUniversal);
+  } else if (currentDrawerPatchFilter === 'univ') {
+    displayPatches = displayPatches.filter(p => p.isUniversal);
   }
 
   if (activePatches.length === 0) {
@@ -4239,13 +4630,20 @@ function renderDrawerAvailableBundles() {
       );
     }
 
-    const appP = patches.filter(p => !p.isUniversal);
-    const univP = patches.filter(p => p.isUniversal);
+    if (currentDrawerPatchFilter === 'selected') {
+      patches = patches.filter(p => {
+        const key = `${p.name}@@${bundle.bundleRepo}`;
+        return Boolean(currentDrawerPatchesState.get(key)?.enabled);
+      });
+    }
+
+    const appP = (currentDrawerPatchFilter === 'univ') ? [] : patches.filter(p => !p.isUniversal);
+    const univP = (currentDrawerPatchFilter === 'app') ? [] : patches.filter(p => p.isUniversal);
 
     totalAppCount += appP.length;
     totalUnivCount += univP.length;
 
-    if (appP.length > 0 || (!currentDrawerSearchFilter && (bundle.patches || []).some(p => !p.isUniversal))) {
+    if (appP.length > 0 || (!currentDrawerSearchFilter && currentDrawerPatchFilter === 'all' && (bundle.patches || []).some(p => !p.isUniversal))) {
       appBundles.push({
         bundle,
         bundleIdx,
@@ -4254,7 +4652,7 @@ function renderDrawerAvailableBundles() {
       });
     }
 
-    if (univP.length > 0 || (!currentDrawerSearchFilter && (bundle.patches || []).some(p => p.isUniversal))) {
+    if (univP.length > 0 || (!currentDrawerSearchFilter && currentDrawerPatchFilter === 'all' && (bundle.patches || []).some(p => p.isUniversal))) {
       univBundles.push({
         bundle,
         bundleIdx,
@@ -4266,20 +4664,91 @@ function renderDrawerAvailableBundles() {
 
   const renderDrawerItem = (p, bundleRepo) => {
     const key = `${p.name}@@${bundleRepo}`;
-    const isChecked = Boolean(currentDrawerPatchesState.get(key)?.enabled);
+    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const item = currentDrawerPatchesState.get(key);
+    const isChecked = Boolean(item?.enabled);
+    const optDefs = p.options || item?.optionDefinitions || [];
+    const hasOptions = Array.isArray(optDefs) && optDefs.length > 0;
+    const currentOpts = item?.options || {};
+
+    let optionsPanelHtml = '';
+    if (hasOptions) {
+      optionsPanelHtml = `
+        <div id="drawer-patch-opts-${safeKey}" class="drawer-patch-options-panel" style="display: none; flex-direction: column; gap: 0.375rem; margin-top: 0.375rem; padding: 0.5rem; background: var(--surface-raised); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm);">
+          <div style="font-size: 0.625rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.125rem;">Patch Options</div>
+          ${optDefs.map(opt => {
+            const optKey = opt.key;
+            const optTitle = opt.title || optKey;
+            const optDesc = opt.description || '';
+            const optType = (opt.type || 'String').toLowerCase();
+            const curVal = currentOpts[optKey] !== undefined ? currentOpts[optKey] : (opt.default !== undefined ? opt.default : '');
+
+            if (optType === 'boolean' || typeof opt.default === 'boolean') {
+              const boolVal = Boolean(curVal);
+              return `
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                  <div style="font-size: 0.6875rem;">
+                    <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(optTitle)}</div>
+                    ${optDesc ? `<div style="font-size: 0.625rem; color: var(--text-muted);">${escapeHtml(optDesc)}</div>` : ''}
+                  </div>
+                  <label class="switch-control" style="flex-shrink: 0;">
+                    <input type="checkbox" ${boolVal ? 'checked' : ''} onchange="updateDrawerPatchOption('${escapeHtml(key)}', '${escapeHtml(optKey)}', this.checked)">
+                    <span class="switch-track"></span>
+                  </label>
+                </div>
+              `;
+            }
+
+            if (Array.isArray(opt.values) && opt.values.length > 0) {
+              return `
+                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                  <div style="font-size: 0.6875rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(optTitle)}</div>
+                  ${optDesc ? `<div style="font-size: 0.625rem; color: var(--text-muted);">${escapeHtml(optDesc)}</div>` : ''}
+                  <select class="form-input" style="font-size: 0.6875rem; padding: 0.25rem 0.375rem;" onchange="updateDrawerPatchOption('${escapeHtml(key)}', '${escapeHtml(optKey)}', this.value)">
+                    ${opt.values.map(v => `<option value="${escapeHtml(v)}" ${String(curVal) === String(v) ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('')}
+                  </select>
+                </div>
+              `;
+            }
+
+            if (optType === 'int' || optType === 'number' || typeof opt.default === 'number') {
+              return `
+                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                  <div style="font-size: 0.6875rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(optTitle)}</div>
+                  ${optDesc ? `<div style="font-size: 0.625rem; color: var(--text-muted);">${escapeHtml(optDesc)}</div>` : ''}
+                  <input type="number" class="form-input" style="font-size: 0.6875rem; padding: 0.25rem 0.375rem;" value="${escapeHtml(String(curVal))}" onchange="updateDrawerPatchOption('${escapeHtml(key)}', '${escapeHtml(optKey)}', Number(this.value))">
+                </div>
+              `;
+            }
+
+            return `
+              <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <div style="font-size: 0.6875rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(optTitle)}</div>
+                ${optDesc ? `<div style="font-size: 0.625rem; color: var(--text-muted);">${escapeHtml(optDesc)}</div>` : ''}
+                <input type="text" class="form-input" style="font-size: 0.6875rem; padding: 0.25rem 0.375rem;" value="${escapeHtml(String(curVal))}" onchange="updateDrawerPatchOption('${escapeHtml(key)}', '${escapeHtml(optKey)}', this.value)">
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
 
     return `
-      <label class="prov-patch-item" style="padding: 0.35rem 0.5rem; display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
-        <input type="checkbox" data-drawer-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleDrawerPatch('${escapeHtml(key)}', this.checked)" style="margin-top: 0.15rem; accent-color: var(--accent-base);">
-        <div class="prov-patch-info" style="flex: 1; min-width: 0;">
-          <div class="prov-patch-name" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
-            <span>${escapeHtml(p.name)}</span>
-            ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
-            ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+      <div class="prov-patch-item" style="padding: 0.4rem 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid var(--border-hairline);">
+        <div style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;" onclick="if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'BUTTON' && !event.target.closest('button')) { const cb = this.querySelector('input[type=checkbox]'); if (cb) { cb.checked = !cb.checked; toggleDrawerPatch('${escapeHtml(key)}', cb.checked); } }">
+          <input type="checkbox" data-drawer-patch-key="${escapeHtml(key)}" ${isChecked ? 'checked' : ''} onchange="toggleDrawerPatch('${escapeHtml(key)}', this.checked)" style="margin-top: 0.15rem; accent-color: var(--accent-base);">
+          <div class="prov-patch-info" style="flex: 1; min-width: 0;">
+            <div class="prov-patch-name" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+              <span>${escapeHtml(p.name)}</span>
+              ${p.isUniversal ? `<span class="badge badge-accent" style="font-size: 0.5625rem; text-transform: uppercase; font-weight: 700;">Universal</span>` : ''}
+              ${p.targetVersion ? `<span class="badge" style="font-size: 0.5625rem;">v${escapeHtml(p.targetVersion)}</span>` : ''}
+              ${hasOptions ? `<button type="button" class="btn-micro" onclick="event.preventDefault(); event.stopPropagation(); toggleDrawerPatchOptionExpand('${safeKey}')" style="font-size: 0.5625rem; padding: 0.1rem 0.35rem; display: inline-flex; align-items: center; gap: 0.2rem;">⚙️ Options (${optDefs.length})</button>` : ''}
+            </div>
+            <div class="prov-patch-desc" style="font-size: 0.6875rem; color: var(--text-secondary); line-height: 1.3; margin-top: 0.125rem;">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
           </div>
-          <div class="prov-patch-desc" style="font-size: 0.6875rem; color: var(--text-secondary); line-height: 1.3; margin-top: 0.125rem;">${escapeHtml(p.description || 'Mutates application bytecode safely.')}</div>
         </div>
-      </label>
+        ${optionsPanelHtml}
+      </div>
     `;
   };
 
@@ -4598,9 +5067,14 @@ async function saveAppDrawerChanges() {
     if (!app.options[repo]) app.options[repo] = { patches: {} };
     if (!app.options[repo].patches) app.options[repo].patches = {};
 
-    app.options[repo].patches[item.name] = {
+    const patchObj = {
       enabled: Boolean(item.enabled)
     };
+    if (item.options && typeof item.options === 'object' && Object.keys(item.options).length > 0) {
+      patchObj.options = item.options;
+    }
+
+    app.options[repo].patches[item.name] = patchObj;
 
     if (item.enabled) {
       configuredRepos.add(repo);
@@ -4622,8 +5096,24 @@ async function saveAppDrawerChanges() {
     showToast(`Saved changes & patches for ${app.name || currentDrawerPkg}!`, 'success');
     closeAppDrawer();
     await loadConfig();
+    return true;
   } catch (err) {
     showToast(`Failed to save changes: ${err.message}`, 'error');
+    return false;
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function saveAndPatchAppDrawer() {
+  const pkg = currentDrawerPkg;
+  const saveBtn = document.getElementById('btn-drawer-save-and-patch');
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const ok = await saveAppDrawerChanges();
+    if (ok && pkg) {
+      await runSingleAppPatch(pkg);
+    }
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }
@@ -4662,6 +5152,7 @@ function buildObtainiumAppPayload(pkg) {
 
   const additionalSettings = JSON.stringify({
     fallbackToOlderReleases: true,
+    includePrereleases: true,
     filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
     apkFilterRegEx: `^${ciPkg}_`,
     releaseTitleAsVersion: true,
@@ -4901,9 +5392,9 @@ function downloadObtainiumJson() {
 }
 
 function openDirectObtainiumDeepLink(e) {
-  if (e && e.preventDefault) e.preventDefault();
   const selected = Array.from(obtainiumSelectedApps);
   if (selected.length === 0) {
+    if (e && e.preventDefault) e.preventDefault();
     showToast('Please select at least one app to open in Obtainium', 'error');
     return;
   }
@@ -4917,15 +5408,28 @@ function openDirectObtainiumDeepLink(e) {
   } catch (_) {}
 
   const deepLink = getObtainiumDirectDeepLink();
-  showToast(`Opening ${selected.length} app${selected.length > 1 ? 's' : ''} in Obtainium…`, 'info');
+  showToast(`Launching Obtainium for ${selected.length} app${selected.length > 1 ? 's' : ''}…`, 'info');
 
-  // Trigger navigation
-  window.location.href = deepLink;
+  // Allow native anchor navigation, or trigger location.href if not navigated
+  if (!e || !e.target || e.target.getAttribute('href') !== deepLink) {
+    window.location.href = deepLink;
+  }
 }
 
 // Attach globally
 window.switchTab = switchTab;
 window.openAppDrawer = openAppDrawer;
+window.switchDrawerSubtab = switchDrawerSubtab;
+window.changeDrawerPatchFilter = changeDrawerPatchFilter;
+window.setDrawerBaseApkMode = setDrawerBaseApkMode;
+window.toggleDrawerPatchOptionExpand = toggleDrawerPatchOptionExpand;
+window.updateDrawerPatchOption = updateDrawerPatchOption;
+window.toggleAllDrawerPatches = toggleAllDrawerPatches;
+window.toggleDrawerExpandAll = toggleDrawerExpandAll;
+window.toggleDrawerPatch = toggleDrawerPatch;
+window.filterDrawerPatches = filterDrawerPatches;
+window.saveAndPatchAppDrawer = saveAndPatchAppDrawer;
+window.saveAndPatchAppliedModal = saveAndPatchAppliedModal;
 window.openStoreAppDetails = openStoreAppDetails;
 window.closeStoreDetailsModal = closeStoreDetailsModal;
 window.syncCommunityCatalogNow = syncCommunityCatalogNow;

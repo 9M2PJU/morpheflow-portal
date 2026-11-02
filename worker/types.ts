@@ -15,6 +15,7 @@ export interface Env {
   GITHUB_REPO?: string;
   WEBHOOK_SECRET?: string;
   AUTOMORPH_RUNNER_URL?: string;
+  CLOUDFLARE_WORKER_URL?: string;
   SCHEDULE_TIME?: string;
   TZ?: string;
 }

@@ -2703,6 +2703,50 @@ a {
   flex-shrink: 0;
 }
 
+/* Drawer Subtabs & Patch Studio */
+.btn-drawer-subtab {
+  flex: 1;
+  padding: 0.4375rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 34px;
+}
+.btn-drawer-subtab.active {
+  background: var(--surface-raised);
+  color: var(--accent-base);
+  box-shadow: var(--shadow-sm);
+}
+.btn-drawer-subtab:hover:not(.active) {
+  color: var(--text-primary);
+}
+
+.patch-filter-pill {
+  padding: 0.3rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.patch-filter-pill.active {
+  background: var(--accent-base);
+  color: #fff;
+  border-color: var(--accent-base);
+}
+
 /* Reduced motion accessibility */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

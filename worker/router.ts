@@ -42,6 +42,47 @@ function toCaseInsensitiveRegexPattern(str: string): string {
     .join('');
 }
 
+const KNOWN_APP_NAMES: Record<string, string> = {
+  'com.sbs.train': 'MacroFactor Workouts',
+  'com.sbs.diet': 'MacroFactor',
+  'com.tantantribe.tribe': 'Tantan',
+  'com.google.android.inputmethod.latin': 'Gboard',
+  'com.rubenmayayo.lemmy': 'Boost for Lemmy',
+  'com.mixplorer': 'MiXplorer',
+  'com.paget96.batteryguru': 'Battery Guru',
+  'com.qtrun.QuickTest': 'Network Signal Guru',
+  'com.slowlyapp': 'Slowly',
+  'com.vpn.free.hotspot.secure.vpnify': 'vpnify',
+  'org.wakingup.android': 'Waking Up',
+  'pdb.app': 'Pdb',
+  'torrent.search.revolutionv2': 'Torrent Search Revolution V2',
+  'com.reddit.frontpage': 'Reddit',
+  'com.google.android.youtube': 'YouTube',
+  'com.google.android.apps.youtube.music': 'YouTube Music',
+  'com.twitter.android': 'Twitter',
+  'com.truecaller': 'Truecaller',
+  'com.instaprime.android': 'InstaPrime',
+  'com.chess': 'Chess.com',
+  'ch.protonvpn.android': 'Proton VPN',
+  'com.joincarbon.nutrition': 'Carbon',
+  'com.pittvandewitt.wavelet': 'Wavelet',
+};
+
+function resolveAppName(pkg: string, explicitName?: string): string {
+  if (KNOWN_APP_NAMES[pkg]) return KNOWN_APP_NAMES[pkg];
+  if (explicitName && explicitName.trim() && explicitName !== pkg && !explicitName.includes('.')) {
+    return explicitName.trim();
+  }
+  const parts = pkg.split('.').filter(p => !['com', 'org', 'net', 'io', 'app', 'android', 'mobile'].includes(p.toLowerCase()));
+  if (parts.length > 0) {
+    const main = parts[parts.length - 1];
+    return main.charAt(0).toUpperCase() + main.slice(1);
+  }
+  const allParts = pkg.split('.');
+  const last = allParts[allParts.length - 1] || pkg;
+  return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
 function resolveScheduleTarget(systemSettings: SystemSettings | null, env: Env) {
   const scheduleStr = (systemSettings?.schedule_time || env.SCHEDULE_TIME || '03:00').trim();
   const tzStr = (systemSettings?.timezone || env.TZ || 'Etc/UTC').trim();
@@ -538,22 +579,24 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     // Combine both configured packages and compiled patched apps
     const appMap = new Map<string, any>();
     for (const p of rawPackages) {
+      const explicitName = (p as any).name || p.package_name;
       appMap.set(p.package, {
         package: p.package,
-        name: (p as any).name || p.package_name || p.package.split('.').pop(),
+        name: resolveAppName(p.package, explicitName),
       });
     }
     for (const a of apps) {
+      const existing = appMap.get(a.package);
       appMap.set(a.package, {
         package: a.package,
-        name: a.package === 'com.truecaller' ? 'Truecaller' : (a.package === 'com.reddit.frontpage' ? 'Reddit' : a.package.split('.').pop() || a.package),
+        name: existing?.name || resolveAppName(a.package),
         version: a.version,
         download_url: a.download_url,
       });
     }
 
     const exportList = Array.from(appMap.values()).map((a) => {
-      const appName = a.name || a.package.split('.').pop() || a.package;
+      const appName = resolveAppName(a.package, a.name);
       const ciPkg = toCaseInsensitiveRegexPattern(a.package);
       const ciName = toCaseInsensitiveRegexPattern(appName);
       return {
@@ -564,6 +607,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
+          includePrereleases: true,
           filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
           apkFilterRegEx: `^${ciPkg}_`,
           releaseTitleAsVersion: true,
@@ -600,12 +644,13 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     const rawPackages = await storage.listPackages();
     const configPkg = rawPackages.find((p) => p.package === pkg);
 
-    const appName = (configPkg as any)?.name || configPkg?.package_name || (pkg === 'com.truecaller' ? 'Truecaller' : (pkg === 'com.reddit.frontpage' ? 'Reddit' : pkg.split('.').pop() || pkg));
+    const appName = resolveAppName(pkg, (configPkg as any)?.name || configPkg?.package_name);
 
     const ciPkg = toCaseInsensitiveRegexPattern(pkg);
     const ciName = toCaseInsensitiveRegexPattern(appName);
     const additionalSettings = JSON.stringify({
       fallbackToOlderReleases: true,
+      includePrereleases: true,
       filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
       apkFilterRegEx: `^${ciPkg}_`,
       releaseTitleAsVersion: true,
@@ -1392,6 +1437,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
         preferredApkIndex: 0,
         additionalSettings: JSON.stringify({
           fallbackToOlderReleases: true,
+          includePrereleases: true,
           filterReleaseTitlesByRegEx: `(${ciPkg}|${ciName})`,
           apkFilterRegEx: `^${ciPkg}_`,
           releaseTitleAsVersion: true,

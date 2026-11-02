@@ -95,6 +95,15 @@ jobs:
                       with open('tools/automorph-data/state/repo_versions.json', 'w') as f:
                           json.dump(repo_versions, f, indent=2)
 
+                  # Cache Morphe community catalog so all release names, icons, and metadata are available
+                  try:
+                      cat_req = urllib.request.Request('https://morphe-patches.software/data/bundles.json', headers={'User-Agent': 'AutoMorph-CloudRunner'})
+                      with urllib.request.urlopen(cat_req, timeout=15) as cat_resp, open('tools/automorph-data/state/morphe_catalog.json', 'w', encoding='utf-8') as cat_f:
+                          cat_f.write(cat_resp.read().decode())
+                      print('[✓] Successfully cached community catalog in runner state.')
+                  except Exception as cat_err:
+                      print(f'[!] Note: Could not cache community catalog: {cat_err}')
+
                   # Restore customized patch options from database
                   for pkg_obj in config.get('packages', []):
                       pkg_id = pkg_obj.get('package') or pkg_obj.get('package_name')
@@ -225,14 +234,24 @@ jobs:
               ver_dir=$(basename $(dirname "$apk"))
               pkg_dir=$(basename $(dirname $(dirname "$apk")))
               
-              app_name=$(python3 -c "import os, json; cat=json.load(open('tools/automorph-data/state/morphe_catalog.json')) if os.path.exists('tools/automorph-data/state/morphe_catalog.json') else {}; print(cat.get('store',{}).get('${pkg_dir}',{}).get('name') or '${pkg_dir}')" 2>/dev/null || echo "$pkg_dir")
-              if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then app_name="$pkg_dir"; fi
+              app_name=$(python3 -c "import os, json; cat=json.load(open('tools/automorph-data/state/morphe_catalog.json')) if os.path.exists('tools/automorph-data/state/morphe_catalog.json') else {}; print(cat.get('store',{}).get('${pkg_dir}',{}).get('name') or '')" 2>/dev/null || true)
+              if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then
+                app_name=$(python3 -c "import yaml; c=yaml.safe_load(open('tools/automorph-data/config.yaml')) if os.path.exists('tools/automorph-data/config.yaml') else {}; print(next((p.get('package_name') or p.get('name') for p in c.get('packages',[]) if (p.get('package') or p.get('package_name')) == '${pkg_dir}'), ''))" 2>/dev/null || true)
+              fi
+              if [ -z "$app_name" ] || [ "$app_name" = "None" ]; then
+                # Fallback to capitalized last segment (e.g. latin -> Latin)
+                app_name=$(echo "${pkg_dir}" | awk -F. '{print $NF}' | sed 's/^[a-z]/\U&/')
+              fi
+              if [ "$pkg_dir" = "com.google.android.inputmethod.latin" ]; then app_name="Gboard"; fi
               if [ "$pkg_dir" = "com.instaprime.android" ]; then app_name="InstaPrime"; fi
               if [ "$pkg_dir" = "com.reddit.frontpage" ]; then app_name="Reddit"; fi
               if [ "$pkg_dir" = "com.google.android.youtube" ]; then app_name="YouTube"; fi
               if [ "$pkg_dir" = "com.google.android.apps.youtube.music" ]; then app_name="YouTube Music"; fi
               if [ "$pkg_dir" = "com.twitter.android" ]; then app_name="Twitter"; fi
               if [ "$pkg_dir" = "com.truecaller" ]; then app_name="Truecaller"; fi
+              if [ "$pkg_dir" = "com.sbs.train" ]; then app_name="MacroFactor Workouts"; fi
+              if [ "$pkg_dir" = "com.sbs.diet" ]; then app_name="MacroFactor"; fi
+              if [ "$pkg_dir" = "com.tantantribe.tribe" ]; then app_name="Tantan"; fi
               
               PER_APP_TAG="app-${pkg_dir}"
               OBTAINIUM_URL=$(python3 scripts/obtainium_link.py --pkg "${pkg_dir}" --name "${app_name}" --repo "${REPO}")
@@ -272,8 +291,8 @@ jobs:
               # 2. Also create permanent versioned tag (e.g. com.reddit.frontpage-v2026.24.0)
               VER_TAG="${pkg_dir}-v${ver_dir}"
               gh release create "${VER_TAG}" "$apk" \
-                --title "${app_name} v${ver_dir}" \
-                --notes "Versioned release of ${app_name} v${ver_dir}." \
+                --title "${app_name} (${pkg_dir}) v${ver_dir}" \
+                --notes "Versioned release of ${app_name} (${pkg_dir}) v${ver_dir}." \
                 --latest=false 2>/dev/null || true
             done
             
@@ -292,6 +311,20 @@ jobs:
               --latest
               
             echo "RELEASE_URL=https://github.com/${REPO}/releases/tag/$DATE_TAG" >> $GITHUB_OUTPUT
+
+            # 4. Prune obsolete timestamped build releases, keeping only the 5 newest
+            echo "[*] Pruning obsolete timestamped build releases..."
+            gh release list -R "${REPO}" --limit 100 --json tagName,createdAt | \
+            python3 -c "
+import sys, json, subprocess
+releases = json.load(sys.stdin)
+build_releases = [r for r in releases if r.get('tagName', '').startswith('build-')]
+build_releases.sort(key=lambda r: r.get('createdAt', ''), reverse=True)
+for r in build_releases[5:]:
+    tag = r['tagName']
+    print(f'Pruning old build release: {tag}')
+    subprocess.run(['gh', 'release', 'delete', tag, '-R', '${REPO}', '--yes', '--cleanup-tag'], capture_output=True)
+" || true
           else
             echo "[!] No new APKs needed building. All tracked apps are up to date."
             echo "TAG=" >> $GITHUB_OUTPUT

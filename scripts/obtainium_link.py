@@ -35,6 +35,7 @@ def build_obtainium_payload(pkg: str, name: str, repo: str) -> dict:
 
     settings = {
         "fallbackToOlderReleases": True,
+        "includePrereleases": True,
         "filterReleaseTitlesByRegEx": f"({ci_pkg}|{ci_name})",
         "apkFilterRegEx": f"^{ci_pkg}_",
         "releaseTitleAsVersion": True,

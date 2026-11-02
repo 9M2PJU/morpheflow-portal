@@ -196,12 +196,41 @@ class Morphe:
 #################################
 
     def package_req_main(self) -> tuple[dict[str, list[str]], dict] | None:
-        self.repo_search = self.scan_updates()
+        self.repo_search = self.scan_updates() or {}
 
         if self.force:
-            (package_name, details), = self.detailed_patch_list.items()
-            self.repo_search = dict.fromkeys(details["repos"], {package_name})
-        
+            for package_name, details in self.detailed_patch_list.items():
+                for r in details.get("repos", []):
+                    self.repo_search.setdefault(r, set()).add(package_name)
+        else:
+            # 1. Any package that is "Waiting" (no patched APK exists in self.patched_dir)
+            # MUST be checked and built!
+            for package_name, details in self.detailed_patch_list.items():
+                pkg_patched_dir = self.patched_dir / package_name
+                has_patched = pkg_patched_dir.is_dir() and any(pkg_patched_dir.rglob("*.apk"))
+                if not has_patched:
+                    logger.info(f"[*] Package '{package_name}' has no existing patched APK (Waiting). Enqueuing for build.")
+                    for r in details.get("repos", []):
+                        self.repo_search.setdefault(r, set()).add(package_name)
+
+            # 2. Check all enabled configured apps for upstream app updates (e.g. APKPure, staged APKs)
+            # check_patched_version() will check each app and only compile if an update is available or app is unpatched
+            for package_name, details in self.detailed_patch_list.items():
+                for r in details.get("repos", []):
+                    self.repo_search.setdefault(r, set()).add(package_name)
+
+        # Ensure any repo in repo_search has its cache built
+        missing_cache_repos = {}
+        for r in self.repo_search:
+            if r in self.repo_details:
+                owner = self.repo_details[r]['owner']
+                repo_name = self.repo_details[r]['repo_name']
+                cached_repo_dir = self.project_root / "tools" / "morphe-data" / "patches" / f"{owner}-{repo_name}"
+                if not (cached_repo_dir.is_dir() and any(cached_repo_dir.iterdir())):
+                    missing_cache_repos[r] = self.repo_search[r]
+        if missing_cache_repos:
+            self.build_repo_cache(missing_cache_repos)
+
         if not self.repo_search:
             logger.info("\n[✓] No updated option files or new/updated repos found.\n Exiting...")
             return None
@@ -931,7 +960,7 @@ class Morphe:
     def find_package_req(self, enabled_patches_per_app_versions: dict[str, dict[str, dict[str, tuple[str, tuple[int, ...], str]]]]) -> dict[str, list[str]]:
         package_req_tup = {}
 
-        for package_name, aliases  in enabled_patches_per_app_versions.items():
+        for package_name, aliases in enabled_patches_per_app_versions.items():
             version = set()
             for aliase_details in aliases.values():
                 for repo_detials in aliase_details.values():
@@ -942,6 +971,28 @@ class Morphe:
             sorted_versions = sorted(version, key=lambda item: item[0], reverse=True)
 
             package_req_tup[package_name] = [ver_str for _, ver_str in sorted_versions]
+
+        # Ensure all configured packages in detailed_patch_list have a version requirement
+        # If no explicit version was dictated by patches, fallback to community catalog recommended version or "0.0.0"
+        cat_file = self.project_root / "tools" / "automorph-data" / "state" / "morphe_catalog.json"
+        cat_store = {}
+        if cat_file.is_file():
+            try:
+                with open(cat_file, "r", encoding="utf-8") as cf:
+                    cat_store = json.load(cf).get("store", {})
+            except Exception:
+                pass
+
+        for package_name in self.detailed_patch_list:
+            if package_name not in package_req_tup or not package_req_tup[package_name]:
+                rec_ver = cat_store.get(package_name, {}).get("recommended_version") or cat_store.get(package_name, {}).get("target_version")
+                if rec_ver:
+                    clean_rec = str(rec_ver).lstrip("v").strip()
+                    package_req_tup[package_name] = [clean_rec]
+                    logger.info(f"[*] Package '{package_name}' using recommended catalog target version v{clean_rec}")
+                else:
+                    package_req_tup[package_name] = ["0.0.0"]
+                    logger.info(f"[*] Package '{package_name}' has no patch version requirement; defaulting to latest upstream (0.0.0)")
 
         return package_req_tup
 
