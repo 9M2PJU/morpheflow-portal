@@ -1,6 +1,8 @@
-# AutoMorph Documentation Hub
+# MorpheFlow Documentation Hub
 
-Welcome to the **AutoMorph** documentation! AutoMorph is completely self-hosted and runs anywhere Docker is supported — whether on your own home server, homelab (Unraid, Proxmox, TrueNAS), Raspberry Pi, or a cloud VPS.
+Welcome to the **MorpheFlow** documentation hub! MorpheFlow is a modern, cloud-native edge control plane and automated build pipeline for patching, deterministically signing, and distributing Android packages.
+
+Whether deploying serverless on Cloudflare Workers edge (100% free) or self-hosting on your own hardware / cloud VPS via Docker, you'll find comprehensive setup and operational guides below.
 
 ---
 
@@ -8,70 +10,70 @@ Welcome to the **AutoMorph** documentation! AutoMorph is completely self-hosted 
 
 Choose a guide below to get started:
 
-### ☁️ [1. Oracle Cloud Free Tier Setup (Optional)](oracle-setup.md)
-* *Optional guide for users without a server*: Learn how to launch an **Always Free** VPS on Oracle Cloud Infrastructure (OCI).
-* Step-by-step walkthrough covering instance creation, shape selection (`VM.Standard.E2.1.Micro`), and automated setup via cloud-init.
-* Connecting via Windows PowerShell (with SSH key permission fixes) and starting Docker.
-* *(If you already have your own server or VPS, you can skip this guide!).*
-
-### ⚡ [2. Cloudflare Workers 100% Free Tier Setup (Serverless)](cloudflare-workers-setup.md)
-* *Zero VPS, Zero Credit Card Required*: Deploy AutoMorph directly on Cloudflare Workers edge, modeled after **NodeWarden**.
+### ⚡ [1. Cloudflare Workers 100% Free Tier Setup (Serverless · Recommended)](cloudflare-workers-setup.md)
+* *Zero VPS, Zero Credit Card Required*: Deploy MorpheFlow directly on Cloudflare Workers edge.
 * High-performance static web portal hosted on Cloudflare Workers Static Assets.
-* Serverless SQLite database (Cloudflare D1) & optional KV for package configs, metrics, and logs.
-* Automated cloud patch runner on GitHub Actions with automated metric sync and direct APK releases.
+* Serverless SQLite database (Cloudflare D1) with isolate memoization & atomic schema batching.
+* Automated cloud patch runner on GitHub Actions with automated metric sync, dedicated Obtainium feeds, and rolling in-place APK releases.
+
+### 📖 [2. User Guide & Web Interface](user-guide.md)
+* Comprehensive tour of the MorpheFlow console:
+  * Operations Queue, SemVer target analysis, and live VirusTotal security badges.
+  * Adding packages via the Provision App Wizard.
+  * **Pure Patch Studio**: Exploring community bundles, separating universal vs. app-matched mutators, and bytecode conflict linting.
+  * Triggering single builds or batch parallel dispatches.
+  * **Deterministic Keystores**: Protecting update signatures and importing custom keystores.
+  * **Obtainium 1-Click Sync**: Setting up background APK auto-updates on Android devices.
 
 ### 🚇 [3. Remote Access & Tunnels Guide](tunnels.md)
-* Set up a tunnel **before** configuring AutoMorph so you have your access URL and tokens ready:
+* If using the self-hosted Docker runner, set up a secure tunnel to expose your portal:
   * **🔴 Pangolin**: Quickest setup, free public URL (or custom domain), zero domain cost required.
   * **🔵 Tailscale Funnel**: Zero-cost public HTTPS endpoint or private mesh access.
   * **🟠 Cloudflare Tunnels**: Best choice if you own a custom domain.
-* Clear explanation of tunnel tokens, compose profiles, and how links are generated in email reports.
 
-### 📖 [4. User Guide & Web Interface](user-guide.md)
-* Comprehensive tour of the web portal:
-  * Adding and configuring packages.
-  * Customizing patch options, repositories, and **patch aliases**.
-  * Triggering builds, daily schedules, and understanding **patching strategies (Strategy 1 vs. 2)**.
-  * Using a **custom keystore** for seamless in-place updates with the Morphe mobile app.
-  * Enabling **Low-Spec Mode** for 1GB RAM instances.
-  * Setting up automated email build notifications and downloading APKs.
-
-### 🎨 [5. UI Revamp & Morphe Catalog Integration](superpowers/specs/2026-10-31-ui-redesign-and-morphe-catalog-spec.md)
-* **Master Specification & Architecture**: [Design Specification](superpowers/specs/2026-10-31-ui-redesign-and-morphe-catalog-spec.md)
-* **Phase-by-Phase Implementation Runbook**: [Implementation Plan](superpowers/plans/2026-10-31-ui-redesign-and-morphe-catalog-plan.md)
-* **Interactive HTML Mockup (0 FAIL Hallmark sloplint)**: [NextGen Mockup](mockups/automorph_nextgen_mockup.html)
-* **Visual Renderings**:
-  * [Overview Deck](mockups/nextgen_overview.png)
-  * [Community Store (1,342 Apps)](mockups/nextgen_store.png)
-  * [App Configuration Drawer](mockups/nextgen_drawer.png)
+### ☁️ [4. Oracle Cloud Free Tier Setup (Optional)](oracle-setup.md)
+* *Optional guide for self-hosters without hardware*: Learn how to launch an **Always Free** VPS on Oracle Cloud Infrastructure (OCI).
+* Step-by-step walkthrough covering instance creation (`VM.Standard.E2.1.Micro`), cloud-init provisioning, and running Docker Compose.
 
 ---
 
-## 🗺️ Recommended Setup Flow
+## 🗺️ Recommended Architecture & Flow
 
 ```mermaid
 graph TD
-    A[1. Choose Server<br/>Your Own Server OR Optional Oracle VPS] --> B[2. Choose & Setup Tunnel<br/>Pangolin, Tailscale Funnel, or Cloudflare]
-    B -->|Obtain URLs & Tokens| C[3. Configure .env<br/>Fill in Email Settings & Tunnel Details]
-    C --> D[4. Launch AutoMorph<br/>docker compose up -d]
-    D --> E[5. Open Web Portal<br/>Add Packages & Customise Patches]
-    E --> F[6. Enjoy Automated Daily Builds<br/>& Email Download Links]
+    A[Choose Deployment Path] -->|Recommended: Serverless| B[Cloudflare Workers + D1]
+    A -->|Alternative: Self-Hosted| C[Docker on VPS / Home Server]
+    
+    B -->|1-Click Deployer| D[Run ./deploy.sh or npm run deploy]
+    C -->|Docker Compose| E[Configure .env & Run docker compose up -d]
+    
+    D --> F[Open Edge Web Portal]
+    E --> F
+    
+    F --> G[Configure Apps & Pure Patch Studio]
+    G --> H[Automated Builds on GitHub Actions or Local Runner]
+    H --> I[Obtainium Background Auto-Updates on Android]
 ```
 
 ---
 
-## ⚙️ Key Configuration Files
+## ⚙️ Key Project Architecture
 
-* [`default_compose.yaml`](../default_compose.yaml): Baseline Docker Compose specification with built-in profiles for Cloudflare and Pangolin.
-* [`example.env`](../example.env): Environment template for SMTP credentials, Google Play authentication, and tunnel tokens.
-* [`oracle-cloud-init.yaml`](../oracle-cloud-init.yaml): Cloud-init provisioning script for Oracle instances (swaps, Docker, MTU clamping, and templates).
+* [`wrangler.toml`](../wrangler.toml): Cloudflare Workers configuration binding D1 database (`morpheflow-db`), cron triggers (`0 * * * *`, `0 3 * * *`), and Workers Static Assets (`web/frontend`).
+* [`scripts/deploy-cf.cjs`](../scripts/deploy-cf.cjs): Zero-touch automated deployment script for Cloudflare Workers, D1 database creation, migration execution, secret synchronization, and GitHub runner linking.
+* [`.github/workflows/morpheflow-cloud-builder.yaml`](../.github/workflows/morpheflow-cloud-builder.yaml): Cloud builder workflow with rolling in-place releases (`gh release edit` & `--clobber`), SHA-256 calculation, and webhook callbacks.
+* [`default_compose.yaml`](../default_compose.yaml): Baseline Docker Compose specification with built-in profiles for Cloudflare and Pangolin tunnels.
 
 ---
 
-## 💡 Quick Tips
+## ❤️ Credits & Attribution
 
-* **Low RAM Instances**: Always enable **Low-Spec Mode** in the Web Portal under *Settings* when hosting on a 1GB RAM instance.
-* **Inspect Logs**: Run `docker compose logs -f automorph` from your project folder to observe active builds and server events.
+MorpheFlow is built with gratitude upon the pioneering work of:
+* **[AutoMorph](https://github.com/holjab/AutoMorph) & [holjab](https://github.com/holjab)** for the foundational inspiration, scraping logic, and Python orchestration.
+* **[Morphe Desktop](https://morphe.software)** for the high-performance Android bytecode patching engine.
+* **[ReVanced Team](https://revanced.app)** for creating the modern Android reverse-engineering and patch ecosystem.
+* **[Obtainium](https://github.com/ImranR98/Obtainium)** for the open-source update manager on Android.
+* **[Villoh (goopdl)](https://github.com/Villoh/goopdl)** for Google Play Store downloading tools.
 
 ---
 
