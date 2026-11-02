@@ -4217,6 +4217,26 @@ function switchDrawerSubtab(tab) {
   }
 }
 
+function updateDrawerFilterPillCounts() {
+  const totalCount = currentDrawerPatchesState.size;
+  let appCount = 0;
+  let univCount = 0;
+  let activeCount = 0;
+  for (const item of currentDrawerPatchesState.values()) {
+    if (item.isUniversal) univCount++;
+    else appCount++;
+    if (item.enabled) activeCount++;
+  }
+  const pillAll = document.querySelector('.patch-filter-pill[data-patch-filter="all"]');
+  const pillApp = document.querySelector('.patch-filter-pill[data-patch-filter="app"]');
+  const pillUniv = document.querySelector('.patch-filter-pill[data-patch-filter="univ"]');
+  const pillSelected = document.querySelector('.patch-filter-pill[data-patch-filter="selected"]');
+  if (pillAll) pillAll.textContent = `All (${totalCount})`;
+  if (pillApp) pillApp.textContent = `📦 App-Specific (${appCount})`;
+  if (pillUniv) pillUniv.textContent = `🌐 Universal (${univCount})`;
+  if (pillSelected) pillSelected.textContent = `✅ Selected (${activeCount})`;
+}
+
 function changeDrawerPatchFilter(filter) {
   currentDrawerPatchFilter = filter || 'all';
   document.querySelectorAll('.patch-filter-pill').forEach(btn => {
@@ -4632,17 +4652,29 @@ function renderDrawerBody(app) {
       </div>
     </div>
 
-    <!-- Patch Sources & Add Source Link -->
-    <div class="form-group" style="padding: 0.75rem 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
-      <label class="form-label" style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.375rem;">Patch Bundle Repositories</label>
-      <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.5rem;">
-        ${reposHtml}
+    <!-- Patch Sources & Add Source Link (Collapsible Dropdown, Collapsed by Default) -->
+    <details class="bundle-repos-collapsible" id="drawer-repos-collapsible" style="background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem; overflow: hidden;">
+      <summary style="padding: 0.625rem 0.875rem; font-size: 0.75rem; font-weight: 600; color: var(--text-primary); cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          <span>Patch Bundle Repositories</span>
+          <span class="badge" id="drawer-repos-count-badge" style="font-size: 0.625rem; font-weight: 600;">${repos.length} configured</span>
+        </div>
+        <div class="bundle-repos-chevron" style="display: flex; align-items: center; gap: 0.375rem; font-size: 0.6875rem; color: var(--text-muted);">
+          <span>Configure Sources</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="transition: transform var(--dur-fast) ease;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+      </summary>
+      <div style="padding: 0.75rem 0.875rem; border-top: 1px solid var(--border-hairline); background: var(--surface-lowest);">
+        <div id="drawer-repos-list" style="display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.625rem; max-height: 180px; overflow-y: auto; padding-right: 2px;">
+          ${reposHtml}
+        </div>
+        <div style="display: flex; gap: 0.375rem;">
+          <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo or bundle link" style="font-size: 0.75rem; padding: 0.35rem 0.5rem; flex: 1;">
+          <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">+ Add Source</button>
+        </div>
       </div>
-      <div style="display: flex; gap: 0.375rem;">
-        <input type="text" class="form-input" id="drawer-new-repo-url" placeholder="https://github.com/Owner/Repo or bundle link" style="font-size: 0.75rem; padding: 0.35rem 0.5rem; flex: 1;">
-        <button class="btn btn-secondary btn-sm" onclick="addDrawerRepo()" type="button">+ Add Source</button>
-      </div>
-    </div>
+    </details>
 
     <!-- Patches & Feature Mutators -->
     ${conflictBannerHtml}
@@ -4711,14 +4743,30 @@ function renderDrawerActivePatches() {
   const countBadge = document.getElementById('drawer-applied-count-badge');
   if (!container) return;
 
-  const activePatches = Array.from(currentDrawerPatchesState.values()).filter(p => p.enabled);
+  const allActivePatches = Array.from(currentDrawerPatchesState.values()).filter(p => p.enabled);
+  const totalActive = allActivePatches.length;
+  const appActive = allActivePatches.filter(p => !p.isUniversal).length;
+  const univActive = allActivePatches.filter(p => p.isUniversal).length;
+
   if (countBadge) {
-    countBadge.textContent = `${activePatches.length} Active`;
+    if (currentDrawerPatchFilter === 'app') {
+      countBadge.textContent = `${appActive} Active App`;
+    } else if (currentDrawerPatchFilter === 'univ') {
+      countBadge.textContent = `${univActive} Active Univ`;
+    } else {
+      countBadge.textContent = `${totalActive} Active`;
+    }
   }
 
-  let displayPatches = activePatches;
+  let displayPatches = allActivePatches;
+  if (currentDrawerPatchFilter === 'app') {
+    displayPatches = displayPatches.filter(p => !p.isUniversal);
+  } else if (currentDrawerPatchFilter === 'univ') {
+    displayPatches = displayPatches.filter(p => p.isUniversal);
+  }
+
   if (currentDrawerSearchFilter) {
-    displayPatches = activePatches.filter(p =>
+    displayPatches = displayPatches.filter(p =>
       p.name.toLowerCase().includes(currentDrawerSearchFilter) ||
       p.desc.toLowerCase().includes(currentDrawerSearchFilter) ||
       p.owner.toLowerCase().includes(currentDrawerSearchFilter) ||
@@ -4726,13 +4774,7 @@ function renderDrawerActivePatches() {
     );
   }
 
-  if (currentDrawerPatchFilter === 'app') {
-    displayPatches = displayPatches.filter(p => !p.isUniversal);
-  } else if (currentDrawerPatchFilter === 'univ') {
-    displayPatches = displayPatches.filter(p => p.isUniversal);
-  }
-
-  if (activePatches.length === 0) {
+  if (allActivePatches.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 1.25rem; color: var(--text-muted); font-size: 0.8125rem;">
         No active patches. Select patches from available community bundles below.
@@ -4742,9 +4784,14 @@ function renderDrawerActivePatches() {
   }
 
   if (displayPatches.length === 0) {
+    let emptyMsg = `No active patches match "${escapeHtml(currentDrawerSearchFilter)}".`;
+    if (!currentDrawerSearchFilter) {
+      if (currentDrawerPatchFilter === 'app') emptyMsg = 'No active app-specific patches enabled.';
+      else if (currentDrawerPatchFilter === 'univ') emptyMsg = 'No active universal patches enabled.';
+    }
     container.innerHTML = `
       <div style="text-align: center; padding: 1rem; color: var(--text-muted); font-size: 0.8125rem;">
-        No active patches match "${escapeHtml(currentDrawerSearchFilter)}".
+        ${emptyMsg}
       </div>
     `;
     return;
@@ -4823,15 +4870,25 @@ function renderDrawerAvailableBundles() {
     if (d.dataset.bundleRepo) openRepos.add(d.dataset.bundleRepo);
   });
 
-  // Filter bundles based on search query
-  let totalAppCount = 0;
-  let totalUnivCount = 0;
-
-  const appBundles = [];
-  const univBundles = [];
+  const matchingBundles = [];
+  let totalMatchingPatches = 0;
 
   currentDrawerBundles.forEach((bundle, bundleIdx) => {
     let patches = bundle.patches || [];
+
+    // Filter by scope
+    if (currentDrawerPatchFilter === 'app') {
+      patches = patches.filter(p => !p.isUniversal);
+    } else if (currentDrawerPatchFilter === 'univ') {
+      patches = patches.filter(p => Boolean(p.isUniversal));
+    } else if (currentDrawerPatchFilter === 'selected') {
+      patches = patches.filter(p => {
+        const key = `${p.name}@@${bundle.bundleRepo}`;
+        return Boolean(currentDrawerPatchesState.get(key)?.enabled);
+      });
+    }
+
+    // Filter by search query
     if (currentDrawerSearchFilter) {
       patches = patches.filter(p =>
         p.name.toLowerCase().includes(currentDrawerSearchFilter) ||
@@ -4839,34 +4896,13 @@ function renderDrawerAvailableBundles() {
       );
     }
 
-    if (currentDrawerPatchFilter === 'selected') {
-      patches = patches.filter(p => {
-        const key = `${p.name}@@${bundle.bundleRepo}`;
-        return Boolean(currentDrawerPatchesState.get(key)?.enabled);
-      });
-    }
-
-    const appP = (currentDrawerPatchFilter === 'univ') ? [] : patches.filter(p => !p.isUniversal);
-    const univP = (currentDrawerPatchFilter === 'app') ? [] : patches.filter(p => p.isUniversal);
-
-    totalAppCount += appP.length;
-    totalUnivCount += univP.length;
-
-    if (appP.length > 0 || (!currentDrawerSearchFilter && currentDrawerPatchFilter === 'all' && (bundle.patches || []).some(p => !p.isUniversal))) {
-      appBundles.push({
+    if (patches.length > 0) {
+      totalMatchingPatches += patches.length;
+      matchingBundles.push({
         bundle,
         bundleIdx,
-        patches: appP,
-        isUniversalSection: false
-      });
-    }
-
-    if (univP.length > 0 || (!currentDrawerSearchFilter && currentDrawerPatchFilter === 'all' && (bundle.patches || []).some(p => p.isUniversal))) {
-      univBundles.push({
-        bundle,
-        bundleIdx,
-        patches: univP,
-        isUniversalSection: true
+        patches,
+        isUniversalSection: currentDrawerPatchFilter === 'univ'
       });
     }
   });
@@ -4996,69 +5032,84 @@ function renderDrawerAvailableBundles() {
     `;
   };
 
-  let html = '';
-
-  // SECTION 1: App-Specific Patches
-  if (appBundles.length > 0) {
-    html += `
-      <div class="drawer-section-wrapper" id="drawer-section-app" style="margin-bottom: 1rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-hairline);">
-          <div style="display: flex; align-items: center; gap: 0.375rem;">
-            <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">📦 App-Specific Patches</span>
-            <span class="badge badge-accent" style="font-size: 0.625rem; font-weight: 700;">${totalAppCount}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 0.25rem;">
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('app', true)">Select All</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('app', false)">Clear</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('app', true)">Expand</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('app', false)">Collapse</button>
-          </div>
-        </div>
-        <div id="drawer-app-bundles-sublist">
-          ${appBundles.map((g, idx) => renderDrawerBundleAccordion(g, idx)).join('')}
-        </div>
-      </div>
-    `;
+  let sectionLabel = 'All Compatible Patches';
+  let badgeClass = 'badge-accent';
+  if (currentDrawerPatchFilter === 'app') {
+    sectionLabel = '📦 App-Specific Patches';
+  } else if (currentDrawerPatchFilter === 'univ') {
+    sectionLabel = '🌐 Universal Patches & Mutators';
+  } else if (currentDrawerPatchFilter === 'selected') {
+    sectionLabel = '✅ Selected Active Patches';
   }
 
-  // SECTION 2: Universal Patches & Mutators
-  if (univBundles.length > 0) {
-    html += `
-      <div class="drawer-section-wrapper" id="drawer-section-univ">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border-hairline);">
-          <div style="display: flex; align-items: center; gap: 0.375rem;">
-            <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">🌐 Universal Patches & Mutators</span>
-            <span class="badge" style="font-size: 0.625rem; font-weight: 700;">${totalUnivCount}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 0.25rem;">
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('univ', true)">Select All</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionAll('univ', false)">Clear</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('univ', true)">Expand</button>
-            <button type="button" class="btn-micro" onclick="toggleDrawerSectionExpand('univ', false)">Collapse</button>
-          </div>
+  let html = `
+    <div class="drawer-section-wrapper" id="drawer-section-active" style="margin-bottom: 0.5rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border-hairline);">
+        <div style="display: flex; align-items: center; gap: 0.375rem;">
+          <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-primary);">${sectionLabel}</span>
+          <span class="badge ${badgeClass}" style="font-size: 0.625rem; font-weight: 700;">${totalMatchingPatches}</span>
         </div>
-        <div id="drawer-univ-bundles-sublist">
-          ${univBundles.map((g, idx) => renderDrawerBundleAccordion(g, idx)).join('')}
+        <div style="display: flex; align-items: center; gap: 0.25rem;">
+          <button type="button" class="btn-micro" onclick="toggleDrawerFilterSectionAll(true)">Select All</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerFilterSectionAll(false)">Clear</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(true)">Expand</button>
+          <button type="button" class="btn-micro" onclick="toggleDrawerExpandAll(false)">Collapse</button>
         </div>
       </div>
-    `;
+      <div id="drawer-bundles-sublist">
+        ${matchingBundles.map((g, idx) => renderDrawerBundleAccordion(g, idx)).join('')}
+      </div>
+    </div>
+  `;
+
+  let emptyMsg = `No community patch bundles available for this application.`;
+  if (currentDrawerSearchFilter) {
+    emptyMsg = `No patches found matching "${escapeHtml(currentDrawerSearchFilter)}".`;
+  } else if (currentDrawerPatchFilter === 'app') {
+    emptyMsg = `No app-specific patches found in connected repositories. Switch filter to Universal or All to explore compatible mutators.`;
+  } else if (currentDrawerPatchFilter === 'univ') {
+    emptyMsg = `No universal patches found in connected repositories.`;
+  } else if (currentDrawerPatchFilter === 'selected') {
+    emptyMsg = `No patches currently selected. Choose patches from available bundles above or switch filter to All.`;
   }
 
-  container.innerHTML = html || `
+  container.innerHTML = matchingBundles.length > 0 ? html : `
     <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.8125rem;">
-      No patches found matching "${escapeHtml(currentDrawerSearchFilter)}".
+      ${emptyMsg}
     </div>
   `;
 }
 
 function toggleDrawerBundleSubAll(bundleRepo, isUniversal, selectAll) {
   for (const [key, item] of currentDrawerPatchesState.entries()) {
-    if (item.repo === bundleRepo && Boolean(item.isUniversal) === isUniversal) {
+    if (item.repo === bundleRepo) {
+      if (currentDrawerPatchFilter === 'all' || Boolean(item.isUniversal) === isUniversal) {
+        item.enabled = Boolean(selectAll);
+      }
+    }
+  }
+  renderDrawerActivePatches();
+  renderDrawerAvailableBundles();
+  updateDrawerFilterPillCounts();
+}
+
+function toggleDrawerFilterSectionAll(selectAll) {
+  for (const [key, item] of currentDrawerPatchesState.entries()) {
+    let match = true;
+    if (currentDrawerPatchFilter === 'app' && item.isUniversal) match = false;
+    if (currentDrawerPatchFilter === 'univ' && !item.isUniversal) match = false;
+    if (currentDrawerSearchFilter) {
+      const sMatch = item.name.toLowerCase().includes(currentDrawerSearchFilter) ||
+                     item.desc.toLowerCase().includes(currentDrawerSearchFilter);
+      if (!sMatch) match = false;
+    }
+    if (match) {
       item.enabled = Boolean(selectAll);
     }
   }
   renderDrawerActivePatches();
   renderDrawerAvailableBundles();
+  updateDrawerFilterPillCounts();
 }
 
 function toggleDrawerSectionAll(sectionType, selectAll) {
@@ -5070,11 +5121,12 @@ function toggleDrawerSectionAll(sectionType, selectAll) {
   }
   renderDrawerActivePatches();
   renderDrawerAvailableBundles();
+  updateDrawerFilterPillCounts();
 }
 
 function toggleDrawerSectionExpand(sectionType, isExpand) {
-  const containerId = sectionType === 'app' ? 'drawer-app-bundles-sublist' : 'drawer-univ-bundles-sublist';
-  const sublist = document.getElementById(containerId);
+  const containerId = sectionType === 'app' ? 'drawer-app-bundles-sublist' : (sectionType === 'univ' ? 'drawer-univ-bundles-sublist' : 'drawer-bundles-sublist');
+  const sublist = document.getElementById(containerId) || document.getElementById('drawer-bundles-sublist');
   if (!sublist) return;
 
   sublist.querySelectorAll('details.prov-bundle-accordion').forEach(d => {
@@ -5098,6 +5150,7 @@ function toggleAllDrawerPatches(selectAll) {
     }
   }
   renderDrawerActivePatches();
+  updateDrawerFilterPillCounts();
 
   // Update DOM in-place without re-rendering accordions
   const container = document.getElementById('drawer-bundles-container');
@@ -5141,6 +5194,12 @@ function toggleDrawerPatch(key, isChecked) {
     item.enabled = Boolean(isChecked);
   }
   renderDrawerActivePatches();
+  updateDrawerFilterPillCounts();
+
+  if (currentDrawerPatchFilter === 'selected') {
+    renderDrawerAvailableBundles();
+    return;
+  }
 
   // In-place DOM update prevents accordion collapsing
   const container = document.getElementById('drawer-bundles-container');
@@ -5178,6 +5237,7 @@ function toggleDrawerBundleAll(repo, isChecked) {
     }
   }
   renderDrawerActivePatches();
+  updateDrawerFilterPillCounts();
 
   const container = document.getElementById('drawer-bundles-container');
   if (container) {
@@ -5217,7 +5277,12 @@ function removeDrawerRepo(idx) {
   const app = state.configuredApps.find(a => (a.package || a.package_name) === currentDrawerPkg);
   if (app && Array.isArray(app.repos)) {
     app.repos.splice(idx, 1);
+    const wasReposOpen = Boolean(document.getElementById('drawer-repos-collapsible')?.hasAttribute('open'));
     renderDrawerBody(app);
+    if (wasReposOpen) {
+      const c = document.getElementById('drawer-repos-collapsible');
+      if (c) c.setAttribute('open', '');
+    }
     renderDrawerActivePatches();
     renderDrawerAvailableBundles();
   }
@@ -5244,7 +5309,12 @@ function addDrawerRepo() {
       });
     }
     input.value = '';
+    const wasReposOpen = Boolean(document.getElementById('drawer-repos-collapsible')?.hasAttribute('open'));
     renderDrawerBody(app);
+    if (wasReposOpen) {
+      const c = document.getElementById('drawer-repos-collapsible');
+      if (c) c.setAttribute('open', '');
+    }
     renderDrawerActivePatches();
     renderDrawerAvailableBundles();
     showToast(`Added repository ${slug}`, 'success');
@@ -5810,6 +5880,8 @@ window.loadCatalogSyncState = loadCatalogSyncState;
 window.changeStoreSort = changeStoreSort;
 window.changeStoreCategory = changeStoreCategory;
 window.toggleDrawerSectionAll = toggleDrawerSectionAll;
+window.toggleDrawerFilterSectionAll = toggleDrawerFilterSectionAll;
+window.updateDrawerFilterPillCounts = updateDrawerFilterPillCounts;
 window.toggleDrawerSectionExpand = toggleDrawerSectionExpand;
 window.toggleDrawerBundleSubAll = toggleDrawerBundleSubAll;
 window.closeAppDrawer = closeAppDrawer;

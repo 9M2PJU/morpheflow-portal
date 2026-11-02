@@ -76,3 +76,50 @@ test('App Drawer: Embedded Patch Manager with Active, Matched, and Universal Sep
   assert.ok(appJs.includes('for (const [key, item] of currentDrawerPatchesState.entries())'), 'saveAppDrawerChanges must persist drawer patches state');
   assert.ok(appJs.includes('app.options[repo].patches[item.name]'), 'saveAppDrawerChanges must group patches into app.options by repo');
 });
+
+test('App Drawer: Patch Bundle Repositories rendered as collapsible dropdown collapsed by default', () => {
+  const appJs = fs.readFileSync(path.join(projectRoot, 'web/frontend/js/app.js'), 'utf-8');
+  const css = fs.readFileSync(path.join(projectRoot, 'web/frontend/css/morphe.css'), 'utf-8');
+
+  // Verify repositories dropdown details element
+  assert.ok(appJs.includes('id="drawer-repos-collapsible"'), 'Repositories section must have #drawer-repos-collapsible');
+  assert.ok(appJs.includes('<details class="bundle-repos-collapsible" id="drawer-repos-collapsible"'), 'Must render as <details class="bundle-repos-collapsible">');
+  // Must NOT have open attribute in its template definition so it collapses by default
+  assert.ok(!appJs.includes('<details class="bundle-repos-collapsible" id="drawer-repos-collapsible" open'), 'Must be collapsed by default without open attribute');
+  assert.ok(appJs.includes('id="drawer-repos-count-badge"'), 'Must include repository count badge');
+  assert.ok(appJs.includes('class="bundle-repos-chevron"'), 'Must include chevron indicator');
+
+  // Verify CSS styles for the collapsible
+  assert.ok(css.includes('.bundle-repos-collapsible summary'), 'CSS must define .bundle-repos-collapsible summary');
+  assert.ok(css.includes('.bundle-repos-collapsible[open] .bundle-repos-chevron svg'), 'CSS must rotate chevron when open');
+});
+
+test('App Drawer: 4-Way filter switching (All, App-Specific, Universal, Selected) with live counts', () => {
+  const appJs = fs.readFileSync(path.join(projectRoot, 'web/frontend/js/app.js'), 'utf-8');
+
+  // Verify filter function and pill updater
+  assert.ok(appJs.includes('function changeDrawerPatchFilter'), 'changeDrawerPatchFilter function must exist');
+  assert.ok(appJs.includes('function updateDrawerFilterPillCounts'), 'updateDrawerFilterPillCounts function must exist');
+  assert.ok(appJs.includes('function toggleDrawerFilterSectionAll'), 'toggleDrawerFilterSectionAll function must exist');
+
+  // Verify filter handling in active list
+  assert.ok(appJs.includes("currentDrawerPatchFilter === 'app'"), 'Must handle app filter');
+  assert.ok(appJs.includes("currentDrawerPatchFilter === 'univ'"), 'Must handle univ filter');
+  assert.ok(appJs.includes("currentDrawerPatchFilter === 'selected'"), 'Must handle selected filter');
+
+  // Verify global window attachment
+  assert.ok(appJs.includes('window.changeDrawerPatchFilter = changeDrawerPatchFilter'), 'changeDrawerPatchFilter must be attached to window');
+  assert.ok(appJs.includes('window.updateDrawerFilterPillCounts = updateDrawerFilterPillCounts'), 'updateDrawerFilterPillCounts must be attached to window');
+});
+
+test('CSS: .top-chrome sticky header has top: 0 with zero gap and .app-card-footer has flex-wrap: wrap', () => {
+  const css = fs.readFileSync(path.join(projectRoot, 'web/frontend/css/morphe.css'), 'utf-8');
+
+  // Verify .top-chrome is flush with top: 0 to prevent peeking under-elements
+  assert.match(css, /\.top-chrome\s*\{[^}]*position:\s*sticky/, '.top-chrome must be position: sticky');
+  assert.match(css, /\.top-chrome\s*\{[^}]*top:\s*0;/, '.top-chrome must have top: 0 to eliminate viewport gap');
+
+  // Verify .app-card-footer and .app-card-actions wrap cleanly
+  assert.match(css, /\.app-card-footer\s*\{[^}]*flex-wrap:\s*wrap;/, '.app-card-footer must have flex-wrap: wrap');
+  assert.match(css, /\.app-card-actions\s*\{[^}]*flex-wrap:\s*wrap;/, '.app-card-actions must have flex-wrap: wrap');
+});
