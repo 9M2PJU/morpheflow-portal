@@ -147,6 +147,7 @@ var morpheCatalogData = null;
 var rawBundlesData = [];
 var rawCompatibilitiesData = [];
 var isFetchingMorpheCatalog = false;
+var inFlightCatalogPromise = null;
 
 try {
   sessionStorage.removeItem('morphe_catalog_data_v5');
@@ -380,25 +381,6 @@ function setupEventListeners() {
       }
     });
   }
-
-  // Settings Open Downloads Button
-  document.getElementById('btn-open-files')?.addEventListener('click', () => {
-    switchTab('files', '');
-  });
-  document.getElementById('btn-browse-files')?.addEventListener('click', () => {
-    switchTab('files', '');
-  });
-
-  // Files Tab Controls
-  document.getElementById('btn-files-refresh')?.addEventListener('click', () => {
-    loadFiles(state.currentFilesPath || '');
-  });
-  document.getElementById('btn-files-root')?.addEventListener('click', () => {
-    loadFiles('');
-  });
-  document.getElementById('files-filter-input')?.addEventListener('input', () => {
-    filterFilesTable();
-  });
 
   // Result Viewer Modal Controls
   document.querySelectorAll('#modal-result-viewer .modal-tab-item').forEach(btn => {
@@ -1846,9 +1828,16 @@ function getCompatiblePatchesForPackage(pkg) {
 function parseSemVer(v) {
   if (!v || typeof v !== 'string') return null;
   const clean = v.replace(/^[vV]/, '').trim();
-  const base = clean.split(/[-_+]/)[0];
+  const match = clean.match(/^([0-9]+(?:\.[0-9]+)*)(?:[-_+](.+))?$/);
+  if (!match) return null;
+  const base = match[1];
+  const prerelease = match[2] || null;
   const parts = base.split('.').map(n => parseInt(n, 10));
-  return parts.every(n => !isNaN(n)) ? parts : null;
+  if (!parts.every(n => !isNaN(n))) return null;
+  if (prerelease) {
+    Object.defineProperty(parts, 'prerelease', { value: prerelease, enumerable: false });
+  }
+  return parts;
 }
 
 function compareSemVer(v1, v2) {
@@ -1860,11 +1849,17 @@ function compareSemVer(v1, v2) {
   }
   const maxLen = Math.max(p1.length, p2.length);
   for (let i = 0; i < maxLen; i++) {
-    const num1 = p1[i] || 0;
-    const num2 = p2[i] || 0;
+    const num1 = p1[i] ?? 0;
+    const num2 = p2[i] ?? 0;
     if (num1 > num2) return 1;
     if (num1 < num2) return -1;
   }
+  // Base numbers equal: SemVer specifies pre-release < normal release (1.2.3-beta < 1.2.3)
+  const pre1 = p1.prerelease;
+  const pre2 = p2.prerelease;
+  if (!pre1 && pre2) return 1;
+  if (pre1 && !pre2) return -1;
+  if (pre1 && pre2) return pre1.localeCompare(pre2, undefined, { numeric: true });
   return 0;
 }
 
@@ -7797,15 +7792,14 @@ async function fetchMorpheCatalog(force = false) {
     } catch (_) {}
   }
 
-  if (isFetchingMorpheCatalog) {
-    while (isFetchingMorpheCatalog) {
-      await new Promise(r => setTimeout(r, 50));
-    }
-    return morpheCatalogData;
+  // Promise singleflight: coalesce concurrent calls into a single in-flight Promise
+  if (inFlightCatalogPromise && !force) {
+    return inFlightCatalogPromise;
   }
 
-  isFetchingMorpheCatalog = true;
-  try {
+  inFlightCatalogPromise = (async () => {
+    isFetchingMorpheCatalog = true;
+    try {
     let res;
     try {
       res = await fetch(`/api/catalog${force ? '?refresh=true' : ''}`);
@@ -8003,7 +7997,11 @@ async function fetchMorpheCatalog(force = false) {
     return null;
   } finally {
     isFetchingMorpheCatalog = false;
+    inFlightCatalogPromise = null;
   }
+  })();
+
+  return inFlightCatalogPromise;
 }
 
 async function searchCatalog(query) {
@@ -10017,8 +10015,8 @@ async function saveEditAppModal() {
         body: JSON.stringify(payload)
       });
       if (!cfgRes.ok) {
-        const err = await cfgRes.json();
-        throw new Error(err.detail || 'Failed to update app config');
+        const err = await cfgRes.json().catch(() => ({}));
+        throw new Error(err.detail || err.message || `Failed to update app config (HTTP ${cfgRes.status})`);
       }
       configUpdated = true;
     }
@@ -10090,252 +10088,21 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
-// Hash Routing & Deep Linking (#/files, #/files/<pkg>)
+// Hash Routing & Deep Linking
 // ---------------------------------------------------------------------------
 function handleHashRouting() {
   const hash = window.location.hash || '';
   if (hash.startsWith('#files') || hash.startsWith('#/files')) {
-    const sub = hash.replace(/^#\/?files\/?/, '');
-    switchTab('files', decodeURIComponent(sub));
+    switchTab('apps');
+    history.replaceState(null, '', window.location.pathname + window.location.search);
   } else if (!hash && state.activeTab === 'files') {
     switchTab('apps');
   }
 }
 
-// ---------------------------------------------------------------------------
-// Patched APK File Browser & Result Viewer Logic
-// ---------------------------------------------------------------------------
 function navigateToPackageFiles(pkg) {
-  switchTab('files', pkg);
-}
-
-async function loadFiles(subpath = '') {
-  state.currentFilesPath = subpath;
-  const tbody = document.getElementById('files-table-body');
-  const breadcrumbsEl = document.getElementById('files-breadcrumbs');
-  const countsEl = document.getElementById('files-stat-counts');
-  const sizeEl = document.getElementById('files-stat-size');
-
-  if (tbody) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="5" style="text-align: center; padding: 48px; color: var(--text-dim);">
-          <span class="material-symbols-rounded" style="font-size: 28px; animation: spin 1s infinite linear;">sync</span>
-          <div style="margin-top: 8px;">Loading directory contents...</div>
-        </td>
-      </tr>
-    `;
-  }
-
-  // Update hash without page reload
-  const cleanPath = subpath.replace(/^\/+|\/+$/g, '');
-  const targetHash = cleanPath ? `#/files/${cleanPath}` : '#/files';
-  if (window.location.hash !== targetHash) {
-    history.replaceState(null, '', targetHash);
-  }
-
-  try {
-    const res = await fetch(`/api/files?path=${encodeURIComponent(subpath)}`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    state.cachedFilesData = data;
-
-    // Render Breadcrumbs
-    if (breadcrumbsEl) {
-      breadcrumbsEl.innerHTML = data.breadcrumbs.map((crumb, idx) => {
-        const isLast = idx === data.breadcrumbs.length - 1;
-        if (isLast) {
-          return `<span style="font-weight: 600; color: var(--primary-cyan);">${escapeHtml(crumb.name)}</span>`;
-        }
-        return `
-          <button type="button" class="btn-link" onclick="loadFiles('${escapeHtml(crumb.path)}')" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: inherit; text-decoration: underline;">
-            ${escapeHtml(crumb.name)}
-          </button>
-          <span style="color: var(--text-dim);">/</span>
-        `;
-      }).join('');
-    }
-
-    // Render Rows
-    if (tbody) {
-      let rowsHtml = '';
-
-      // Parent Directory row
-      if (data.parent_path !== null) {
-        rowsHtml += `
-          <tr class="file-table-row" style="border-bottom: 1px solid var(--border-subtle); cursor: pointer;" onclick="loadFiles('${escapeHtml(data.parent_path)}')">
-            <td style="padding: 10px 16px; width: 36px; text-align: center;">
-              <span class="material-symbols-rounded" style="color: var(--primary-cyan); font-size: 20px; vertical-align: middle;">arrow_upward</span>
-            </td>
-            <td style="padding: 10px 16px; font-weight: 600; color: var(--text-main);">
-              .. Parent Directory
-            </td>
-            <td style="padding: 10px 16px; color: var(--text-dim); font-size: 0.8125rem;">Directory</td>
-            <td class="col-mtime" style="padding: 10px 16px; color: var(--text-dim); font-size: 0.8125rem;">-</td>
-            <td style="padding: 10px 16px; text-align: right;">
-              <button class="btn btn-secondary btn-sm" type="button" onclick="event.stopPropagation(); loadFiles('${escapeHtml(data.parent_path)}')">
-                <span>Up</span>
-              </button>
-            </td>
-          </tr>
-        `;
-      }
-
-      // Directories
-      for (const d of data.dirs) {
-        rowsHtml += `
-          <tr class="file-table-row" style="border-bottom: 1px solid var(--border-subtle); cursor: pointer;" onclick="loadFiles('${escapeHtml(d.path)}')">
-            <td style="padding: 10px 16px; width: 36px; text-align: center;">
-              <span class="material-symbols-rounded" style="color: var(--primary-cyan); font-size: 20px; vertical-align: middle;">folder</span>
-            </td>
-            <td style="padding: 10px 16px;">
-              <span class="file-item-name" style="font-weight: 600; color: var(--text-main);">${escapeHtml(d.name)}/</span>
-            </td>
-            <td style="padding: 10px 16px; color: var(--text-muted); font-size: 0.8125rem;">
-              <span class="badge" style="background: rgba(32, 207, 206, 0.1); color: var(--primary-cyan); font-size: 0.75rem;">
-                ${d.item_count} ${d.item_count === 1 ? 'item' : 'items'}
-              </span>
-            </td>
-            <td class="col-mtime" style="padding: 10px 16px; color: var(--text-dim); font-size: 0.8125rem; font-family: var(--font-mono);">${escapeHtml(d.mtime)}</td>
-            <td style="padding: 10px 16px; text-align: right;">
-              <button class="btn btn-secondary btn-sm" type="button" onclick="event.stopPropagation(); loadFiles('${escapeHtml(d.path)}')">
-                <span>Open</span>
-                <span class="material-symbols-rounded" style="font-size: 15px;">arrow_forward</span>
-              </button>
-            </td>
-          </tr>
-        `;
-      }
-
-      // Files
-      for (const f of data.files) {
-        let iconHtml = '<span class="material-symbols-rounded" style="color: var(--text-dim); font-size: 20px; vertical-align: middle;">description</span>';
-        let badgeHtml = '';
-        let actionButtonsHtml = '';
-
-        if (f.is_apk) {
-          iconHtml = '<span class="material-symbols-rounded" style="color: var(--color-success); font-size: 20px; vertical-align: middle;">android</span>';
-          badgeHtml = '<span class="badge badge-success" style="font-size: 0.75rem; margin-left: 6px;">APK</span>';
-          let obtainiumBtn = '';
-          if (f.obtainium_url) {
-            obtainiumBtn = `
-              <a href="${f.obtainium_url}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; border-color: rgba(32, 207, 206, 0.4); color: var(--primary-cyan);" title="Track/Install this app via Obtainium">
-                <span class="material-symbols-rounded" style="font-size: 15px;">install_mobile</span>
-                <span class="file-action-text">Obtainium</span>
-              </a>
-            `;
-          }
-          actionButtonsHtml = `
-            <div style="display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center;">
-              ${obtainiumBtn}
-              <a href="${f.url}" download="${escapeHtml(f.name)}" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 4px;" title="Download patched APK">
-                <span class="material-symbols-rounded" style="font-size: 15px;">download</span>
-                <span class="file-action-text">Download</span>
-              </a>
-            </div>
-          `;
-        } else if (f.is_result_json) {
-          iconHtml = '<span class="material-symbols-rounded" style="color: var(--primary-cyan); font-size: 20px; vertical-align: middle;">analytics</span>';
-          actionButtonsHtml = `
-            <div style="display: inline-flex; gap: 6px; justify-content: flex-end;">
-              <button onclick="viewResultJson('${f.url}', '${escapeHtml(f.name)}', '${escapeHtml(data.current_path)}')" class="btn btn-primary btn-sm" type="button" style="display: inline-flex; align-items: center; gap: 4px;" title="View patch audit results">
-                <span class="material-symbols-rounded" style="font-size: 15px;">visibility</span>
-                <span class="file-action-text">View</span>
-              </button>
-              <a href="${f.url}?download=1" download="${escapeHtml(f.name)}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px;" title="Download raw result.json">
-                <span class="material-symbols-rounded" style="font-size: 15px;">download</span>
-                <span class="file-action-text">Download</span>
-              </a>
-            </div>
-          `;
-        } else {
-          actionButtonsHtml = `
-            <a href="${f.url}?download=1" download="${escapeHtml(f.name)}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px;">
-              <span class="material-symbols-rounded" style="font-size: 15px;">download</span>
-              <span class="file-action-text">Download</span>
-            </a>
-          `;
-        }
-
-        rowsHtml += `
-          <tr class="file-table-row" style="border-bottom: 1px solid var(--border-subtle);">
-            <td style="padding: 10px 16px; width: 36px; text-align: center;">
-              ${iconHtml}
-            </td>
-            <td style="padding: 10px 16px;">
-              <span class="file-item-name" style="font-weight: 500; color: var(--text-main);">${escapeHtml(f.name)}</span>
-              ${badgeHtml}
-            </td>
-            <td style="padding: 10px 16px; color: var(--text-muted); font-size: 0.8125rem; font-family: var(--font-mono);">${escapeHtml(f.size)}</td>
-            <td class="col-mtime" style="padding: 10px 16px; color: var(--text-dim); font-size: 0.8125rem; font-family: var(--font-mono);">${escapeHtml(f.mtime)}</td>
-            <td style="padding: 10px 16px; text-align: right;">
-              ${actionButtonsHtml}
-            </td>
-          </tr>
-        `;
-      }
-
-      if (data.dirs.length === 0 && data.files.length === 0 && data.parent_path === null) {
-        rowsHtml = `
-          <tr>
-            <td colspan="5" style="text-align: center; padding: 48px; color: var(--text-dim);">
-              <span class="material-symbols-rounded" style="font-size: 32px; color: var(--text-dim);">folder_off</span>
-              <p style="margin-top: 8px;">No files or directories found in apps/patched/.</p>
-            </td>
-          </tr>
-        `;
-      } else if (data.dirs.length === 0 && data.files.length === 0) {
-        rowsHtml += `
-          <tr>
-            <td colspan="5" style="text-align: center; padding: 32px; color: var(--text-dim);">
-              This directory is empty.
-            </td>
-          </tr>
-        `;
-      }
-
-      tbody.innerHTML = rowsHtml;
-    }
-
-    if (countsEl) {
-      countsEl.textContent = `Showing ${data.dirs.length} ${data.dirs.length === 1 ? 'directory' : 'directories'}, ${data.files.length} ${data.files.length === 1 ? 'file' : 'files'}`;
-    }
-    if (sizeEl) {
-      sizeEl.textContent = `Total: ${data.formatted_total_bytes}`;
-    }
-
-    // Re-apply filter if user has typed in search box
-    filterFilesTable();
-
-  } catch (err) {
-    if (tbody) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-danger);">
-            <span class="material-symbols-rounded" style="font-size: 28px;">error</span>
-            <p style="margin-top: 8px;">Failed to load files: ${escapeHtml(err.message)}</p>
-            <button class="btn btn-secondary btn-sm" onclick="loadFiles('${escapeHtml(subpath)}')" style="margin-top: 12px;">Retry</button>
-          </td>
-        </tr>
-      `;
-    }
-    showToast(`Error reading directory: ${err.message}`, 'error');
-  }
-}
-
-function filterFilesTable() {
-  const query = (document.getElementById('files-filter-input')?.value || '').toLowerCase().trim();
-  document.querySelectorAll('.file-table-row').forEach(row => {
-    const text = row.querySelector('.file-item-name')?.textContent.toLowerCase() || '';
-    if (!query || text.includes(query)) {
-      row.style.display = '';
-    } else {
-      row.style.display = 'none';
-    }
-  });
+  switchTab('apps');
+  showToast(`Viewing configured app builds for ${pkg || 'selected app'}`, 'info');
 }
 
 async function showObtainiumSyncModal() {

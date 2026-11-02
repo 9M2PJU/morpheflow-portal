@@ -88,15 +88,31 @@ export const SCHEMA_STATEMENTS = [
     arch TEXT,
     url TEXT
   );`,
+  `CREATE TABLE IF NOT EXISTS active_locks (
+    package TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    acquired_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    data TEXT
+  );`,
 ];
+
+let isDbInitialized = false;
 
 export class StorageService {
   constructor(private db: D1Database) {}
 
+  async ensureInitialized(): Promise<void> {
+    if (isDbInitialized) return;
+    await this.initializeDatabase();
+  }
+
   async initializeDatabase(): Promise<void> {
-    for (const statement of SCHEMA_STATEMENTS) {
-      await this.db.prepare(statement).run();
-    }
+    if (isDbInitialized) return;
+    // Batch all schema statements into a single atomic transaction roundtrip
+    const stmts = SCHEMA_STATEMENTS.map(s => this.db.prepare(s));
+    await this.db.batch(stmts);
 
     // Seed default settings if not existing
     const existingSys = await this.getConfig('system');
@@ -135,6 +151,8 @@ export class StorageService {
       };
       await this.setConfig('email', defaultEmail);
     }
+
+    isDbInitialized = true;
   }
 
   // --- Config Table ---
@@ -154,6 +172,10 @@ export class StorageService {
       .prepare('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?')
       .bind(key, serialized, serialized)
       .run();
+  }
+
+  async deleteConfig(key: string): Promise<void> {
+    await this.db.prepare('DELETE FROM config WHERE key = ?').bind(key).run();
   }
 
   // --- Keystore Management ---
@@ -444,7 +466,31 @@ export class StorageService {
     const now = Date.now() / 1000;
     let locks: any[] = [];
     
-    // Check parallel locks store
+    // Check relational active_locks table first
+    try {
+      const rows = await this.db
+        .prepare("SELECT package, run_id, source, acquired_at, expires_at, data FROM active_locks WHERE expires_at > ?")
+        .bind(now)
+        .all<any>();
+      if (rows?.results && rows.results.length > 0) {
+        return rows.results.map((r) => {
+          let extra = {};
+          if (r.data) {
+            try { extra = JSON.parse(r.data); } catch {}
+          }
+          return {
+            ...extra,
+            package: r.package === '__GLOBAL__' ? null : r.package,
+            run_id: r.run_id,
+            source: r.source,
+            acquired_at: r.acquired_at,
+            expires_at: r.expires_at,
+          };
+        });
+      }
+    } catch {}
+
+    // Fallback/sync with legacy parallel locks store in state table
     const multiRow = await this.db.prepare("SELECT value FROM state WHERE key = 'active_locks'").first<{ value: string }>();
     if (multiRow?.value) {
       try {
@@ -479,6 +525,9 @@ export class StorageService {
   async saveActiveLocks(locks: any[]): Promise<void> {
     const now = Date.now() / 1000;
     if (locks.length === 0) {
+      try {
+        await this.db.prepare("DELETE FROM active_locks").run();
+      } catch {}
       await this.db.prepare("DELETE FROM state WHERE key IN ('active_locks', 'active_lock')").run();
       return;
     }
@@ -508,10 +557,11 @@ export class StorageService {
   }
 
   async acquireLock(data: any): Promise<boolean> {
-    const locks = await this.getActiveLocks();
     const now = Date.now() / 1000;
     const timeout = data.timeout_seconds || 2700; // 45 min default
     const expires_at = now + timeout;
+    const run_id = data.run_id || `run-${Date.now()}`;
+    const source = data.source || 'manual';
 
     const requestedPkg = data.package || null;
     const requestedPkgs: string[] = Array.isArray(data.packages)
@@ -520,8 +570,15 @@ export class StorageService {
       ? [requestedPkg]
       : [];
 
+    // Purge expired locks from relational table
+    try {
+      await this.db.prepare("DELETE FROM active_locks WHERE expires_at <= ?").bind(now).run();
+    } catch {}
+
+    const locks = await this.getActiveLocks();
+
     // Check if a global lock is already active
-    const globalLockActive = locks.some((l) => !l.package || l.package === '__all__' || l.package === 'all');
+    const globalLockActive = locks.some((l) => !l.package || l.package === '__all__' || l.package === 'all' || l.package === '__GLOBAL__');
     if (globalLockActive) {
       return false; // Global execution already in progress
     }
@@ -531,7 +588,12 @@ export class StorageService {
       if (locks.length > 0) {
         return false;
       }
-      const newLock = { ...data, package: null, acquired_at: now, expires_at };
+      const newLock = { ...data, package: null, run_id, source, acquired_at: now, expires_at };
+      try {
+        await this.db.prepare(
+          "INSERT INTO active_locks (package, run_id, source, acquired_at, expires_at, data) VALUES ('__GLOBAL__', ?, ?, ?, ?, ?)"
+        ).bind(run_id, source, now, expires_at, JSON.stringify(newLock)).run();
+      } catch {}
       await this.saveActiveLocks([newLock]);
       return true;
     }
@@ -542,16 +604,31 @@ export class StorageService {
       return false;
     }
 
-    // Add lock entries for all requested packages
+    // Add lock entries for all requested packages in memory and relational table
     const newLocks = [...locks];
+    const relationalStatements: D1PreparedStatement[] = [];
     for (const p of requestedPkgs) {
-      newLocks.push({
+      const lockItem = {
         ...data,
         package: p,
+        run_id,
+        source,
         acquired_at: now,
         expires_at,
-      });
+      };
+      newLocks.push(lockItem);
+      relationalStatements.push(
+        this.db.prepare(
+          "INSERT INTO active_locks (package, run_id, source, acquired_at, expires_at, data) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(p, run_id, source, now, expires_at, JSON.stringify(lockItem))
+      );
     }
+    try {
+      if (relationalStatements.length > 0) {
+        await this.db.batch(relationalStatements);
+      }
+    } catch {}
+
     await this.saveActiveLocks(newLocks);
     return true;
   }
@@ -561,6 +638,12 @@ export class StorageService {
       await this.resetAllLocks();
       return;
     }
+    try {
+      await this.db.prepare(
+        "DELETE FROM active_locks WHERE package = ? OR run_id = ?"
+      ).bind(pkgOrRunId, pkgOrRunId).run();
+    } catch {}
+
     const locks = await this.getActiveLocks();
     const remaining = locks.filter(
       (l) => l.package !== pkgOrRunId && l.run_id !== pkgOrRunId
@@ -569,6 +652,9 @@ export class StorageService {
   }
 
   async resetAllLocks(): Promise<void> {
+    try {
+      await this.db.prepare("DELETE FROM active_locks").run();
+    } catch {}
     await this.db.prepare("DELETE FROM state WHERE key IN ('active_locks', 'active_lock')").run();
   }
 

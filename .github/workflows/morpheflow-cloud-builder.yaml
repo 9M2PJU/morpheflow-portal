@@ -286,9 +286,8 @@ jobs:
               echo "  - **Obtainium Source URL:** \`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`" >> "$NOTES_FILE"
               echo "  - 👉 [**📲 Add to Obtainium**](${OBTAINIUM_URL})" >> "$NOTES_FILE"
               
-              # 1. Update rolling Per-App Release for Obtainium
+              # 1. Update rolling Per-App Release for Obtainium (in-place update to prevent eventual consistency race)
               echo "[*] Publishing rolling per-app release: ${PER_APP_TAG}"
-              gh release delete "${PER_APP_TAG}" --yes --cleanup-tag 2>/dev/null || true
               PER_APP_NOTES="/tmp/per_app_notes_${pkg_dir}.md"
               echo "Latest patched build for **${app_name}** (\`${pkg_dir}\`) version \`${ver_dir}\`." > "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
@@ -305,18 +304,28 @@ jobs:
               echo "\`https://github.com/${REPO}/releases/tag/${PER_APP_TAG}\`" >> "$PER_APP_NOTES"
               echo "" >> "$PER_APP_NOTES"
               echo "> **Note for Private Repo:** Ensure your GitHub Personal Access Token (PAT) is saved in Obtainium: **Settings** ➔ **App Sources** ➔ **GitHub**." >> "$PER_APP_NOTES"
-              gh release create "${PER_APP_TAG}" "$apk" \
-                --title "${app_name} (${pkg_dir}) v${ver_dir}" \
-                --notes-file "$PER_APP_NOTES" \
-                --latest=false || gh release upload "${PER_APP_TAG}" "$apk" --clobber
+              
+              if gh release view "${PER_APP_TAG}" -R "${REPO}" >/dev/null 2>&1; then
+                gh release edit "${PER_APP_TAG}" -R "${REPO}" \
+                  --title "${app_name} (${pkg_dir}) v${ver_dir}" \
+                  --notes-file "$PER_APP_NOTES"
+                gh release upload "${PER_APP_TAG}" "$apk" -R "${REPO}" --clobber
+              else
+                gh release create "${PER_APP_TAG}" "$apk" -R "${REPO}" \
+                  --title "${app_name} (${pkg_dir}) v${ver_dir}" \
+                  --notes-file "$PER_APP_NOTES" \
+                  --latest=false || gh release upload "${PER_APP_TAG}" "$apk" -R "${REPO}" --clobber
+              fi
               rm -f "$PER_APP_NOTES"
                 
               # 2. Also create permanent versioned tag (e.g. com.reddit.frontpage-v2026.24.0)
               VER_TAG="${pkg_dir}-v${ver_dir}"
-              gh release create "${VER_TAG}" "$apk" \
-                --title "${app_name} (${pkg_dir}) v${ver_dir}" \
-                --notes "Versioned release of ${app_name} (${pkg_dir}) v${ver_dir}." \
-                --latest=false 2>/dev/null || true
+              if ! gh release view "${VER_TAG}" -R "${REPO}" >/dev/null 2>&1; then
+                gh release create "${VER_TAG}" "$apk" -R "${REPO}" \
+                  --title "${app_name} (${pkg_dir}) v${ver_dir}" \
+                  --notes "Versioned release of ${app_name} (${pkg_dir}) v${ver_dir}." \
+                  --latest=false 2>/dev/null || true
+              fi
             done
             
             echo "" >> "$NOTES_FILE"

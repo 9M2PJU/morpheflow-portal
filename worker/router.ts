@@ -278,7 +278,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   }
 
   const storage = new StorageService(env.DB);
-  await storage.initializeDatabase();
+  await storage.ensureInitialized();
 
   // 0. Public Auth Endpoints
   if (path === '/api/auth/login' && method === 'POST') {
@@ -1475,7 +1475,9 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
           })
         );
 
-        for (const res of dispatchResults) {
+        for (let i = 0; i < dispatchResults.length; i++) {
+          const res = dispatchResults[i];
+          const pkgName = packages[i];
           if (res.status === 'fulfilled') {
             if (res.value.ok) {
               dispatchCount++;
@@ -1483,12 +1485,17 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
             } else {
               dispatchErrors.push(`${res.value.pkg} ${res.value.error}`);
               logsToAppend.push(`[!] GitHub dispatch error for ${res.value.pkg} ${res.value.error}`);
+              // Release lock immediately for any failed package so it is not stalled for 45 minutes
+              await storage.releaseLock(res.value.pkg);
             }
           } else {
             const err = res.reason;
             const msg = err?.message || String(err);
             dispatchErrors.push(msg);
-            logsToAppend.push(`[!] GitHub dispatch exception: ${msg}`);
+            logsToAppend.push(`[!] GitHub dispatch exception for ${pkgName}: ${msg}`);
+            if (pkgName) {
+              await storage.releaseLock(pkgName);
+            }
           }
         }
 

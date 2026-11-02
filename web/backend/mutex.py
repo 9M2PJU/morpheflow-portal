@@ -73,7 +73,7 @@ def acquire_lock(
     run_id: str | None = None,
 ) -> tuple[bool, dict[str, Any] | None]:
     """
-    Attempts to acquire the heartbeat file lock.
+    Attempts to acquire the heartbeat file lock atomically using OS kernel flags.
     Returns (True, new_lock_data) on success, or (False, active_lock_data) on failure.
     """
     active = get_active_lock()
@@ -90,11 +90,19 @@ def acquire_lock(
         "updated_at": now,
     }
 
+    lock_path = get_lock_path()
+    content = json.dumps(lock_data, indent=2)
+
     try:
-        lock_path = get_lock_path()
-        lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+        # Atomic file creation using OS exclusive create flags
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
         logger.info(f"Acquired execution mutex for run_id: {lock_data['run_id']} ({source}, pkg: {package})")
         return True, lock_data
+    except FileExistsError:
+        logger.warning("Concurrent lock race detected; lock file already created by another process.")
+        return False, get_active_lock() or {"error": "Locked by concurrent process"}
     except Exception as e:
         logger.error(f"Failed to write lock file: {e}")
         return False, {"error": str(e)}

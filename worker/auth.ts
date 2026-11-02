@@ -209,9 +209,10 @@ export async function checkRateLimit(
     };
   }
 
-  // Reset counter if last attempt was more than lockout duration ago
-  if (now - record.lastAttempt > LOCKOUT_DURATION_SECONDS) {
+  // Reset counter and prune record if last attempt was more than lockout duration ago
+  if (record.lastAttempt && now - record.lastAttempt > LOCKOUT_DURATION_SECONDS) {
     record.attempts = 0;
+    await storage.deleteConfig(key);
   }
 
   return {
@@ -238,7 +239,7 @@ export async function recordFailedLogin(storage: StorageService, ip: string): Pr
 
 export async function resetFailedLogin(storage: StorageService, ip: string): Promise<void> {
   const key = `ratelimit_login_${ip.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-  await storage.setConfig(key, { attempts: 0, lastAttempt: 0, lockedUntil: 0 });
+  await storage.deleteConfig(key);
 }
 
 /**

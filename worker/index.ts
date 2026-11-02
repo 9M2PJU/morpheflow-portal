@@ -134,7 +134,7 @@ export default {
     console.log(`[MorpheFlow Cron Trigger] Scheduled job fired at ${new Date(event.scheduledTime).toISOString()}`);
 
     const storage = new StorageService(env.DB);
-    await storage.initializeDatabase();
+    await storage.ensureInitialized();
 
     // 1. Hourly Community Store Ecosystem Sync
     let latestCatalogData: any = null;

@@ -12,6 +12,25 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+def parse_version_tuple(ver_line: str) -> tuple:
+    """Parses version line into a sortable tuple honoring SemVer precedence: stable > prerelease."""
+    if not ver_line:
+        return (0, 0, 0, 0, 0)
+    clean = ver_line.strip().lstrip("v").strip()
+    match = re.match(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[.-]([a-zA-Z0-9.]+))?", clean)
+    if not match:
+        digits = [int(d) for d in re.findall(r"\d+", clean)]
+        return tuple(digits) if digits else (0, 0, 0, 0, 0)
+    major = int(match.group(1) or 0)
+    minor = int(match.group(2) or 0)
+    patch = int(match.group(3) or 0)
+    prerelease_str = match.group(4) or ""
+    # In SemVer, 1.0.0 (is_stable=1) > 1.0.0-beta.1 (is_stable=0)
+    is_stable = 1 if not prerelease_str else 0
+    pre_num_match = re.search(r"\d+", prerelease_str)
+    pre_num = int(pre_num_match.group(0)) if pre_num_match else 0
+    return (major, minor, patch, is_stable, pre_num)
+
 class Morphe:
 
     def __init__(self, project_root: Path, original_dir: Path, patched_dir: Path, architecture: str, detailed_app_list: dict[str, dict], repo_details: dict[str, dict], low_spec_mode: bool, force: bool) -> None:
@@ -934,14 +953,13 @@ class Morphe:
                     package_names = re.findall(r"Package name:\s*(\S+)", block)
                     version_search = re.search(r"Compatible versions:\s*(.+)", block)
 
-                    # 1. Parse versions (take the first listed compatible version or default to (0, 0, 0))
+                    # 1. Parse versions (take the first listed compatible version or default to (0, 0, 0, 0, 0))
                     if version_search:
                         first_ver_line = version_search.group(1).strip().splitlines()[0]
-                        version_digits = re.findall(r"\d+", first_ver_line)
-                        tup_ver = tuple(int(d) for d in version_digits) if version_digits else (0, 0, 0)
-                        ver_str = first_ver_line.strip() if version_digits else "0.0.0"
+                        tup_ver = parse_version_tuple(first_ver_line)
+                        ver_str = first_ver_line.strip() if first_ver_line.strip() else "0.0.0"
                     else:
-                        tup_ver = (0, 0, 0)
+                        tup_ver = (0, 0, 0, 0, 0)
                         ver_str = "0.0.0"
 
                     # 2. Package-specific patches
@@ -1202,7 +1220,7 @@ class Morphe:
         try:
             logger.info(f"[*] Attempting to patch package: {package_name}, version: {version_name}...")
             logger.debug(f"Patch command:\n{cmd}\n")
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=900)
 
             if output_dest.is_file():
                 logger.info(f" └── [✓] Successfully patched {package_name} v{version_name}")
@@ -1211,6 +1229,10 @@ class Morphe:
             else:
                 logger.error(" └── [!] Java exited with code 0, but output APK was not found.")
                 return False, dest, "Java exited with code 0, but output APK was not found."
+
+        except subprocess.TimeoutExpired:
+            logger.error(" └── [!] Morphe CLI process timed out after 15 minutes.")
+            return False, dest, "Morphe CLI process timed out after 15 minutes."
 
         except subprocess.CalledProcessError as e:
             if e.returncode in (130, 143, -2, -15, -9) or e.returncode < 0:

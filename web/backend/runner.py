@@ -64,6 +64,7 @@ class PipelineRunner:
         self.active_package: str | None = None
         self.start_time: float = 0.0
         self._heartbeat_task: asyncio.Task | None = None
+        self._completion_broadcasted: bool = False
 
     async def _heartbeat_loop(self) -> None:
         """Periodically refreshes the mutex lock heartbeat every 10 seconds."""
@@ -101,6 +102,7 @@ class PipelineRunner:
         self.active_package = package
         self.is_running = True
         self.start_time = time.time()
+        self._completion_broadcasted = False
 
         # Start heartbeat
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -188,6 +190,21 @@ class PipelineRunner:
             }
             self._append_and_broadcast(err_msg)
             returncode = 130
+            # Terminate and reap the subprocess cleanly before releasing mutex
+            proc = self.current_process
+            pid = proc.pid if proc else None
+            pgid = self.current_pgid or pid
+            if proc and pid:
+                logger.info(f"Terminating subprocess group {pgid} due to task cancellation")
+                self._kill_process_group(pgid, pid, signal.SIGINT)
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except (asyncio.TimeoutError, Exception):
+                    self._kill_process_group(pgid, pid, signal.SIGKILL)
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=1.0)
+                    except Exception:
+                        pass
         except Exception as e:
             err_line = f"[✗] Pipeline execution error: {e}"
             captured_lines.append(err_line)
@@ -237,18 +254,20 @@ class PipelineRunner:
             self.current_pgid = None
             self.current_task = None
 
-            # Emit completion event
-            done_msg = {
-                "event": "complete",
-                "status": final_status,
-                "returncode": returncode,
-                "duration_seconds": duration,
-                "duration_formatted": duration_formatted,
-                "source": source,
-                "package": package,
-                "timestamp": time.time(),
-            }
-            self._append_and_broadcast(done_msg)
+            # Emit completion event if not already emitted
+            if not self._completion_broadcasted:
+                done_msg = {
+                    "event": "complete",
+                    "status": final_status,
+                    "returncode": returncode,
+                    "duration_seconds": duration,
+                    "duration_formatted": duration_formatted,
+                    "source": source,
+                    "package": package,
+                    "timestamp": time.time(),
+                }
+                self._append_and_broadcast(done_msg)
+                self._completion_broadcasted = True
 
     def _kill_process_group(self, pgid: int | None, pid: int | None, sig: signal.Signals) -> bool:
         """Sends signal to process group and process directly. Returns True if any signal succeeded."""
@@ -338,17 +357,19 @@ class PipelineRunner:
             duration = round(time.time() - self.start_time, 2) if self.start_time else 0
             duration_formatted = format_duration(duration)
 
-            done_msg = {
-                "event": "complete",
-                "status": "failed",
-                "returncode": 130,
-                "duration_seconds": duration,
-                "duration_formatted": duration_formatted,
-                "source": self.active_source,
-                "package": self.active_package,
-                "timestamp": time.time(),
-            }
-            self._append_and_broadcast(done_msg)
+            if not self._completion_broadcasted:
+                done_msg = {
+                    "event": "complete",
+                    "status": "failed",
+                    "returncode": 130,
+                    "duration_seconds": duration,
+                    "duration_formatted": duration_formatted,
+                    "source": self.active_source,
+                    "package": self.active_package,
+                    "timestamp": time.time(),
+                }
+                self._append_and_broadcast(done_msg)
+                self._completion_broadcasted = True
 
             self.current_process = None
             self.current_pgid = None

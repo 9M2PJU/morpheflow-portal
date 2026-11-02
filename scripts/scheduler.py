@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 from ruamel.yaml import YAML
 import schedule
@@ -68,8 +69,9 @@ def check_and_acquire_lock() -> bool:
         return False
       else:
         logging.warning("[!] Found stale lock in scheduler. Clearing.")
+        lock.unlink(missing_ok=True)
     except Exception:
-      pass
+      lock.unlink(missing_ok=True)
 
   now = time.time()
   lock_data = {
@@ -80,11 +82,31 @@ def check_and_acquire_lock() -> bool:
       "updated_at": now,
   }
   try:
-    lock.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+    fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+      json.dump(lock_data, f, indent=2)
     return True
+  except FileExistsError:
+    logging.warning("[!] Lock race detected; another process acquired lock.")
+    return False
   except Exception as e:
     logging.warning(f"[!] Failed to write scheduler lock: {e}")
     return False
+
+
+def _heartbeat_worker(stop_event: threading.Event) -> None:
+  """Updates lock file timestamp every 15s to prevent premature lock reclaim."""
+  lock = get_lock_file()
+  while not stop_event.wait(15):
+    if not lock.is_file():
+      break
+    try:
+      content = lock.read_text(encoding="utf-8")
+      data = json.loads(content)
+      data["updated_at"] = time.time()
+      lock.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+      break
 
 
 def release_lock() -> None:
@@ -98,6 +120,9 @@ def job() -> None:
   logging.info("[*] Scheduled time reached. Verifying execution lock...")
   if not check_and_acquire_lock():
     return
+  stop_event = threading.Event()
+  hb_thread = threading.Thread(target=_heartbeat_worker, args=(stop_event,), daemon=True)
+  hb_thread.start()
   try:
     logging.info("[*] Launching main.py...")
     res = subprocess.run([sys.executable, "scripts/main.py"], check=False)
@@ -106,6 +131,7 @@ def job() -> None:
     else:
       logging.warning(f"[!] Pipeline exited with code {res.returncode}.")
   finally:
+    stop_event.set()
     release_lock()
 
 
