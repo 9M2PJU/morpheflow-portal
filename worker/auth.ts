@@ -331,6 +331,8 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MorpheFlow — Gateway Lock</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apk-icon.png">
   <style>
     :root {
       --bg-base: #06080b;
@@ -486,7 +488,7 @@ export function renderLoginScreen(error: string = '', lockedSeconds: number = 0)
 </head>
 <body>
   <div class="card">
-    <img src="/logo.png" alt="MorpheFlow Logo" class="logo" onerror="this.style.display='none'">
+    <img src="/trim-logo.png" alt="MorpheFlow Logo" class="logo" onerror="this.src='/logo.png'">
     <div class="badge-lock">🔒 Protected Access</div>
     <h1>MorpheFlow Gateway</h1>
     <p class="subtitle">Single-user console • Enter master password to unlock</p>

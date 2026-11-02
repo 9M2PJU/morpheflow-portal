@@ -218,10 +218,17 @@ a {
   height: 28px;
   display: grid;
   place-items: center;
-  background: var(--accent-base);
-  color: var(--accent-ink);
+  background: transparent;
   border-radius: var(--radius-sm);
-  box-shadow: var(--refraction-rim);
+}
+
+.brand-icon-slot img {
+  filter: drop-shadow(0 2px 8px rgba(2, 132, 199, 0.45));
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brand-icon-slot:hover img {
+  transform: scale(1.12) rotate(-5deg);
 }
 
 .brand-title {
