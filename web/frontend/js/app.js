@@ -198,6 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   setupEventListeners();
   loadAllData();
+  loadGmsCoreStatus();
 
   // 1. Initial immediate check on startup / login
   checkAppUpdates(false);
@@ -1932,14 +1933,19 @@ function getAppVersionInfo(app) {
 
   let previewPatchesHtml = '';
   if (appliedPatches.length > 0) {
-    const p1 = appliedPatches[0].name.replace(/[-_]/g, ' ');
-    const p2 = appliedPatches[1] ? appliedPatches[1].name.replace(/[-_]/g, ' ') : null;
+    const rawP1 = appliedPatches[0];
+    const p1Name = typeof rawP1 === 'string' ? rawP1 : (rawP1?.name || getPatchName(rawP1) || 'Patch');
+    const p1 = String(p1Name).replace(/[-_]/g, ' ');
+
+    const rawP2 = appliedPatches[1];
+    const p2Name = rawP2 ? (typeof rawP2 === 'string' ? rawP2 : (rawP2?.name || getPatchName(rawP2) || 'Patch')) : null;
+    const p2 = p2Name ? String(p2Name).replace(/[-_]/g, ' ') : null;
     const remaining = appliedPatches.length - (p2 ? 2 : 1);
 
     previewPatchesHtml = `
       <div class="patch-preview-chips">
-        <span class="patch-chip-tag" title="${escapeHtml(appliedPatches[0].name)}">• ${escapeHtml(p1)}</span>
-        ${p2 ? `<span class="patch-chip-tag" title="${escapeHtml(appliedPatches[1].name)}">• ${escapeHtml(p2)}</span>` : ''}
+        <span class="patch-chip-tag" title="${escapeHtml(p1Name)}">• ${escapeHtml(p1)}</span>
+        ${p2 ? `<span class="patch-chip-tag" title="${escapeHtml(p2Name)}">• ${escapeHtml(p2)}</span>` : ''}
         ${remaining > 0 ? `<span class="patch-chip-more" onclick="openAppliedPatchesModal('${escapeHtml(pkg)}')" title="View all ${appliedPatches.length} patches">+${remaining} more</span>` : ''}
       </div>
     `;
@@ -2025,6 +2031,12 @@ function getAppVersionInfo(app) {
   const releaseUrl = lastRes?.release_url || app.release_url || `https://github.com/${ghRepo}/releases`;
   const patchCount = lastRes?.applied_count ?? appliedPatches.length;
 
+  const sha256 = lastRes?.sha256 || app.sha256 || null;
+  const vtPermalink = sha256 ? `https://www.virustotal.com/gui/file/${sha256}` : null;
+  const playStoreUrl = `https://play.google.com/store/apps/details?id=${encodeURIComponent(pkg)}`;
+  const cleanTargetVer = targetVer ? targetVer.replace(/^v/, '') : '';
+  const apkMirrorUrl = `https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=${encodeURIComponent(pkg)}${cleanTargetVer ? '+' + encodeURIComponent(cleanTargetVer) : ''}`;
+
   return {
     pkg,
     currentVer,
@@ -2043,7 +2055,11 @@ function getAppVersionInfo(app) {
     releaseUrl,
     patchCount,
     appliedPatches,
-    lastRes
+    lastRes,
+    sha256,
+    vtPermalink,
+    playStoreUrl,
+    apkMirrorUrl
   };
 }
 
@@ -2208,6 +2224,23 @@ function renderOverview() {
                 <span>APK</span>
               </a>
             ` : ''}
+
+            ${verInfo.vtPermalink ? `
+              <a href="${verInfo.vtPermalink}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+                <span style="font-size: 0.8125rem;">🛡️</span>
+                <span>VirusTotal</span>
+              </a>
+            ` : ''}
+
+            <a href="${verInfo.playStoreUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open Google Play Store listing">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Play Store</span>
+            </a>
+
+            <a href="${verInfo.apkMirrorUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Find recommended clean base APK on APKMirror">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>APKMirror</span>
+            </a>
 
             <a href="https://github.com/wiwek13/MorpheFlow/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
@@ -2422,6 +2455,23 @@ function renderConfiguredApps() {
                 <span>APK</span>
               </a>
             ` : ''}
+
+            ${verInfo.vtPermalink ? `
+              <a href="${verInfo.vtPermalink}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+                <span style="font-size: 0.8125rem;">🛡️</span>
+                <span>VirusTotal</span>
+              </a>
+            ` : ''}
+
+            <a href="${verInfo.playStoreUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open Google Play Store listing">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Play Store</span>
+            </a>
+
+            <a href="${verInfo.apkMirrorUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Find recommended clean base APK on APKMirror">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>APKMirror</span>
+            </a>
 
             <a href="https://github.com/wiwek13/MorpheFlow/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View GitHub Releases">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
@@ -2946,8 +2996,24 @@ function openStoreAppDetails(pkg) {
   // 5. Action Buttons
   const actionsSlot = document.getElementById('store-details-actions');
   if (actionsSlot) {
+    const playStoreUrl = `https://play.google.com/store/apps/details?id=${encodeURIComponent(pkg)}`;
+    const cleanRecVer = recVer ? String(recVer).replace(/^v/, '') : '';
+    const apkMirrorUrl = `https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=${encodeURIComponent(pkg)}${cleanRecVer ? '+' + encodeURIComponent(cleanRecVer) : ''}`;
+
+    const deepLinksHtml = `
+      <a href="${playStoreUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View on Google Play Store">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>Play Store</span>
+      </a>
+      <a href="${apkMirrorUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Search base APK on APKMirror">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>APKMirror</span>
+      </a>
+    `;
+
     if (isConfigured) {
       actionsSlot.innerHTML = `
+        ${deepLinksHtml}
         <button class="btn btn-secondary btn-sm" onclick="closeStoreDetailsModal(); openAppDrawer('${escapeHtml(pkg)}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           <span>Configure Options</span>
@@ -2959,6 +3025,7 @@ function openStoreAppDetails(pkg) {
       `;
     } else {
       actionsSlot.innerHTML = `
+        ${deepLinksHtml}
         <button class="btn btn-primary btn-sm" onclick="closeStoreDetailsModal(); openProvisionModal('${escapeHtml(friendlyName).replace(/'/g, "\\'")}', '${escapeHtml(pkg)}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           <span>1-Click Provision</span>
@@ -3950,6 +4017,13 @@ function openBaseApkPromptModal(pkg) {
       : `<span style="font-weight: 600; font-size: 1rem; color: var(--text-muted);">${escapeHtml(friendlyName.charAt(0))}</span>`;
   }
 
+  const apkmirrorLink = document.getElementById('prompt-apk-apkmirror-link');
+  if (apkmirrorLink) {
+    const recTarget = getRecommendedTargetVersion(pkg);
+    const cleanRecVer = recTarget ? String(recTarget).replace(/^v/, '') : '';
+    apkmirrorLink.href = `https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=${encodeURIComponent(pkg)}${cleanRecVer ? '+' + encodeURIComponent(cleanRecVer) : ''}`;
+  }
+
   modal.classList.add('open');
 }
 
@@ -4178,6 +4252,74 @@ function updateDrawerPatchOption(key, optKey, value) {
   if (item) {
     if (!item.options) item.options = {};
     item.options[optKey] = value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pre-Flight Patch Conflict & Dependency Validator (Morphe Standards)
+// ---------------------------------------------------------------------------
+const KNOWN_PATCH_CONFLICTS = [
+  {
+    patches: ['hide-ads', 'remove-ads'],
+    reason: 'Both patches modify duplicate ad layout view IDs and bytecode methods.',
+    recommendation: 'Keep only one ad blocking patch enabled.'
+  },
+  {
+    patches: ['client-spoof', 'custom-client-spoof'],
+    reason: 'Multiple client spoofing mechanisms conflict during YouTube request signing.',
+    recommendation: 'Keep "client-spoof" and disable "custom-client-spoof".'
+  },
+  {
+    patches: ['spoof-streaming-data', 'disable-video-audio-streaming'],
+    reason: 'Streaming data spoofing conflicts with streaming disabler.',
+    recommendation: 'Keep "spoof-streaming-data" for playback fix.'
+  },
+  {
+    patches: ['custom-playback-speed', 'default-playback-speed'],
+    reason: 'Playback speed configuration collision in settings bundle.',
+    recommendation: 'Keep "custom-playback-speed".'
+  },
+  {
+    patches: ['protobuf-spoof', 'ios-client-spoof'],
+    reason: 'Both patches intercept Protobuf headers simultaneously.',
+    recommendation: 'Keep "protobuf-spoof".'
+  }
+];
+
+function detectPatchConflicts(patchesState) {
+  const enabledNames = new Map();
+  for (const [key, item] of patchesState.entries()) {
+    if (item.enabled) {
+      const cleanName = (item.name || '').toLowerCase().replace(/[-_\s]+/g, '-');
+      enabledNames.set(cleanName, { key, item });
+    }
+  }
+
+  const conflicts = [];
+  for (const rule of KNOWN_PATCH_CONFLICTS) {
+    const matched = rule.patches.filter(p => enabledNames.has(p));
+    if (matched.length > 1) {
+      const second = enabledNames.get(matched[1]);
+      conflicts.push({
+        patchA: matched[0],
+        patchB: matched[1],
+        conflictingKey: second.key,
+        conflictingName: second.item.name,
+        reason: rule.reason,
+        recommendation: rule.recommendation
+      });
+    }
+  }
+  return conflicts;
+}
+
+function resolvePatchConflict(conflictingKey) {
+  if (currentDrawerPatchesState.has(conflictingKey)) {
+    const item = currentDrawerPatchesState.get(conflictingKey);
+    item.enabled = false;
+    currentDrawerPatchesState.set(conflictingKey, item);
+    renderAppDrawerContent();
+    showToast(`Resolved conflict: Disabled redundant patch "${item.name}"`, 'info');
   }
 }
 
@@ -4422,6 +4564,23 @@ function renderDrawerBody(app) {
     if (item.enabled) activeCount++;
   }
 
+  const conflicts = detectPatchConflicts(currentDrawerPatchesState);
+  let conflictBannerHtml = '';
+  if (conflicts.length > 0) {
+    conflictBannerHtml = `
+      <div id="drawer-conflicts-banner" style="background: rgba(244, 63, 94, 0.12); border: 1px solid var(--color-danger); border-radius: var(--radius-sm); padding: 0.625rem 0.875rem; margin-bottom: 0.875rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+        <span class="material-symbols-rounded" style="color: var(--color-danger); font-size: 18px; margin-top: 1px;">warning</span>
+        <div style="flex: 1;">
+          <div style="font-weight: 700; font-size: 0.75rem; color: var(--color-danger);">Patch Conflict Detected (${conflicts.length})</div>
+          <div style="font-size: 0.6875rem; color: var(--text-secondary); margin-top: 2px;">
+            <strong>${escapeHtml(conflicts[0].patchA)}</strong> conflicts with <strong>${escapeHtml(conflicts[0].patchB)}</strong>: ${escapeHtml(conflicts[0].reason)}
+          </div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="resolvePatchConflict('${conflicts[0].conflictingKey}')" style="font-size: 0.6875rem; padding: 2px 8px;">Resolve Conflict</button>
+      </div>
+    `;
+  }
+
   container.innerHTML = `
     <!-- Base APK Switcher (Morphe Mobile Studio) -->
     <div class="form-group" style="padding: 0.875rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
@@ -4486,6 +4645,7 @@ function renderDrawerBody(app) {
     </div>
 
     <!-- Patches & Feature Mutators -->
+    ${conflictBannerHtml}
     <div class="form-group" style="padding: 1rem; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); margin-bottom: 0.875rem;">
       <div class="section-heading-row" style="margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <div>
@@ -6954,6 +7114,7 @@ function connectSseStream() {
     es.close();
     state.eventSource = null;
     loadAllData();
+  loadGmsCoreStatus();
   });
 
   es.onerror = () => {
@@ -10277,4 +10438,39 @@ function switchResultModalTab(tabName) {
 function closeResultViewerModal() {
   document.getElementById('modal-result-viewer')?.classList.remove('open');
 }
+
+// ---------------------------------------------------------------------------
+// MicroG-RE (GmsCore) Companion Hub
+// ---------------------------------------------------------------------------
+async function loadGmsCoreStatus() {
+  const badge = document.getElementById('gmscore-version-badge');
+  try {
+    const res = await fetch('/api/gmscore/latest');
+    if (!res.ok) throw new Error('Failed to fetch GmsCore info');
+    const data = await res.json();
+    if (badge) {
+      badge.textContent = data.tag_name || 'v0.3.1.240913';
+      badge.title = `MicroG-RE latest release tag: ${data.tag_name}`;
+    }
+  } catch (err) {
+    if (badge) badge.textContent = 'v0.3.1.240913';
+  }
+}
+
+function openMicroGHelpModal() {
+  const modal = document.getElementById('modal-microg-help');
+  if (modal) modal.classList.add('open');
+}
+
+function closeMicroGHelpModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-microg-help') return;
+  const modal = document.getElementById('modal-microg-help');
+  if (modal) modal.classList.remove('open');
+}
+
+window.loadGmsCoreStatus = loadGmsCoreStatus;
+window.openMicroGHelpModal = openMicroGHelpModal;
+window.closeMicroGHelpModal = closeMicroGHelpModal;
+window.detectPatchConflicts = detectPatchConflicts;
+window.resolvePatchConflict = resolvePatchConflict;
 

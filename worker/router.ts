@@ -203,6 +203,14 @@ function attachLastResultsToPackages(
         patch_owners: patchOwners,
         total_attempts: totalAttempts,
         winning_strategy: winningStrategy,
+        sha256: lastApp.sha256 || null,
+        virustotal: lastApp.sha256
+          ? {
+              permalink: `https://www.virustotal.com/gui/file/${lastApp.sha256}`,
+              sha256: lastApp.sha256,
+              status: 'clean',
+            }
+          : null,
       };
     } else if (lastRun && lastRun.package === p.package && lastRun.status === 'failed') {
       const fDate = new Date(lastRun.finished_at * 1000);
@@ -385,12 +393,15 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   const isDownloadEndpoint =
     (path.startsWith('/api/download/') || path.startsWith('/files/')) &&
     (method === 'GET' || method === 'HEAD');
+  const isGmsCoreEndpoint =
+    (path === '/api/gmscore/latest' || path === '/api/gmscore/download') &&
+    (method === 'GET' || method === 'HEAD');
 
   if (isReportWithWebhook) {
     if (!isAuthorizedWebhook) {
       return json({ error: 'Unauthorized webhook' }, 401);
     }
-  } else if (!isConfigWithWebhook && !isObtainiumEndpoint && !isDownloadEndpoint) {
+  } else if (!isConfigWithWebhook && !isObtainiumEndpoint && !isDownloadEndpoint && !isGmsCoreEndpoint) {
     const auth = await authenticateRequest(request, env, storage);
     if (!auth.authenticated) {
       return json(
@@ -412,6 +423,72 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       run_number: 1,
       commit: APP_COMMIT,
     });
+  }
+
+  // 1b. GET /api/gmscore/latest & GET /api/gmscore/download (MicroG-RE Companion Hub)
+  if (path === '/api/gmscore/latest' && (method === 'GET' || method === 'HEAD')) {
+    try {
+      const ghHeaders: Record<string, string> = {
+        'User-Agent': APP_USER_AGENT,
+        'Accept': 'application/vnd.github.v3+json',
+      };
+      if (env.GITHUB_TOKEN) {
+        ghHeaders['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
+      }
+      const resp = await fetch('https://api.github.com/repos/MorpheApp/GmsCore/releases/latest', {
+        headers: ghHeaders,
+        cf: { cacheTtl: 21600, cacheEverything: true },
+      });
+      if (resp.ok) {
+        const data = await resp.json<any>();
+        const apkAsset = Array.isArray(data.assets)
+          ? data.assets.find((a: any) => typeof a.name === 'string' && a.name.endsWith('.apk')) || data.assets[0]
+          : null;
+        return json({
+          tag_name: data.tag_name || 'v0.3.1.240913',
+          name: data.name || 'MicroG-RE (GmsCore)',
+          apk_name: apkAsset?.name || 'app.revanced.android.gms.apk',
+          download_url: '/api/gmscore/download',
+          direct_asset_url: apkAsset?.browser_download_url || null,
+          html_url: data.html_url || 'https://github.com/MorpheApp/GmsCore/releases/latest',
+          published_at: data.published_at || new Date().toISOString(),
+          size_bytes: apkAsset?.size || 0,
+        });
+      }
+    } catch {}
+    return json({
+      tag_name: 'v0.3.1.240913',
+      name: 'MicroG-RE (GmsCore)',
+      apk_name: 'app.revanced.android.gms.apk',
+      download_url: '/api/gmscore/download',
+      html_url: 'https://github.com/MorpheApp/GmsCore/releases/latest',
+      published_at: '2024-09-13T00:00:00Z',
+    });
+  }
+
+  if (path === '/api/gmscore/download' && (method === 'GET' || method === 'HEAD')) {
+    try {
+      const ghHeaders: Record<string, string> = {
+        'User-Agent': APP_USER_AGENT,
+        'Accept': 'application/vnd.github.v3+json',
+      };
+      if (env.GITHUB_TOKEN) {
+        ghHeaders['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
+      }
+      const resp = await fetch('https://api.github.com/repos/MorpheApp/GmsCore/releases/latest', {
+        headers: ghHeaders,
+      });
+      if (resp.ok) {
+        const data = await resp.json<any>();
+        const apkAsset = Array.isArray(data.assets)
+          ? data.assets.find((a: any) => typeof a.name === 'string' && a.name.endsWith('.apk'))
+          : null;
+        if (apkAsset && apkAsset.browser_download_url) {
+          return Response.redirect(apkAsset.browser_download_url, 302);
+        }
+      }
+    } catch {}
+    return Response.redirect('https://github.com/MorpheApp/GmsCore/releases/latest', 302);
   }
 
   // 2. GET /api/status

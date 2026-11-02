@@ -43,6 +43,41 @@ function normalizeRequestUrl(request: Request): Request {
   return new Request(url.toString(), request);
 }
 
+function extractRecommendedVersion(catalogData: any, pkg: string): string | null {
+  if (!catalogData) return null;
+  const comp = catalogData.compatibilities;
+  if (Array.isArray(comp)) {
+    for (const group of comp) {
+      if (Array.isArray(group)) {
+        for (const item of group) {
+          if (item && (item.packageName === pkg || item.name === pkg)) {
+            if (Array.isArray(item.targets) && item.targets.length > 0 && item.targets[0]?.version) {
+              return String(item.targets[0].version);
+            }
+          }
+        }
+      }
+    }
+  }
+  // Check bundles for compatible package definitions
+  if (Array.isArray(catalogData.bundles)) {
+    for (const b of catalogData.bundles) {
+      const patches = b.patches || [];
+      for (const p of patches) {
+        if (Array.isArray(p.compatiblePackages)) {
+          for (const cp of p.compatiblePackages) {
+            const cpName = typeof cp === 'string' ? cp : (cp?.name || cp?.packageName);
+            if (cpName === pkg && Array.isArray(cp?.targets) && cp.targets[0]?.version) {
+              return String(cp.targets[0].version);
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const normalizedRequest = normalizeRequestUrl(request);
@@ -122,10 +157,17 @@ export default {
           interval: 'hourly',
           auto_sync: true,
         });
+        await storage.setConfig('catalog_cache', data);
         console.log(`[MorpheFlow Cron] Hourly Community sync completed: ${totalApps} apps, ${totalBundles} bundles.`);
       }
     } catch (syncErr: any) {
       console.warn(`[MorpheFlow Cron] Community sync error: ${syncErr?.message}`);
+    }
+
+    if (!latestCatalogData) {
+      try {
+        latestCatalogData = await storage.getConfig<any>('catalog_cache');
+      } catch {}
     }
 
     // 2. Scheduled Build Dispatch (Hourly check for scheduled time OR unbuilt waiting apps OR available updates)
@@ -156,14 +198,13 @@ export default {
 
     // Check for configured apps with upstream target version updates available
     const updatingPkgs: string[] = [];
-    if (latestCatalogData && latestCatalogData.store) {
+    if (latestCatalogData) {
       for (const pkgId of configuredPkgs) {
         const curVer = patchedPkgMap.get(pkgId);
-        const storeItem = latestCatalogData.store[pkgId];
-        const recVer = storeItem?.recommended_version || storeItem?.target_version;
+        const recVer = extractRecommendedVersion(latestCatalogData, pkgId);
         if (curVer && recVer) {
-          const cleanCur = String(curVer).replace(/^v/, '');
-          const cleanRec = String(recVer).replace(/^v/, '');
+          const cleanCur = String(curVer).replace(/^v/, '').trim();
+          const cleanRec = String(recVer).replace(/^v/, '').trim();
           if (cleanCur !== cleanRec) {
             updatingPkgs.push(pkgId);
           }

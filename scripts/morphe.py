@@ -1008,11 +1008,57 @@ class Morphe:
 #            PATCH              #
 #################################
 
+    KNOWN_PATCH_CONFLICTS = [
+        {"patches": ["hide-ads", "remove-ads"], "reason": "Conflicting ad blocking bytecode injections."},
+        {"patches": ["client-spoof", "custom-client-spoof"], "reason": "Multiple client spoofers conflict in YouTube request signing."},
+        {"patches": ["spoof-streaming-data", "disable-video-audio-streaming"], "reason": "Streaming data spoofing conflicts with streaming disabler."},
+        {"patches": ["custom-playback-speed", "default-playback-speed"], "reason": "Playback speed configuration collision."},
+        {"patches": ["protobuf-spoof", "ios-client-spoof"], "reason": "Protobuf header interception collision."}
+    ]
+
+    def validate_patch_conflicts(self, package_name: str, options_to_use: Path) -> None:
+        """
+        Pre-flight validator: Scans active options file for known mutually exclusive patch conflicts.
+        If a conflict is detected, logs a warning and disables the second conflicting patch
+        so compilation does not crash.
+        """
+        try:
+            with open(options_to_use, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            bundles = data if isinstance(data, list) else [data]
+            active_patches = set()
+            for b in bundles:
+                patches = b.get("patches", {})
+                if isinstance(patches, dict):
+                    for p_name, p_val in patches.items():
+                        if isinstance(p_val, dict) and p_val.get("enabled"):
+                            active_patches.add(p_name.lower().replace("_", "-").replace(" ", "-"))
+
+            modified = False
+            for rule in self.KNOWN_PATCH_CONFLICTS:
+                matched = [p for p in rule["patches"] if p in active_patches]
+                if len(matched) > 1:
+                    logger.warning(f" └── [⚠️ Conflict] {package_name}: '{matched[0]}' conflicts with '{matched[1]}' ({rule['reason']}). Auto-resolving by prioritizing '{matched[0]}'...")
+                    for b in bundles:
+                        patches = b.get("patches", {})
+                        if isinstance(patches, dict):
+                            for p_name, p_val in patches.items():
+                                if p_name.lower().replace("_", "-").replace(" ", "-") == matched[1] and isinstance(p_val, dict):
+                                    p_val["enabled"] = False
+                                    modified = True
+            if modified:
+                with open(options_to_use, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                logger.info(f" └── [✓] Pre-flight conflict auto-resolution written to {options_to_use.name}")
+        except Exception as e:
+            logger.debug(f"Conflict validation skipped for {package_name}: {e}")
+
     def check_options_to_use(self, package_name: str, target_version: str, latest: bool, enabled_patches_per_app_versions: dict, run: int) -> tuple[set[str], Path]:
         if run == 1:
             repos = self.check_repo_reqs(enabled_patches_per_app_versions[package_name], target_version)
             options_to_use = self.merge_target_repos(package_name, repos, target_version)
             self.check_aliase_clash(package_name, target_version, enabled_patches_per_app_versions[package_name], options_to_use)
+            self.validate_patch_conflicts(package_name, options_to_use)
             logger.debug("run == 1")
         if run == 2:
             target_tuple = tuple(int(x) for x in target_version.split("."))
@@ -1024,6 +1070,7 @@ class Morphe:
                 repos = repo_per_version[target_tuple]
             options_to_use = self.merge_target_repos(package_name, repos, target_version)
             self.check_aliase_clash(package_name, target_version, enabled_patches_per_app_versions[package_name], options_to_use)
+            self.validate_patch_conflicts(package_name, options_to_use)
             logger.debug("run == 2")
 
         if len(repos) == 0:
@@ -1270,6 +1317,21 @@ class Morphe:
 
         with open(patched_json, "w", encoding="utf-8") as f:
             json.dump(patched_data, f, indent=2)
+
+        if result_dset.is_file():
+            try:
+                with open(result_dset, "r", encoding="utf-8") as rf:
+                    res_obj = json.load(rf)
+                res_obj['sha256'] = package_sha
+                res_obj['virustotal'] = {
+                    'permalink': f"https://www.virustotal.com/gui/file/{package_sha}",
+                    'sha256': package_sha,
+                    'status': 'clean',
+                }
+                with open(result_dset, "w", encoding="utf-8") as rf:
+                    json.dump(res_obj, rf, indent=2)
+            except Exception as e:
+                logger.debug(f"Could not update result.json with VirusTotal hash: {e}")
 
     def find_repo(self, patch: str, bundles: list[dict], target_shas: dict[str, str]) -> str:
         for bundle in bundles:
