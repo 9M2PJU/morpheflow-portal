@@ -5502,6 +5502,133 @@ function openDirectObtainiumDeepLink(e) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Keystore Management
+// ---------------------------------------------------------------------------
+async function loadKeystoreStatus() {
+  const badge = document.getElementById('keystore-status-badge');
+  const desc = document.getElementById('keystore-status-desc');
+  const btnReset = document.getElementById('btn-reset-keystore');
+
+  try {
+    const res = await fetch(`/api/settings/keystore?_t=${Date.now()}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    state.keystore = data;
+
+    if (badge) {
+      badge.textContent = data.has_custom ? 'Custom Key' : 'Deterministic Key';
+      badge.className = data.has_custom ? 'keystore-pill badge-accent' : 'keystore-pill';
+    }
+    if (desc) {
+      if (data.has_custom) {
+        desc.innerHTML = `
+          File: <code>${escapeHtml(data.filename)}</code><br>
+          Alias: <code>${escapeHtml(data.alias)}</code> • Signature: Custom Imported<br>
+          <span style="font-size: 0.6875rem; color: var(--text-muted);">Updated: ${new Date(data.updated_at).toLocaleString()}</span>
+        `;
+      } else {
+        desc.innerHTML = `
+          File: <code>morpheflow.keystore</code><br>
+          Alias: <code>morpheflow</code> • Signature: Deterministic Default<br>
+          <span style="font-size: 0.6875rem; color: var(--text-muted);">Permanent seal ensures clean app updates without signature mismatch.</span>
+        `;
+      }
+    }
+    if (btnReset) {
+      btnReset.style.display = data.has_custom ? 'inline-flex' : 'none';
+    }
+  } catch (err) {
+    console.warn('Could not load keystore status:', err);
+  }
+}
+
+function openKeystoreUploadModal() {
+  const modal = document.getElementById('modal-keystore-upload');
+  if (modal) modal.classList.add('open');
+}
+
+function closeKeystoreUploadModal(e) {
+  if (e && e.target !== e.currentTarget && e.currentTarget.id === 'modal-keystore-upload') return;
+  const modal = document.getElementById('modal-keystore-upload');
+  if (modal) modal.classList.remove('open');
+}
+
+async function handleKeystoreUploadSubmit(e) {
+  e.preventDefault();
+  const fileInput = document.getElementById('keystore-file-input');
+  const aliasInput = document.getElementById('keystore-alias-input');
+  const passInput = document.getElementById('keystore-pass-input');
+  const entryPassInput = document.getElementById('keystore-entry-pass-input');
+  const submitBtn = document.getElementById('btn-submit-keystore-upload');
+
+  if (!fileInput || !fileInput.files[0]) {
+    showToast('Please select a .keystore or .jks file', 'error');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const alias = (aliasInput?.value || '').trim() || 'custom';
+  const keystorePass = passInput?.value || '';
+  const keyPass = entryPassInput?.value || keystorePass;
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 0.8s linear infinite;">sync</span> <span>Importing...</span>';
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('alias', alias);
+    formData.append('keystore_pass', keystorePass);
+    formData.append('key_pass', keyPass);
+
+    const res = await fetch('/api/settings/keystore/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Upload failed');
+    }
+
+    const data = await res.json();
+    showToast(data.message || 'Custom keystore imported successfully!', 'success');
+    closeKeystoreUploadModal();
+    loadKeystoreStatus();
+  } catch (err) {
+    showToast('Keystore import error: ' + err.message, 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> <span>Import & Enforce Signature</span>';
+    }
+  }
+}
+
+function downloadActiveKeystore() {
+  if (state.keystore && state.keystore.has_custom) {
+    window.location.href = '/api/settings/keystore/download';
+  } else {
+    showToast('Currently using auto-generated default keystore (morpheflow.keystore).', 'info');
+  }
+}
+
+async function resetKeystoreToDefault() {
+  if (!confirm('Revert back to the permanent MorpheFlow deterministic keystore?')) return;
+  try {
+    const res = await fetch('/api/settings/keystore', { method: 'DELETE' });
+    if (!res.ok) throw new Error('Reset failed');
+    const data = await res.json();
+    showToast(data.message || 'Reset to default deterministic keystore', 'success');
+    loadKeystoreStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 // Attach globally
 window.switchTab = switchTab;
 window.openAppDrawer = openAppDrawer;
@@ -5569,6 +5696,13 @@ window.handleCustomApkFileSelected = handleCustomApkFileSelected;
 window.exportConfigBackup = exportConfigBackup;
 window.importConfigBackup = importConfigBackup;
 window.state = state;
+window.openKeystoreUploadModal = openKeystoreUploadModal;
+window.closeKeystoreUploadModal = closeKeystoreUploadModal;
+window.handleKeystoreUploadSubmit = handleKeystoreUploadSubmit;
+window.downloadActiveKeystore = downloadActiveKeystore;
+window.resetKeystoreToDefault = resetKeystoreToDefault;
+window.loadKeystoreStatus = loadKeystoreStatus;
+window.setObtainiumSourceMode = setObtainiumSourceMode;
 window.renderOverview = renderOverview;
 window.renderConfiguredApps = renderConfiguredApps;
 
@@ -6045,6 +6179,7 @@ async function loadSettings(showFeedback = false) {
     const data = await res.json();
     state.settings = data;
     renderSettings(data);
+    loadKeystoreStatus();
     if (showFeedback) {
       showToast('Settings reloaded from disk', 'success');
     }

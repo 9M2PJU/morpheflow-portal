@@ -11,6 +11,7 @@ import {
   StorageStats,
   SystemSettings,
   EmailSettings,
+  KeystoreSettings,
 } from './types';
 
 export function formatBytes(bytes: number): string {
@@ -153,6 +154,22 @@ export class StorageService {
       .prepare('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?')
       .bind(key, serialized, serialized)
       .run();
+  }
+
+  // --- Keystore Management ---
+  async getKeystore(): Promise<KeystoreSettings | null> {
+    return this.getConfig<KeystoreSettings>('keystore');
+  }
+
+  async saveKeystore(keystore: KeystoreSettings): Promise<void> {
+    await this.setConfig('keystore', keystore);
+  }
+
+  async resetKeystore(): Promise<void> {
+    await this.setConfig('keystore', {
+      has_custom: false,
+      updated_at: new Date().toISOString(),
+    });
   }
 
   // --- Packages ---

@@ -59,6 +59,16 @@ export interface RunHistoryRecord {
   finished_at: number;
 }
 
+export interface KeystoreSettings {
+  has_custom: boolean;
+  filename?: string;
+  alias?: string;
+  keystore_pass?: string;
+  key_pass?: string;
+  data_base64?: string;
+  updated_at?: string;
+}
+
 export interface SystemSettings {
   architecture?: string;
   striplibs?: boolean;

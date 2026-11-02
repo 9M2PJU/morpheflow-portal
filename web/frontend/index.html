@@ -456,21 +456,32 @@
         </section>
 
         <aside class="telemetry-pillar">
-          <div class="crypto-seal-card">
+          <div class="crypto-seal-card" id="keystore-management-card">
             <div class="crypto-header">
               <span class="crypto-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                Keystore Vault
+                Deterministic Signing Seal
               </span>
-              <span class="keystore-pill">Active</span>
+              <span class="keystore-pill" id="keystore-status-badge">Active</span>
             </div>
-            <p class="crypto-notice" style="margin-bottom: 0.75rem;">
-              Path: <code>tools/morpheflow-data/morpheflow.keystore</code><br>
-              Algorithm: RSA 4096-bit (MorpheFlow Dedicated Keystore)
+            <p class="crypto-notice" id="keystore-status-desc" style="margin-bottom: 0.75rem;">
+              Algorithm: RSA 4096-bit (MorpheFlow Keystore)<br>
+              Status: Loading keystore configuration...
             </p>
-            <a href="/api/keystore/download" download="morpheflow.keystore" class="btn-secondary" style="font-size: 0.75rem; justify-content: center;">
-              Backup Keystore File
-            </a>
+            <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+              <button type="button" class="btn-primary" onclick="openKeystoreUploadModal()" style="font-size: 0.75rem; justify-content: center;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Import Custom Keystore (.jks / .keystore)</span>
+              </button>
+              <button type="button" class="btn-secondary" id="btn-download-keystore" onclick="downloadActiveKeystore()" style="font-size: 0.75rem; justify-content: center;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Backup Keystore File</span>
+              </button>
+              <button type="button" class="btn-secondary" id="btn-reset-keystore" onclick="resetKeystoreToDefault()" style="font-size: 0.75rem; justify-content: center; display: none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                <span>Reset to Deterministic Default</span>
+              </button>
+            </div>
           </div>
 
           <div class="crypto-seal-card" style="margin-top: 1rem;">
@@ -961,6 +972,59 @@
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: Custom Keystore Import -->
+  <div class="modal-overlay" id="modal-keystore-upload" onclick="closeKeystoreUploadModal(event)">
+    <div class="modal-container" style="max-width: 500px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="app-card-icon-frame" style="width: 40px; height: 40px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <div>
+            <h2 style="font-size: 1rem; font-weight: 700; margin: 0;">Import Custom Keystore</h2>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Prevent Android signature mismatch errors (INSTALL_FAILED_UPDATE_INCOMPATIBLE)</div>
+          </div>
+        </div>
+        <button class="btn btn-icon" onclick="closeKeystoreUploadModal()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <form id="form-keystore-upload" onsubmit="handleKeystoreUploadSubmit(event)" style="padding: 1.25rem;">
+        <div style="display: flex; flex-direction: column; gap: 0.875rem;">
+          <div class="form-group">
+            <label class="form-label">Keystore File (.keystore or .jks) *</label>
+            <input type="file" id="keystore-file-input" accept=".keystore,.jks" class="form-input" required>
+            <span class="form-helper">Exported from Morphe Mobile, ReVanced Manager, or Android Studio</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Key Alias *</label>
+            <input type="text" id="keystore-alias-input" class="form-input" placeholder="e.g. custom or morpheflow" required value="custom">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Keystore Password</label>
+            <input type="password" id="keystore-pass-input" class="form-input" placeholder="Keystore password (if password protected)">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Key Entry Password</label>
+            <input type="password" id="keystore-entry-pass-input" class="form-input" placeholder="Key password (defaults to keystore password)">
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeKeystoreUploadModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="btn-submit-keystore-upload">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span>Import & Enforce Signature</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

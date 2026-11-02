@@ -569,6 +569,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     const email = (await storage.getConfig('email')) || {};
     const tunnels = (await storage.getConfig('tunnels')) || {};
     const repoVersions = (await storage.getConfig('repo_versions')) || {};
+    const keystore = (await storage.getKeystore()) || { has_custom: false };
 
     return json({
       config: {
@@ -580,6 +581,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
       },
       patched_apps: patchedApps,
       repo_versions: repoVersions,
+      keystore,
     });
   }
 
@@ -797,6 +799,122 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
     return json({
       success: true,
       message: 'Email configuration test acknowledged on Cloudflare Worker edge.',
+    });
+  }
+
+  // 8b. Keystore Status: GET /api/settings/keystore
+  if (path === '/api/settings/keystore' && method === 'GET') {
+    const ks = await storage.getKeystore();
+    if (!ks || !ks.has_custom) {
+      return json({
+        has_custom: false,
+        type: 'deterministic',
+        alias: 'morpheflow',
+        filename: 'morpheflow.keystore',
+        description: 'Permanent deterministic keystore active. Builds across all devices match signature.',
+      });
+    }
+    return json({
+      has_custom: true,
+      type: 'custom',
+      alias: ks.alias || 'custom',
+      filename: ks.filename || 'custom.keystore',
+      updated_at: ks.updated_at,
+      description: `Custom imported keystore active (${ks.filename || 'custom.keystore'}).`,
+    });
+  }
+
+  // 8c. Keystore Upload: POST /api/settings/keystore/upload
+  if (path === '/api/settings/keystore/upload' && method === 'POST') {
+    const contentType = request.headers.get('Content-Type') || '';
+    let filename = 'custom.keystore';
+    let alias = 'custom';
+    let keystorePass = 'morpheflow';
+    let keyPass = 'morpheflow';
+    let base64Data = '';
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const file = formData.get('file');
+      if (!file || typeof file === 'string') {
+        return json({ error: 'Valid .keystore or .jks file is required' }, 400);
+      }
+      filename = (file as File).name || 'custom.keystore';
+      alias = (formData.get('alias') as string)?.trim() || 'custom';
+      keystorePass = (formData.get('keystore_pass') as string) || '';
+      keyPass = (formData.get('key_pass') as string) || keystorePass;
+      const buffer = await (file as File).arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      base64Data = btoa(binary);
+    } else {
+      const body = await request.json<any>();
+      if (!body.data_base64) {
+        return json({ error: 'data_base64 is required' }, 400);
+      }
+      base64Data = body.data_base64;
+      filename = body.filename || 'custom.keystore';
+      alias = body.alias || 'custom';
+      keystorePass = body.keystore_pass || '';
+      keyPass = body.key_pass || keystorePass;
+    }
+
+    if (!base64Data) {
+      return json({ error: 'Keystore binary cannot be empty' }, 400);
+    }
+
+    await storage.saveKeystore({
+      has_custom: true,
+      filename,
+      alias,
+      keystore_pass: keystorePass,
+      key_pass: keyPass,
+      data_base64: base64Data,
+      updated_at: new Date().toISOString(),
+    });
+
+    return json({
+      status: 'success',
+      message: `Custom keystore '${filename}' imported successfully. Builds will now be signed with alias '${alias}'.`,
+    });
+  }
+
+  // 8d. Keystore Download: GET /api/settings/keystore/download
+  if (path === '/api/settings/keystore/download' && method === 'GET') {
+    const ks = await storage.getKeystore();
+    if (!ks || !ks.has_custom || !ks.data_base64) {
+      return json(
+        { error: 'No custom keystore uploaded. Currently using default deterministic keystore.' },
+        404
+      );
+    }
+
+    const binaryString = atob(ks.data_base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return new Response(bytes.buffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${ks.filename || 'custom.keystore'}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  // 8e. Keystore Reset: DELETE /api/settings/keystore
+  if (path === '/api/settings/keystore' && method === 'DELETE') {
+    await storage.resetKeystore();
+    return json({
+      status: 'success',
+      message: 'Reset back to MorpheFlow default deterministic keystore.',
     });
   }
 

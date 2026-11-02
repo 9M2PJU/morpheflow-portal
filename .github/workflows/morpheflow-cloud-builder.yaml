@@ -95,6 +95,27 @@ jobs:
                       with open('tools/morpheflow-data/state/repo_versions.json', 'w') as f:
                           json.dump(repo_versions, f, indent=2)
 
+                  # Restore custom signing keystore from Cloudflare D1 if configured
+                  ks = sync_data.get('keystore')
+                  if ks and ks.get('has_custom') and ks.get('data_base64'):
+                      import base64
+                      ks_bytes = base64.b64decode(ks['data_base64'])
+                      ks_filename = ks.get('filename') or 'custom.keystore'
+                      ks_dest = Path('tools/morpheflow-data') / ks_filename
+                      ks_dest.parent.mkdir(parents=True, exist_ok=True)
+                      with open(ks_dest, 'wb') as kf:
+                          kf.write(ks_bytes)
+                      print(f"[✓] Restored custom signing keystore: {ks_dest} (alias: {ks.get('alias', 'custom')})")
+                      env_file = os.getenv('GITHUB_ENV')
+                      if env_file:
+                          with open(env_file, 'a') as ef:
+                              ef.write(f"MORPHEFLOW_KEYSTORE_PATH={ks_dest.resolve()}\n")
+                              ef.write(f"MORPHEFLOW_KEYSTORE_ALIAS={ks.get('alias', 'custom')}\n")
+                              if ks.get('keystore_pass'):
+                                  ef.write(f"MORPHEFLOW_KEYSTORE_PASSWORD={ks['keystore_pass']}\n")
+                              if ks.get('key_pass'):
+                                  ef.write(f"MORPHEFLOW_KEYSTORE_ENTRY_PASSWORD={ks['key_pass']}\n")
+
                   # Cache Morphe community catalog so all release names, icons, and metadata are available
                   try:
                       cat_req = urllib.request.Request('https://morphe-patches.software/data/bundles.json', headers={'User-Agent': 'MorpheFlow-CloudRunner'})
