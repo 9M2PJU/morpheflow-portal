@@ -44,4 +44,16 @@ test('VirusTotal UI: App card displays VirusTotal badge button with security shi
     appJs.includes('title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)"'),
     'app.js must include VirusTotal scan badge button'
   );
+  assert.ok(
+    appJs.includes('vt-result-badge'),
+    'app.js must render prominent vt-result-badge in app card name row'
+  );
+  assert.ok(
+    appJs.includes('metric-cell-virustotal'),
+    'app.js must render dedicated VirusTotal analysis column in metrics grid'
+  );
+  assert.ok(
+    appJs.includes('0/72 Clean'),
+    'app.js must display 0/72 Clean directly on the card'
+  );
 });

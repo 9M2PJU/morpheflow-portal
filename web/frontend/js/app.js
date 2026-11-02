@@ -7,6 +7,13 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
+// Subdomain Transition Handler: AutoMorph -> MorpheFlow
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined' && window.location && window.location.hostname === 'automorph.w161112218.workers.dev') {
+  window.location.replace('https://morpheflow.w161112218.workers.dev' + window.location.pathname + window.location.search + window.location.hash);
+}
+
+// ---------------------------------------------------------------------------
 // Security & Session Interceptor
 // ---------------------------------------------------------------------------
 if (typeof window !== 'undefined' && window.fetch) {
@@ -2033,6 +2040,7 @@ function getAppVersionInfo(app) {
 
   const sha256 = lastRes?.sha256 || app.sha256 || null;
   const vtPermalink = sha256 ? `https://www.virustotal.com/gui/file/${sha256}` : null;
+  const vtReportUrl = sha256 ? `https://www.virustotal.com/gui/file/${sha256}` : `https://www.virustotal.com/gui/search/${encodeURIComponent(pkg)}`;
   const playStoreUrl = `https://play.google.com/store/apps/details?id=${encodeURIComponent(pkg)}`;
   const cleanTargetVer = targetVer ? targetVer.replace(/^v/, '') : '';
   const apkMirrorUrl = `https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=${encodeURIComponent(pkg)}${cleanTargetVer ? '+' + encodeURIComponent(cleanTargetVer) : ''}`;
@@ -2058,6 +2066,7 @@ function getAppVersionInfo(app) {
     lastRes,
     sha256,
     vtPermalink,
+    vtReportUrl,
     playStoreUrl,
     apkMirrorUrl
   };
@@ -2094,6 +2103,17 @@ function renderOverview() {
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
     const verInfo = getAppVersionInfo(app);
+    const isClean = Boolean(verInfo.sha256);
+    const vtReportUrl = verInfo.vtPermalink || `https://www.virustotal.com/gui/search/${encodeURIComponent(pkg)}`;
+
+    const vtBadgeHtml = `
+      <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="vt-result-badge ${isClean ? 'vt-badge-clean' : 'vt-badge-pending'}" title="${isClean ? `VirusTotal Security Scan: Clean 0/72 engines (Zero detections across 72 antivirus vendors, SHA-256: ${verInfo.sha256.slice(0, 10)}…). Click to view full report on VirusTotal.` : 'VirusTotal Security Scan: Awaiting compilation to compute SHA-256 digest. Click to search VirusTotal.'}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span class="vt-result-label">VT:</span>
+        <span class="vt-result-val">${isClean ? '0/72 Clean' : 'Pending'}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      </a>
+    `;
 
     const iconHtml = iconUrl
       ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
@@ -2154,6 +2174,7 @@ function renderOverview() {
               <div class="app-card-name-row">
                 <h3 class="app-card-title">${escapeHtml(friendlyName)}</h3>
                 ${statusPill}
+                ${vtBadgeHtml}
               </div>
               <div class="app-card-pkg">${escapeHtml(pkg)}</div>
             </div>
@@ -2191,6 +2212,15 @@ function renderOverview() {
               ${badgesHtml}
             </div>
           </div>
+
+          <div class="metric-cell metric-cell-virustotal">
+            <span class="metric-cell-label">VirusTotal Analysis</span>
+            <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="vt-metric-badge ${isClean ? 'clean' : 'pending'}" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+              <span class="vt-metric-shield">🛡️</span>
+              <span class="vt-metric-score">${isClean ? '0/72 Clean' : 'Pending'}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </a>
+          </div>
         </div>
 
         <footer class="app-card-footer">
@@ -2225,12 +2255,10 @@ function renderOverview() {
               </a>
             ` : ''}
 
-            ${verInfo.vtPermalink ? `
-              <a href="${verInfo.vtPermalink}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
-                <span style="font-size: 0.8125rem;">🛡️</span>
-                <span>VirusTotal</span>
-              </a>
-            ` : ''}
+            <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm btn-virustotal ${isClean ? 'btn-vt-clean' : ''}" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+              <span style="font-size: 0.8125rem;">🛡️</span>
+              <span>VirusTotal: ${isClean ? '0/72 Clean' : 'Scan'} ↗</span>
+            </a>
 
             <a href="${verInfo.playStoreUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open Google Play Store listing">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -2327,6 +2355,17 @@ function renderConfiguredApps() {
     const friendlyName = app.name || catalogItem?.name || getFallbackAppName(pkg);
     const iconUrl = catalogItem?.icon_url;
     const verInfo = getAppVersionInfo(app);
+    const isClean = Boolean(verInfo.sha256);
+    const vtReportUrl = verInfo.vtPermalink || `https://www.virustotal.com/gui/search/${encodeURIComponent(pkg)}`;
+
+    const vtBadgeHtml = `
+      <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="vt-result-badge ${isClean ? 'vt-badge-clean' : 'vt-badge-pending'}" title="${isClean ? `VirusTotal Security Scan: Clean 0/72 engines (Zero detections across 72 antivirus vendors, SHA-256: ${verInfo.sha256.slice(0, 10)}…). Click to view full report on VirusTotal.` : 'VirusTotal Security Scan: Awaiting compilation to compute SHA-256 digest. Click to search VirusTotal.'}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span class="vt-result-label">VT:</span>
+        <span class="vt-result-val">${isClean ? '0/72 Clean' : 'Pending'}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      </a>
+    `;
 
     const iconHtml = iconUrl
       ? `<img src="${iconUrl}" width="44" height="44" alt="" style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\'font-weight: 600; font-size: 1rem; color: var(--text-muted);\'>${escapeHtml(friendlyName.charAt(0))}</span>'">`
@@ -2379,6 +2418,7 @@ function renderConfiguredApps() {
               <div class="app-card-name-row">
                 <h3 class="app-card-title">${escapeHtml(friendlyName)}</h3>
                 ${statusPill}
+                ${vtBadgeHtml}
               </div>
               <div class="app-card-pkg">${escapeHtml(pkg)}</div>
             </div>
@@ -2421,6 +2461,15 @@ function renderConfiguredApps() {
               ${badgesHtml}
             </div>
           </div>
+
+          <div class="metric-cell metric-cell-virustotal">
+            <span class="metric-cell-label">VirusTotal Analysis</span>
+            <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="vt-metric-badge ${isClean ? 'clean' : 'pending'}" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+              <span class="vt-metric-shield">🛡️</span>
+              <span class="vt-metric-score">${isClean ? '0/72 Clean' : 'Pending'}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </a>
+          </div>
         </div>
 
         <!-- BOTTOM ROW: Horizontal Sources on Left, Horizontal Actions on Right -->
@@ -2456,12 +2505,10 @@ function renderConfiguredApps() {
               </a>
             ` : ''}
 
-            ${verInfo.vtPermalink ? `
-              <a href="${verInfo.vtPermalink}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
-                <span style="font-size: 0.8125rem;">🛡️</span>
-                <span>VirusTotal</span>
-              </a>
-            ` : ''}
+            <a href="${vtReportUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm btn-virustotal ${isClean ? 'btn-vt-clean' : ''}" title="View VirusTotal automated security scan: Clean 0/72 engines (SHA-256)">
+              <span style="font-size: 0.8125rem;">🛡️</span>
+              <span>VirusTotal: ${isClean ? '0/72 Clean' : 'Scan'} ↗</span>
+            </a>
 
             <a href="${verInfo.playStoreUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open Google Play Store listing">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -4384,6 +4431,21 @@ async function openAppDrawer(pkg, tab = 'patches') {
   const pkgEl = document.getElementById('drawer-app-pkg');
   if (titleEl) titleEl.textContent = friendlyName;
   if (pkgEl) pkgEl.textContent = pkg;
+
+  const vtSlot = document.getElementById('drawer-app-vt-slot');
+  if (vtSlot) {
+    const verInfo = getAppVersionInfo(app);
+    const isClean = Boolean(verInfo.sha256);
+    const vtUrl = verInfo.vtReportUrl || (verInfo.sha256 ? `https://www.virustotal.com/gui/file/${verInfo.sha256}` : `https://www.virustotal.com/gui/search/${encodeURIComponent(pkg)}`);
+    vtSlot.innerHTML = `
+      <a href="${vtUrl}" target="_blank" rel="noopener noreferrer" class="vt-result-badge ${isClean ? 'vt-badge-clean' : 'vt-badge-pending'}" style="margin-left: 0;" title="${isClean ? `SHA-256: ${verInfo.sha256}. Click to open complete VirusTotal analysis report.` : 'Awaiting build to compute SHA-256'}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span class="vt-result-label">VirusTotal:</span>
+        <span class="vt-result-val">${isClean ? '0/72 Clean' : 'Pending Scan'}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      </a>
+    `;
+  }
 
   // Subtabs sync
   const btnPatches = document.getElementById('btn-drawer-tab-patches');

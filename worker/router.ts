@@ -245,13 +245,20 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
   const method = request.method.toUpperCase();
 
   const origin = request.headers.get('Origin');
+  const allowedOrigins = [
+    url.origin,
+    'https://automorph.w161112218.workers.dev',
+    'https://morpheflow.w161112218.workers.dev',
+  ];
+  const corsOrigin = (origin && allowedOrigins.includes(origin)) ? origin : url.origin;
   const isSecure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
 
   if (method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Origin': origin === url.origin ? origin : url.origin,
+        'Access-Control-Allow-Origin': corsOrigin,
+        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token, X-Webhook-Secret',
         'Access-Control-Max-Age': '86400',
@@ -261,7 +268,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx: Executio
 
   // Cross-Origin Request Forgery (CSRF) defense for state-modifying routes:
   // Reject mutations originating from external third-party web origins unless using Bearer API token or webhook
-  if (origin && origin !== url.origin && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+  if (origin && !allowedOrigins.includes(origin) && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
     if (path !== '/api/webhook/report') {
       const authHeader = request.headers.get('Authorization') || '';
       if (!authHeader.startsWith('Bearer ')) {
