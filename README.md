@@ -132,7 +132,7 @@ Pick the self-hosted install format that fits your machine:
 | Docker Compose | Homelab (Unraid/Proxmox/TrueNAS), Oracle VPS | `docker compose -f default_compose.yaml up -d` |
 | 1-line installer | Fastest bare-metal / VPS setup | `curl -fsSL https://raw.githubusercontent.com/wiwek13/morpheflow-portal/main/install.sh \| bash` |
 | `.deb` / `.rpm` | Debian/Ubuntu, Fedora/RHEL with `systemd` | download from [Releases](https://github.com/wiwek13/morpheflow-portal/releases), `sudo apt install ./morpheflow_*_amd64.deb` |
-| AUR (`morpheflow-git`) | Arch Linux / CachyOS / EndeavourOS | `yay -S morpheflow-git` (or build `packaging/aur` with `makepkg -si`) |
+| AUR (`morpheflow-git`) | Arch Linux / CachyOS / EndeavourOS | `yay -S morpheflow-git` ([AUR page](https://aur.archlinux.org/packages/morpheflow-git)) |
 | AppImage | Portable run without install (x86_64) | download `MorpheFlow-*-x86_64.AppImage`, `chmod +x` and run |
 
 > Note: native packages (`.deb`/`.rpm`/AppImage/1-liner) install the **self-hosted backend**.
@@ -226,14 +226,14 @@ chmod +x MorpheFlow-2.4.1-x86_64.AppImage
 ./MorpheFlow-2.4.1-x86_64.AppImage   # needs system python3 (>=3.11) + Java 21
 ```
 
-**Option E — Arch Linux (AUR, `morpheflow-git`)**:
+**Option E — Arch Linux (AUR, [`morpheflow-git`](https://aur.archlinux.org/packages/morpheflow-git))**:
 
 ```bash
 yay -S morpheflow-git          # or: paru -S morpheflow-git
 sudo systemctl enable --now morpheflow
 ```
 
-No AUR helper? Build directly from this repo (same sources the AUR package uses):
+No AUR helper? Build directly from this repo (same sources as the AUR package):
 
 ```bash
 cd packaging/aur
@@ -243,9 +243,9 @@ makepkg -si   # needs base-devel + git; never run makepkg as root
 The AUR packaging (`packaging/aur/PKGBUILD` + `.SRCINFO` + `morpheflow.install`)
 mirrors the `.deb`/`.rpm` layout: code in `/opt/morpheflow`, venv + `morphe.jar`
 created once by the install scriptlet, state in `/var/lib/morpheflow`.
-Publishing to `aur.archlinux.org` is a maintainer one-time step (SSH key +
-`git push` of `packaging/aur` contents); the `-git` variant tracks `main`
-because upstream publishes no version tags yet.
+It is published as a `-git` package tracking `main` because upstream
+publishes no version tags yet; `.SRCINFO` is regenerated with
+`makepkg --printsrcinfo` before each AUR push.
 
 **Build packages locally**:
 

@@ -3,6 +3,7 @@ pkgbase = morpheflow-git
 	pkgver = r0.0000000
 	pkgrel = 1
 	url = https://github.com/wiwek13/morpheflow-portal
+	install = morpheflow.install
 	arch = x86_64
 	arch = aarch64
 	license = MIT
