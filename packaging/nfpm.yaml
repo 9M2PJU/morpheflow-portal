@@ -5,13 +5,13 @@ version: ${VERSION}
 release: 1
 section: net
 priority: optional
-maintainer: MorpheFlow Contributors <https://github.com/wiwek13/MorpheFlow>
+maintainer: MorpheFlow Contributors <https://github.com/wiwek13/morpheflow-portal>
 description: |-
   Self-hosted edge management portal and build pipeline for Android packages.
   Serves the web dashboard on localhost:8080 (FastAPI + Morphe pipeline).
   Cloudflare Workers edge mode is deployed separately via ./deploy.sh.
 license: MIT
-homepage: https://github.com/wiwek13/MorpheFlow
+homepage: https://github.com/wiwek13/morpheflow-portal
 depends:
   - python3
   - curl | wget

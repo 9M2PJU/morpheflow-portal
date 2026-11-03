@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # MorpheFlow 1-line installer (self-hosted backend).
 #
-#   curl -fsSL https://raw.githubusercontent.com/wiwek13/MorpheFlow/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/wiwek13/MorpheFlow/main/install.sh | bash -s -- --docker    # Docker Compose (default)
-#   curl -fsSL https://raw.githubusercontent.com/wiwek13/MorpheFlow/main/install.sh | bash -s -- --native    # .deb/.rpm via nFPM-built package
-#   curl -fsSL https://raw.githubusercontent.com/wiwek13/MorpheFlow/main/install.sh | bash -s -- --appimage  # portable AppImage to ./MorpheFlow-*.AppImage
+#   curl -fsSL https://raw.githubusercontent.com/wiwek13/morpheflow-portal/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/wiwek13/morpheflow-portal/main/install.sh | bash -s -- --docker    # Docker Compose (default)
+#   curl -fsSL https://raw.githubusercontent.com/wiwek13/morpheflow-portal/main/install.sh | bash -s -- --native    # .deb/.rpm via nFPM-built package
+#   curl -fsSL https://raw.githubusercontent.com/wiwek13/morpheflow-portal/main/install.sh | bash -s -- --appimage  # portable AppImage to ./MorpheFlow-*.AppImage
 #
 # Edge (Cloudflare Workers) mode is separate: git clone + ./deploy.sh (see README).
 set -euo pipefail
 
-REPO="${MORPHEFLOW_REPO:-wiwek13/MorpheFlow}"
+REPO="${MORPHEFLOW_REPO:-wiwek13/morpheflow-portal}"
 BRANCH="${MORPHEFLOW_BRANCH:-main}"
 INSTALL_DIR="${MORPHEFLOW_DIR:-$HOME/morpheflow}"
 MODE="docker"
@@ -75,8 +75,23 @@ do_native() {
     curl -fsSL -o "$tmp/morpheflow.rpm" "https://github.com/${REPO}/releases/latest/download/morpheflow-${ver}-1.${debarch}.rpm"
     sudo dnf install -y "$tmp/morpheflow.rpm"
     sudo systemctl enable --now morpheflow
+  elif command -v pacman >/dev/null 2>&1; then
+    need git
+    command -v makepkg >/dev/null 2>&1 || { echo "need base-devel (makepkg) installed first: sudo pacman -S --needed base-devel git" >&2; exit 1; }
+    if [ "$(id -u)" = "0" ] && [ -z "${SUDO_USER:-}" ]; then
+      echo "makepkg refuses to run as root; rerun as a normal user with sudo access" >&2; exit 1
+    fi
+    log "building morpheflow-git from AUR packaging (packaging/aur/PKGBUILD) ..."
+    aur_tmp="$tmp/aur"; git clone --depth 1 --branch "$BRANCH" "https://github.com/${REPO}.git" "$aur_tmp"
+    if [ "$(id -u)" = "0" ]; then
+      sudo -u "$SUDO_USER" bash -c "cd '$aur_tmp/packaging/aur' && makepkg -si --noconfirm"
+      sudo systemctl enable --now morpheflow
+    else
+      (cd "$aur_tmp/packaging/aur" && makepkg -si --noconfirm)
+      sudo systemctl enable --now morpheflow
+    fi
   else
-    echo "no apt/dnf found; use --docker or --appimage mode" >&2; exit 1
+    echo "no apt/dnf/pacman found; use --docker or --appimage mode" >&2; exit 1
   fi
   log "done. Dashboard: http://127.0.0.1:8080"
 }
