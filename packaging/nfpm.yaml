@@ -1,0 +1,49 @@
+name: morpheflow
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+release: 1
+section: net
+priority: optional
+maintainer: MorpheFlow Contributors <https://github.com/wiwek13/MorpheFlow>
+description: |-
+  Self-hosted edge management portal and build pipeline for Android packages.
+  Serves the web dashboard on localhost:8080 (FastAPI + Morphe pipeline).
+  Cloudflare Workers edge mode is deployed separately via ./deploy.sh.
+license: MIT
+homepage: https://github.com/wiwek13/MorpheFlow
+depends:
+  - python3
+  - curl | wget
+overrides:
+  deb:
+    depends:
+      - python3 (>= 3.11)
+      - openjdk-21-jre-headless | java-runtime-headless
+    scripts:
+      postinstall: packaging/postinst.sh
+      preremove: packaging/prerm.sh
+  rpm:
+    depends:
+      - python3
+      - java-21-openjdk-headless
+    scripts:
+      postinstall: packaging/postinst.sh
+      preremove: packaging/prerm.sh
+contents:
+  - src: web
+    dst: /opt/morpheflow/web
+  - src: scripts
+    dst: /opt/morpheflow/scripts
+  - src: defaults
+    dst: /opt/morpheflow/defaults
+  - src: requirements.txt
+    dst: /opt/morpheflow/requirements.txt
+  - src: packaging/morpheflow.service
+    dst: /lib/systemd/system/morpheflow.service
+  - src: packaging/morpheflow.sysusers
+    dst: /usr/lib/sysusers.d/morpheflow.conf
+  - src: packaging/morpheflow.tmpfiles
+    dst: /usr/lib/tmpfiles.d/morpheflow.conf
+# tools/*.jar and Python venv are created at install time (see postinst),
+# keeping the .deb/.rpm small and cache-friendly.

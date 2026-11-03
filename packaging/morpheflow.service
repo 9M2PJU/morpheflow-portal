@@ -1,0 +1,26 @@
+[Unit]
+Description=MorpheFlow self-hosted portal (FastAPI + Morphe pipeline)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=morpheflow
+Group=morpheflow
+WorkingDirectory=/opt/morpheflow
+Environment=MORPHEFLOW_ROOT=/opt/morpheflow
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+# Java is resolved via /opt/morpheflow/.java-home (set by postinst) or system java.
+ExecStart=/opt/morpheflow/.venv/bin/python -m uvicorn web.backend.main:app --host 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/morpheflow/apps /opt/morpheflow/tools /var/lib/morpheflow /var/log/morpheflow
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

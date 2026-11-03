@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MorpheFlow
+Comment=Self-hosted Android patch pipeline dashboard (localhost:8080)
+Exec=AppRun
+Icon=morpheflow
+Categories=Network;Utility;
+Terminal=true

@@ -1,0 +1,2 @@
+# Type: user/group created via systemd-sysusers (Debian/RHEL compatible)
+u morpheflow - "MorpheFlow service user" /opt/morpheflow /usr/sbin/nologin

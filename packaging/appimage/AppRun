@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# AppRun: portable MorpheFlow server entrypoint.
+set -euo pipefail
+HERE="$(dirname "$(readlink -f "$0")")"
+SRC="$HERE/usr/src/morpheflow"
+export MORPHEFLOW_ROOT="${MORPHEFLOW_ROOT:-$SRC}"
+export PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "MorpheFlow AppImage requires system python3 (>=3.11). Install python3 first." >&2
+  exit 1
+fi
+if ! command -v java >/dev/null 2>&1; then
+  echo "MorpheFlow AppImage requires Java 21 (openjdk-21-jre-headless)." >&2
+  exit 1
+fi
+if ! python3 -c "import fastapi, uvicorn" >/dev/null 2>&1; then
+  echo "Installing MorpheFlow Python deps (fastapi/uvicorn/...) with pip..."
+  python3 -m pip install --user -r "$SRC/requirements.txt"
+fi
+
+PORT="${PORT:-8080}"
+echo "==> MorpheFlow ${VERSION:-} starting at http://127.0.0.1:${PORT}"
+(command -v xdg-open >/dev/null 2>&1 && xdg-open "http://127.0.0.1:${PORT}" >/dev/null 2>&1 &) || true
+exec python3 -m uvicorn web.backend.main:app --app-dir "$SRC" --host 127.0.0.1 --port "$PORT"

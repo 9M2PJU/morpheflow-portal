@@ -60,3 +60,6 @@ playwright-report/
 .DS_Store
 .playwright-mcp/
 .wrangler/
+
+# Local native package output (built by packaging/build.sh / CI release job)
+dist/
